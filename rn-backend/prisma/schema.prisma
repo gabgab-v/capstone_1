@@ -1,0 +1,22 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+
+  // ── Profile fields ───────────────────────────────
+  name       String?          // optional until the user fills it
+  birthdate  DateTime?        // optional; store as DateTime (ISO)
+  // ─────────────────────────────────────────────────
+
+  createdAt  DateTime @default(now())
+}

@@ -1,20 +1,40 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import 'react-native-gesture-handler';
+import './global.css'; // Tailwind
+import React, { useState, useEffect, useRef } from 'react';
+
+
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import LoginPage from './src/pages/LoginPage';
+import SignupPage from './src/pages/SignupPage';
+import MainTabNavigator from './src/navigation/MainTabNavigator'; // ⬅️ add this
+import ProfilePage from './src/pages/ProfilePage';
+import ProfileCreationPage from './src/pages/ProfileCreationPage';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+
+          {/* Auth pages */}
+          <Stack.Screen name="Login" component={LoginPage} />
+          <Stack.Screen name="Signup" component={SignupPage} />
+
+          <Stack.Screen name="Profile" component={ProfilePage} />
+          <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
+          
+
+          {/* Main app after login */}
+          <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
+      
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
