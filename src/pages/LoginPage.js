@@ -25,7 +25,13 @@ export default function LoginPage({ navigation }) {
       const me = await get('/api/users/me', token);
 
       // 4️⃣ Route based on profile completeness
-      navigation.replace(me.profileComplete ? 'MainTabs' : 'ProfileCreation');
+      if (!me.profileComplete) {
+        navigation.replace('ProfileCreation', { userId: me.id });
+      } else if (!me.preferencesComplete) {
+        navigation.replace('PreferencesSetup', { userId: me.id });
+      } else {
+        navigation.replace('MainTabs');
+      }
     } catch (e) {
       alert(e.message);
     }

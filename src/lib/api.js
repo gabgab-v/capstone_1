@@ -1,10 +1,10 @@
 // src/lib/api.js
 import { Platform } from 'react-native';
-import * as Device from 'expo-device';      // ← new
-// no longer need Constants here
+import * as Device from 'expo-device';
+import * as SecureStore from 'expo-secure-store';  // 🔑 auto get token
 
-const LOCAL_IP = '192.168.254.145';  // your PC’s LAN IP
-const EMU_IP   = '10.0.2.2';         // Android emulator alias
+const LOCAL_IP = '192.168.1.50';  // your PC’s LAN IP
+const EMU_IP   = '10.0.2.2';      // Android emulator alias
 
 const isRealAndroid = Platform.OS === 'android' && Device.isDevice;
 
@@ -19,16 +19,24 @@ export const BASE_URL =
                 ? `http://${EMU_IP}:3000`
                 : `http://${LOCAL_IP}:3000`; // iOS sim / real iOS
 
-export async function post(path, body, token) {
+// ------------------------------
+// 🔑 Helper to always add JWT
+async function authHeaders() {
+  const token = await SecureStore.getItemAsync('jwt');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+// ------------------------------
+
+export async function post(path, body) {
   const url = `${BASE_URL}${path}`;
   console.log('📡 POST →', url, body);
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -46,15 +54,12 @@ export async function post(path, body, token) {
   return json;
 }
 
-export async function get(path, token) {
+export async function get(path) {
   const url = `${BASE_URL}${path}`;
   console.log('📡 GET →', url);
 
   const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: await authHeaders(),
   });
 
   if (!res.ok) {
@@ -71,14 +76,13 @@ export async function get(path, token) {
   return json;
 }
 
-export async function put(path, body, token) {
+export async function put(path, body) {
   const url = `${BASE_URL}${path}`;
+  console.log('📡 PUT →', url, body);
+
   const res = await fetch(url, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -91,8 +95,7 @@ export async function put(path, body, token) {
     throw new Error(errorMsg);
   }
 
-  return await res.json();
+  const json = await res.json();
+  console.log('✅ Response:', json);
+  return json;
 }
-
-
-

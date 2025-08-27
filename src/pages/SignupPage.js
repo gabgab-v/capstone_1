@@ -29,7 +29,11 @@ export default function SignupPage({ navigation }) {
       const res = await post('/api/auth/signup', { email, password });
       console.log('🟢 Signup success:', res);
       alert('Account created! You can now log in.');
-      navigation.replace('Login'); // adjust this screen name if needed
+      
+    // after signup, send user to Preferences setup
+ 
+    navigation.replace('Login'); // fallback
+
     } catch (e) {
       console.log('🔴 Signup failed:', e);
       const errorMessage = e?.message || 'An unknown error occurred';

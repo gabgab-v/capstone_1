@@ -18,10 +18,29 @@ export async function GET(request) {
         email: true,
         name: true,
         birthdate: true,
+        experienceLevel: true,
+        preferredDifficulty: true,
+        preferredTrailType: true,
+        preferredDurationHrs: true,
+        budgetRange: true,
       },
     });
 
-    return NextResponse.json(fullUser); // 200
+    // ✅ check if preferences are all filled in
+    const profileComplete = !!(fullUser.name && fullUser.birthdate);
+    const preferencesComplete = !!(
+      fullUser.experienceLevel &&
+      fullUser.preferredDifficulty &&
+      fullUser.preferredTrailType &&
+      fullUser.preferredDurationHrs &&
+      fullUser.budgetRange
+    );
+
+    return NextResponse.json({
+      ...fullUser,
+      profileComplete,
+      preferencesComplete,
+    }); // 200
   } catch (err) {
     console.error('❌ GET /users/me error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

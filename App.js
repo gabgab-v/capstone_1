@@ -12,6 +12,7 @@ import SignupPage from './src/pages/SignupPage';
 import MainTabNavigator from './src/navigation/MainTabNavigator'; // ⬅️ add this
 import ProfilePage from './src/pages/ProfilePage';
 import ProfileCreationPage from './src/pages/ProfileCreationPage';
+import PreferencesSetupPage from './src/pages/preferences/PreferencesSetupPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -27,10 +28,13 @@ export default function App() {
 
           <Stack.Screen name="Profile" component={ProfilePage} />
           <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
+          <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
           
 
           {/* Main app after login */}
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+
+          {/* Main app after login */}
 
         </Stack.Navigator>
       </NavigationContainer>

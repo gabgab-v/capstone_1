@@ -14,8 +14,17 @@ model User {
   password   String
 
   // ── Profile fields ───────────────────────────────
-  name       String?          // optional until the user fills it
-  birthdate  DateTime?        // optional; store as DateTime (ISO)
+  name       String?         // optional until user fills it
+  birthdate  DateTime?       // optional
+  role       String?         // 'organizer' or 'participant'
+  // ─────────────────────────────────────────────────
+
+  // ── Preferences ──────────────────────────────────
+  experienceLevel       String?  // Beginner, Intermediate, Expert
+  preferredDifficulty   String?  // Easy, Moderate, Hard
+  preferredTrailType    String?  // e.g., Forest, Summit
+  preferredDurationHrs  Float?   // hours
+  budgetRange           String?  // e.g., $50-$100
   // ─────────────────────────────────────────────────
 
   createdAt  DateTime @default(now())
