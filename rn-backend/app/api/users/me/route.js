@@ -1,7 +1,6 @@
-// root/rn-backend/app/api/users/me/route.js
 import { NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';  // ✅ Prisma client
+import { prisma } from '@/lib/prisma'; // ✅ Prisma client
 
 // GET /api/users/me → fetch user profile
 export async function GET(request) {
@@ -23,8 +22,15 @@ export async function GET(request) {
         preferredTrailType: true,
         preferredDurationHrs: true,
         budgetRange: true,
+        // --- ADD THESE TWO LINES ---
+        role: true,
+        organizerRequestPending: true,
       },
     });
+
+    if (!fullUser) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
     // ✅ check if preferences are all filled in
     const profileComplete = !!(fullUser.name && fullUser.birthdate);
@@ -36,6 +42,7 @@ export async function GET(request) {
       fullUser.budgetRange
     );
 
+    // The `...fullUser` spread will now automatically include `role` and `organizerRequestPending`
     return NextResponse.json({
       ...fullUser,
       profileComplete,
@@ -47,7 +54,7 @@ export async function GET(request) {
   }
 }
 
-// PUT /api/users/me → update profile
+// PUT /api/users/me → update profile (NO CHANGES NEEDED HERE)
 export async function PUT(request) {
   try {
     const user = await getUserFromToken(request);
@@ -65,7 +72,7 @@ export async function PUT(request) {
       where: { id: user.id },
       data: {
         name,
-        birthdate: new Date(birthdate),  // if stored as Date
+        birthdate: new Date(birthdate), // if stored as Date
       },
     });
 
@@ -75,3 +82,4 @@ export async function PUT(request) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+

@@ -18,7 +18,7 @@ model User {
   birthdate  DateTime?       // optional
   role      UserRole @default(USER)         // 'organizer' or 'participant'
   // ─────────────────────────────────────────────────
-
+  organizerRequestPending Boolean @default(false)
   // ── Preferences ──────────────────────────────────
   experienceLevel       String?  // Beginner, Intermediate, Expert
   preferredDifficulty   String?  // Easy, Moderate, Hard
