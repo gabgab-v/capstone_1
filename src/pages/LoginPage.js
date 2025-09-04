@@ -14,26 +14,33 @@ export default function LoginPage({ navigation }) {
     }
 
     try {
-      // 1️⃣ Log in
-      const { token /*, user */ } = await post('/api/auth/login', { email, password });
-      if (!token) throw new Error('No token received');
+      const responseData = await post('/api/auth/login', { email, password });
+      const { token, user } = responseData;
 
-      // 2️⃣ Store the JWT for later requests
+      if (!token || !user) {
+        throw new Error('Invalid response from server. Please try again.');
+      }
+
+      // --- THIS IS THE NEW CHECK ---
+      // If the user is an admin, block them from logging into the mobile app.
+      if (user.role === 'ADMIN') {
+        throw new Error('Admin accounts must use the web dashboard.');
+      }
+      // --- END OF NEW CHECK ---
+
       await SecureStore.setItemAsync('jwt', token);
 
-      // 3️⃣ Fetch user profile (if login didn’t already return it)
-      const me = await get('/api/users/me', token);
-
-      // 4️⃣ Route based on profile completeness
-      if (!me.profileComplete) {
-        navigation.replace('ProfileCreation', { userId: me.id });
-      } else if (!me.preferencesComplete) {
-        navigation.replace('PreferencesSetup', { userId: me.id });
+      // This part remains the same
+      if (!user.profileComplete) {
+        navigation.replace('ProfileCreation', { userId: user.id });
+      } else if (!user.preferencesComplete) {
+        navigation.replace('PreferencesSetup', { userId: user.id });
       } else {
         navigation.replace('MainTabs');
       }
     } catch (e) {
-      alert(e.message);
+      alert(`Login Failed: ${e.message}`);
+      console.error(e);
     }
   }
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@prisma/client": "^6.10.1",
     "bcryptjs": "^3.0.2",
+    "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "next": "15.3.3",
     "prisma": "^6.10.0",
@@ -28,5 +29,8 @@
     "eslint-config-next": "15.3.3",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   }
 }

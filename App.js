@@ -13,6 +13,7 @@ import MainTabNavigator from './src/navigation/MainTabNavigator'; // ⬅️ add 
 import ProfilePage from './src/pages/ProfilePage';
 import ProfileCreationPage from './src/pages/ProfileCreationPage';
 import PreferencesSetupPage from './src/pages/preferences/PreferencesSetupPage';
+import SettingsPage from './src/pages/user/SettingsPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +36,7 @@ export default function App() {
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
 
           {/* Main app after login */}
+          <Stack.Screen name="Settings" component={SettingsPage} />
 
         </Stack.Navigator>
       </NavigationContainer>

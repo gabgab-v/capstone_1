@@ -16,7 +16,7 @@ model User {
   // ── Profile fields ───────────────────────────────
   name       String?         // optional until user fills it
   birthdate  DateTime?       // optional
-  role       String?         // 'organizer' or 'participant'
+  role      UserRole @default(USER)         // 'organizer' or 'participant'
   // ─────────────────────────────────────────────────
 
   // ── Preferences ──────────────────────────────────
@@ -28,4 +28,9 @@ model User {
   // ─────────────────────────────────────────────────
 
   createdAt  DateTime @default(now())
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }

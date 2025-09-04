@@ -1,10 +1,10 @@
-// src/lib/api.js
+// root/src/lib/api.js
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
-import * as SecureStore from 'expo-secure-store';  // 🔑 auto get token
+import * as SecureStore from 'expo-secure-store';
 
-const LOCAL_IP = '192.168.1.50';  // your PC’s LAN IP
-const EMU_IP   = '10.0.2.2';      // Android emulator alias
+const LOCAL_IP = '192.168.1.50'; // your PC’s LAN IP
+const EMU_IP   = '10.0.2.2';       // Android emulator alias
 
 const isRealAndroid = Platform.OS === 'android' && Device.isDevice;
 
@@ -12,15 +12,14 @@ export const BASE_URL =
   process.env.NODE_ENV === 'production'
     ? 'https://your-vercel-url.vercel.app'
     : Platform.OS === 'web'
-        ? 'http://localhost:3000'
-        : isRealAndroid
-            ? `http://${LOCAL_IP}:3000`
-            : Platform.OS === 'android'
-                ? `http://${EMU_IP}:3000`
-                : `http://${LOCAL_IP}:3000`; // iOS sim / real iOS
+      ? 'http://localhost:3000'
+      : isRealAndroid
+        ? `http://${LOCAL_IP}:3000`
+        : Platform.OS === 'android'
+          ? `http://${EMU_IP}:3000`
+          : `http://${LOCAL_IP}:3000`; // iOS sim / real iOS
 
-// ------------------------------
-// 🔑 Helper to always add JWT
+// Helper to always add JWT
 async function authHeaders() {
   const token = await SecureStore.getItemAsync('jwt');
   return {
@@ -28,7 +27,6 @@ async function authHeaders() {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
-// ------------------------------
 
 export async function post(path, body) {
   const url = `${BASE_URL}${path}`;
@@ -43,8 +41,10 @@ export async function post(path, body) {
   if (!res.ok) {
     let errorMsg = 'Request failed';
     try {
-      const { error } = await res.json();
-      errorMsg = error || errorMsg;
+      // --- CHANGE HERE ---
+      // Check for a `message` OR `error` property in the response
+      const data = await res.json();
+      errorMsg = data.message || data.error || errorMsg;
     } catch (_) {}
     throw new Error(errorMsg);
   }
@@ -65,8 +65,10 @@ export async function get(path) {
   if (!res.ok) {
     let errorMsg = 'Request failed';
     try {
-      const { error } = await res.json();
-      errorMsg = error || errorMsg;
+      // --- CHANGE HERE ---
+      // Check for a `message` OR `error` property in the response
+      const data = await res.json();
+      errorMsg = errorMsg = data.message || data.error || errorMsg;
     } catch (_) {}
     throw new Error(errorMsg);
   }
@@ -89,8 +91,10 @@ export async function put(path, body) {
   if (!res.ok) {
     let errorMsg = 'Request failed';
     try {
-      const { error } = await res.json();
-      errorMsg = error || errorMsg;
+      // --- CHANGE HERE ---
+      // Check for a `message` OR `error` property in the response
+      const data = await res.json();
+      errorMsg = errorMsg = data.message || data.error || errorMsg;
     } catch (_) {}
     throw new Error(errorMsg);
   }
