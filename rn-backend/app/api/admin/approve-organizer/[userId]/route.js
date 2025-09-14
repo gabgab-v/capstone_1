@@ -1,6 +1,7 @@
+// Corrected Backend Code (route.js)
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { UserRole } from '@prisma/client'; // <-- 1. Import the enum
+import { UserRole } from '@prisma/client';
 
 export async function POST(req, { params }) {
     try {
@@ -10,10 +11,19 @@ export async function POST(req, { params }) {
             return NextResponse.json({ message: "User ID is required" }, { status: 400 });
         }
 
+        // Convert the string from the URL into a number
+        const numericUserId = parseInt(userId, 10);
+
+        // Check if conversion was successful
+        if (isNaN(numericUserId)) {
+            return NextResponse.json({ message: "Invalid User ID format" }, { status: 400 });
+        }
+
         const updatedUser = await prisma.user.update({
-            where: { id: userId },
+            // Use the converted number in the query
+            where: { id: numericUserId },
             data: {
-                role: UserRole.ORGANIZER, // <-- 2. Use the enum value here
+                role: UserRole.ORGANIZER,
                 organizerRequestPending: false,
             },
         });
@@ -21,7 +31,7 @@ export async function POST(req, { params }) {
         return NextResponse.json({ message: 'User promoted to Organizer.', user: updatedUser });
     } catch (error) {
         console.error("Failed to approve organizer:", error);
-        if (error.code === 'P2025') { 
+        if (error.code === 'P2025') {
             return NextResponse.json({ message: `User with ID ${params.userId} not found.` }, { status: 404 });
         }
         return NextResponse.json({ message: "An internal server error occurred." }, { status: 500 });

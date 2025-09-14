@@ -1,5 +1,3 @@
-// rn-backend/middleware.js
-
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
@@ -22,6 +20,15 @@ export async function middleware(req) {
 
   // 2. Protect routes under /api/admin
   if (req.nextUrl.pathname.startsWith('/api/admin')) {
+    
+    // --- FIX APPLIED HERE ---
+    // If the request is for the login route, bypass all token checks
+    if (req.nextUrl.pathname.startsWith('/api/admin/login')) {
+        return NextResponse.next(); // Allow the request to proceed
+    }
+    // --- END OF FIX ---
+
+    // For all OTHER admin routes, perform the security check
     const token = req.headers.get('authorization')?.split(' ')[1];
 
     if (!token) {
@@ -37,7 +44,7 @@ export async function middleware(req) {
           throw new Error('Admin role required.');
         }
 
-        // If the token is valid and the role is ADMIN, proceed to the API route
+        // If token is valid and role is ADMIN, proceed to the API route
         response = NextResponse.next();
 
       } catch (error) {
@@ -52,7 +59,7 @@ export async function middleware(req) {
     response = NextResponse.next();
   }
 
-  // 3. Apply CORS headers to ALL outgoing responses (including errors)
+  // 3. Apply CORS headers to ALL outgoing responses (including errors and successes)
   Object.entries(CORS_HEADERS).forEach(([key, value]) => {
     response.headers.set(key, value);
   });
@@ -64,4 +71,3 @@ export async function middleware(req) {
 export const config = {
   matcher: '/api/:path*',
 };
-
