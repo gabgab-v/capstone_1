@@ -13,6 +13,9 @@ import MainTabNavigator from './src/navigation/MainTabNavigator'; // ⬅️ add 
 import ProfilePage from './src/pages/ProfilePage';
 import ProfileCreationPage from './src/pages/ProfileCreationPage';
 import PreferencesSetupPage from './src/pages/preferences/PreferencesSetupPage';
+import BookingPage from './src/pages/booking/BookingPage';
+import ReceiptPage from './src/pages/booking/ReceiptPage';
+import EventDetailsPage from './src/pages/event/EventDetailsPage';
 import SettingsPage from './src/pages/user/SettingsPage';
 
 const Stack = createNativeStackNavigator();
@@ -30,6 +33,9 @@ export default function App() {
           <Stack.Screen name="Profile" component={ProfilePage} />
           <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
           <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
+          <Stack.Screen name="BookingPage" component={BookingPage} />
+          <Stack.Screen name="ReceiptPage" component={ReceiptPage} />
+          <Stack.Screen name="EventDetails" component={EventDetailsPage} />
           
 
           {/* Main app after login */}

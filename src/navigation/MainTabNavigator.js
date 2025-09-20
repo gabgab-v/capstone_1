@@ -6,6 +6,7 @@ import Icon from "react-native-vector-icons/Feather";
 import HomePage from "../pages/HomePage";
 import ProfilePage from "../pages/ProfilePage";
 import CreateEventPage from "../pages/CreateEventPage";
+import DiscoverPage from "../pages/DiscoverPage";
 import { get } from "../lib/api"; // ✅ import your API wrapper
 
 const Tab = createBottomTabNavigator();
@@ -71,7 +72,7 @@ export default function MainTabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomePage} />
-      <Tab.Screen name="Discover" component={Dummy} />
+      <Tab.Screen name="Discover" component={DiscoverPage} />
       {isOrganizer && (
         <Tab.Screen name="Create" component={CreateEventPage} />
       )}

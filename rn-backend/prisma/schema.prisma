@@ -16,7 +16,8 @@ model User {
   // ── Profile fields ───────────────────────────────
   name       String?         // optional until user fills it
   birthdate  DateTime?       // optional
-  role      UserRole @default(USER)         // 'organizer' or 'participant'
+  role      UserRole @default(USER)         // 'organizer' or 'participant' 
+  bookings  Booking[]  // events booked
   // ─────────────────────────────────────────────────
   organizerRequestPending Boolean @default(false)
   // ── Preferences ──────────────────────────────────
@@ -38,10 +39,24 @@ model Event {
   durationHrs Float?
   steps       Int?
   elevationM  Float?
+  price       Int      @default(0)
 
   organizer   User     @relation(fields: [organizerId], references: [id])
   organizerId String
+  bookings    Booking[]
 
+  createdAt   DateTime @default(now())
+}
+
+model Booking {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  event       Event    @relation(fields: [eventId], references: [id])
+  eventId     String
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  paymentUrl  String?  // optional: GCash screenshot / receipt file URL
+  totalAmount Float
   createdAt   DateTime @default(now())
 }
 
