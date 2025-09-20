@@ -1,7 +1,7 @@
-// Corrected Backend Code (route.js)
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { UserRole } from '@prisma/client';
+// The import for UserRole is not needed here unless you are comparing roles
+// import { UserRole } from '@prisma/client';
 
 export async function POST(req, { params }) {
     try {
@@ -11,26 +11,29 @@ export async function POST(req, { params }) {
             return NextResponse.json({ message: "User ID is required" }, { status: 400 });
         }
 
-        // Convert the string from the URL into a number
-        const numericUserId = parseInt(userId, 10);
-
-        // Check if conversion was successful
-        if (isNaN(numericUserId)) {
-            return NextResponse.json({ message: "Invalid User ID format" }, { status: 400 });
-        }
+        // ----------------- THE FIX IS HERE -----------------
+        // REMOVED: The conversion to a number. The userId is a string (UUID).
+        // const numericUserId = parseInt(userId, 10); 
+        // if (isNaN(numericUserId)) {
+        //     return NextResponse.json({ message: "Invalid User ID format" }, { status: 400 });
+        // }
+        // ---------------------------------------------------
 
         const updatedUser = await prisma.user.update({
-            // Use the converted number in the query
-            where: { id: numericUserId },
+            // Use the userId string directly from params
+            where: { id: userId },
             data: {
-                role: UserRole.ORGANIZER,
+                // You can directly use the string 'ORGANIZER' as Prisma maps it to the enum
+                role: 'ORGANIZER', 
                 organizerRequestPending: false,
             },
         });
 
         return NextResponse.json({ message: 'User promoted to Organizer.', user: updatedUser });
+
     } catch (error) {
         console.error("Failed to approve organizer:", error);
+        // This code specifically catches the error when a user is not found
         if (error.code === 'P2025') {
             return NextResponse.json({ message: `User with ID ${params.userId} not found.` }, { status: 404 });
         }

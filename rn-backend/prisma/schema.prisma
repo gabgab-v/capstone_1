@@ -26,11 +26,28 @@ model User {
   preferredDurationHrs  Float?   // hours
   budgetRange           String?  // e.g., $50-$100
   // ─────────────────────────────────────────────────
-
+  events     Event[] 
+  
   createdAt  DateTime @default(now())
 }
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  distanceKm  Float?
+  durationHrs Float?
+  steps       Int?
+  elevationM  Float?
+
+  organizer   User     @relation(fields: [organizerId], references: [id])
+  organizerId String
+
+  createdAt   DateTime @default(now())
+}
+
 
 enum UserRole {
   USER
   ADMIN
+  ORGANIZER
 }
