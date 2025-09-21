@@ -16,6 +16,8 @@ import PreferencesSetupPage from './src/pages/preferences/PreferencesSetupPage';
 import BookingPage from './src/pages/booking/BookingPage';
 import ReceiptPage from './src/pages/booking/ReceiptPage';
 import EventDetailsPage from './src/pages/event/EventDetailsPage';
+import EventBookingsPage from './src/pages/event/EventBookingsPage';
+
 import SettingsPage from './src/pages/user/SettingsPage';
 
 const Stack = createNativeStackNavigator();
@@ -36,6 +38,7 @@ export default function App() {
           <Stack.Screen name="BookingPage" component={BookingPage} />
           <Stack.Screen name="ReceiptPage" component={ReceiptPage} />
           <Stack.Screen name="EventDetails" component={EventDetailsPage} />
+          <Stack.Screen name="EventBookings" component={EventBookingsPage} />
           
 
           {/* Main app after login */}

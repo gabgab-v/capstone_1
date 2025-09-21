@@ -17,7 +17,7 @@ export default function ReceiptPage({ route, navigation }) {
 
       <TouchableOpacity
         style={styles.okBtn}
-        onPress={() => navigation.navigate("Home")}
+        onPress={() => navigation.navigate("MainTabs")}
       >
         <Text style={{ color: "white" }}>Okay</Text>
       </TouchableOpacity>

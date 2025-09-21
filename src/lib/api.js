@@ -97,6 +97,48 @@ async function request(path, options = {}) {
     }
 }
 
+export async function postFormData(path, formData) {
+    const url = `${BASE_URL}${path}`;
+    const token = await SecureStore.getItemAsync('jwt');
+    console.log(`📡 POST (FormData) →`, url);
+
+    // For FormData, we must NOT set the 'Content-Type' header.
+    // The browser/fetch API sets it automatically with the correct boundary.
+    const headers = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+    } catch (error) {
+        console.error('🚨 Network Error:', error.message);
+        throw new ApiError('Network request failed.', 0, { cause: error.message });
+    }
+
+    // Reuse the same error handling and JSON parsing logic as the `request` function
+    if (!response.ok) {
+        let errorBody = { message: `Request failed with status: ${response.status}` };
+        try {
+            errorBody = await response.json();
+        } catch (_) {}
+        console.error('🚨 HTTP Error:', response.status, errorBody);
+        throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
+    }
+
+    try {
+        const json = await response.json();
+        console.log('✅ Response:', json);
+        return json;
+    } catch (error) {
+        console.error('🚨 JSON Parsing Error:', error.message);
+        throw new ApiError('Failed to parse a valid JSON response from the server.', response.status, { cause: error.message });
+    }
+}
 
 // --- Public API Methods ---
 

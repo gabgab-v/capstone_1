@@ -1,53 +1,55 @@
 import React, { useState } from "react";
-import { View, Text, Image, TouchableOpacity, TextInput, StyleSheet } from "react-native";
+import { View, Text, Image, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { postFormData } from "../../lib/api"; // This import now correctly points to the new function
 
 export default function BookingPage({ route, navigation }) {
-  const { event } = route.params; // Passed from EventDetailsPage
+  const { event } = route.params;
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Pick GCash receipt (image or PDF)
   const pickReceipt = async () => {
-    let result = await DocumentPicker.getDocumentAsync({
-      type: ["image/*", "application/pdf"],
-    });
-    if (result.type !== "cancel") {
-      setReceipt(result);
+    try {
+        let result = await DocumentPicker.getDocumentAsync({
+            type: ["image/*", "application/pdf"],
+        });
+
+        // The new SDK returns an object with an `assets` array
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setReceipt(result.assets[0]);
+        }
+    } catch (error) {
+        console.error("Error picking document:", error);
+        Alert.alert("Error", "Could not pick the document.");
     }
   };
 
   const confirmBooking = async () => {
     if (!receipt) {
-      alert("Please upload your GCash receipt.");
+      Alert.alert("Upload Required", "Please upload your GCash receipt.");
       return;
     }
     setLoading(true);
 
-    const formData = new FormData();
-    formData.append("eventId", event.id);
-    formData.append("amount", event.price);
-    formData.append("receipt", {
-      uri: receipt.uri,
-      name: receipt.name || "receipt.jpg",
-      type: receipt.mimeType || "image/jpeg",
-    });
-
     try {
-      const res = await fetch("http://localhost:3000/api/bookings", {
-        method: "POST",
-        body: formData,
-        headers: { "Content-Type": "multipart/form-data" },
+      const formData = new FormData();
+      formData.append("eventId", event.id);
+      formData.append("amount", event.price);
+      formData.append("receipt", {
+        uri: receipt.uri,
+        name: receipt.name || "receipt.jpg",
+        type: receipt.mimeType || "image/jpeg",
       });
 
-      if (res.ok) {
-        navigation.navigate("ReceiptPage", { event });
-      } else {
-        alert("Failed to confirm booking");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Something went wrong");
+      const booking = await postFormData("/api/bookings", formData);
+
+      console.log("✅ Booking created:", booking);
+      navigation.navigate("ReceiptPage", { event, booking });
+
+    } catch (err) {
+      console.error("❌ Booking failed:", err);
+      const errorMessage = err.body?.error || err.message || "Something went wrong while booking.";
+      Alert.alert("Booking Failed", errorMessage);
     } finally {
       setLoading(false);
     }
@@ -59,21 +61,29 @@ export default function BookingPage({ route, navigation }) {
       <Text style={styles.title}>{event.title}</Text>
       <Text style={styles.price}>
         ₱ {event?.price ? Number(event.price).toLocaleString() : "Free"}
-        </Text>
+      </Text>
 
       <View style={styles.summary}>
-        <Text>Organizer: {event.organizerName}</Text>
-        <Text>
-            Total: ₱ {event?.price ? Number(event.price).toLocaleString() : "Free"}
+        <Text style={styles.detailText}>
+            <Text style={styles.detailLabel}>Organizer:</Text> {event.organizer?.email || "N/A"}
+        </Text>
+        
+        {/* ✅ Displays the GCash number from the organizer, with a fallback */}
+        <Text style={styles.detailText}>
+            <Text style={styles.detailLabel}>Send Payment To (GCash):</Text> {event.organizer?.gcashNumber || "Not Provided"}
+        </Text>
+        
+        <Text style={styles.detailText}>
+            <Text style={styles.detailLabel}>Total:</Text> ₱ {event?.price ? Number(event.price).toLocaleString() : "Free"}
         </Text>
       </View>
 
       <TouchableOpacity style={styles.uploadBtn} onPress={pickReceipt}>
-        <Text>{receipt ? "Receipt Selected ✅" : "Upload GCash Receipt"}</Text>
+        <Text>{receipt ? `Selected: ${receipt.name}` : "Upload GCash Receipt"}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.confirmBtn}
+        style={[styles.confirmBtn, loading && styles.disabledBtn]}
         onPress={confirmBooking}
         disabled={loading}
       >
@@ -85,6 +95,7 @@ export default function BookingPage({ route, navigation }) {
       <TouchableOpacity
         style={styles.cancelBtn}
         onPress={() => navigation.goBack()}
+        disabled={loading}
       >
         <Text>Cancel</Text>
       </TouchableOpacity>
@@ -97,7 +108,20 @@ const styles = StyleSheet.create({
   image: { width: "100%", height: 200, borderRadius: 10 },
   title: { fontSize: 20, fontWeight: "bold", marginVertical: 10 },
   price: { fontSize: 16, color: "green", marginBottom: 20 },
-  summary: { marginBottom: 20 },
+  summary: { 
+    marginBottom: 20, 
+    padding: 15, 
+    backgroundColor: '#f9f9f9', 
+    borderRadius: 8 
+  },
+  // ✅ Added new styles for clarity
+  detailText: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  detailLabel: {
+    fontWeight: 'bold',
+  },
   uploadBtn: {
     padding: 12,
     backgroundColor: "#eee",
@@ -111,6 +135,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     marginBottom: 10,
+  },
+  disabledBtn: {
+    backgroundColor: 'grey',
   },
   cancelBtn: { alignItems: "center", marginTop: 10 },
 });

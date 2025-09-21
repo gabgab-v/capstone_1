@@ -4,14 +4,21 @@ import { getUserFromToken } from "@/lib/auth";
 export async function POST(req) {
   try {
     const user = await getUserFromToken(req);
-    const body = await req.json();
-    const { eventId, totalAmount, paymentUrl } = body;
+
+    const formData = await req.formData();
+    const eventId = formData.get("eventId");
+    const totalAmount = formData.get("amount");
+    const receipt = formData.get("receipt"); // This is a File object
+
+    // Optional: save receipt to disk, cloud storage, or just store URL
+    // For now, just pretend we store the filename
+    const paymentUrl = receipt?.name || "no-receipt";
 
     const booking = await prisma.booking.create({
       data: {
         userId: user.id,
         eventId,
-        totalAmount,
+        totalAmount: Number(totalAmount),
         paymentUrl,
       },
       include: {

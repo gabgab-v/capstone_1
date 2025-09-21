@@ -6,6 +6,7 @@ import Icon from "react-native-vector-icons/Feather";
 import HomePage from "../pages/HomePage";
 import ProfilePage from "../pages/ProfilePage";
 import CreateEventPage from "../pages/CreateEventPage";
+import EventsPage from "../pages/event/EventPage";
 import DiscoverPage from "../pages/DiscoverPage";
 import { get } from "../lib/api"; // ✅ import your API wrapper
 
@@ -53,7 +54,7 @@ export default function MainTabNavigator() {
             Home: "home",
             Discover: "compass",
             Create: "plus-square",
-            Notifications: "bell",
+            Events: "bell",
             Profile: "user",
           };
           return <Icon name={icons[route.name]} size={size} color={color} />;
@@ -76,7 +77,7 @@ export default function MainTabNavigator() {
       {isOrganizer && (
         <Tab.Screen name="Create" component={CreateEventPage} />
       )}
-      <Tab.Screen name="Notifications" component={Dummy} />
+      <Tab.Screen name="Events" component={EventsPage} />
       <Tab.Screen name="Profile" component={ProfilePage} />
     </Tab.Navigator>
   );

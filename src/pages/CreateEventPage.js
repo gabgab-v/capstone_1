@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
-import { post } from "../lib/api";   // ✅ use the same helper as login
+import { post } from "../lib/api"; // ✅ use the same helper as login
 
 export default function CreateEventPage() {
   const [title, setTitle] = useState("");
@@ -17,8 +17,16 @@ export default function CreateEventPage() {
   const [durationHrs, setDurationHrs] = useState("");
   const [steps, setSteps] = useState("");
   const [elevationM, setElevationM] = useState("");
+  const [price, setPrice] = useState("");
+  const [gcashNumber, setGcashNumber] = useState(""); // ✅ Add state for GCash number
 
   const handleCreateEvent = async () => {
+    // Basic validation
+    if (!title || !price || !gcashNumber) {
+        Alert.alert("Missing Information", "Please fill out the title, price, and GCash number.");
+        return;
+    }
+
     try {
       const data = await post("/api/events", {
         title,
@@ -26,10 +34,13 @@ export default function CreateEventPage() {
         durationHrs: parseFloat(durationHrs) || 0,
         steps: parseInt(steps) || 0,
         elevationM: parseFloat(elevationM) || 0,
+        price: parseFloat(price) || 0,
+        gcashNumber, // ✅ Send GCash number to the backend
       });
 
       Alert.alert("Success", "Event created successfully!");
       console.log("✅ Event created:", data);
+      // Optional: clear form or navigate away
     } catch (err) {
       console.error(err);
       Alert.alert("Error", err.message || "Something went wrong");
@@ -119,6 +130,30 @@ export default function CreateEventPage() {
               placeholder="0"
             />
           </View>
+
+          <View style={styles.infoField}>
+            <Text style={styles.infoLabel}>Price (₱)</Text>
+            <TextInput
+              style={styles.input}
+              value={price}
+              onChangeText={setPrice}
+              keyboardType="numeric"
+              placeholder="0"
+            />
+          </View>
+          
+          {/* ✅ New GCash Number Input */}
+          <View style={styles.infoField}>
+            <Text style={styles.infoLabel}>GCash Number</Text>
+            <TextInput
+              style={styles.input}
+              value={gcashNumber}
+              onChangeText={setGcashNumber}
+              keyboardType="phone-pad"
+              placeholder="e.g., 09123456789"
+            />
+          </View>
+
         </View>
 
         {/* Submit Button */}
