@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 import { get } from "../lib/api";
 
 export default function DiscoverPage() {
@@ -29,6 +31,22 @@ export default function DiscoverPage() {
     }
     fetchEvents();
   }, []);
+
+  useFocusEffect(
+  useCallback(() => {
+    async function fetchEvents() {
+      try {
+        const data = await get("/api/events");
+        setEvents(data);
+      } catch (err) {
+        console.error("❌ Failed to fetch events:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchEvents();
+  }, [])
+);
 
   if (loading) {
     return (

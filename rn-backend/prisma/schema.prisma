@@ -36,13 +36,18 @@ model User {
 model Event {
   id          String   @id @default(uuid())
   title       String
+  overview    String?
+  itinerary   String?
+  directions  String?
   distanceKm  Float?
   durationHrs Float?
   steps       Int?
   elevationM  Float?
   price       Int      @default(0)
+  imageUrl    String? 
 
   organizer   User     @relation(fields: [organizerId], references: [id])
+  gcashNumber String?   // ? makes it nullable
   organizerId String
   bookings    Booking[]
 

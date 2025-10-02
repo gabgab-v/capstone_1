@@ -22,7 +22,7 @@ export async function POST(req) {
 
 export async function GET() {
   const events = await prisma.event.findMany({
-    include: { organizer: { select: { id: true, email: true } } },
+    include: { organizer: { select: { id: true, email: true,name: true } } },
   });
   return new Response(JSON.stringify(events));
 }

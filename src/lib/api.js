@@ -19,6 +19,9 @@ export const BASE_URL =
           ? `http://${EMU_IP}:3000`
           : `http://${LOCAL_IP}:3000`; // iOS sim / real iOS
 
+
+
+
 // --- Custom Error for Richer Feedback ---
 /**
  * Custom error class for API requests.
@@ -102,8 +105,6 @@ export async function postFormData(path, formData) {
     const token = await SecureStore.getItemAsync('jwt');
     console.log(`📡 POST (FormData) →`, url);
 
-    // For FormData, we must NOT set the 'Content-Type' header.
-    // The browser/fetch API sets it automatically with the correct boundary.
     const headers = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
@@ -120,7 +121,6 @@ export async function postFormData(path, formData) {
         throw new ApiError('Network request failed.', 0, { cause: error.message });
     }
 
-    // Reuse the same error handling and JSON parsing logic as the `request` function
     if (!response.ok) {
         let errorBody = { message: `Request failed with status: ${response.status}` };
         try {
