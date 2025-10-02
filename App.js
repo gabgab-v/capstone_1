@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import './global.css'; // Tailwind
 import React, { useState, useEffect, useRef } from 'react';
+import 'react-native-url-polyfill/auto';
 
 
 import { NavigationContainer } from '@react-navigation/native';

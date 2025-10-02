@@ -12,6 +12,8 @@ import Icon from "react-native-vector-icons/Feather";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "react-native";
 import { post } from "../lib/api";
+import { supabase } from "../lib/supabase"; // 👈 1. IMPORT SUPABASE CLIENT
+import { decode } from "base64-arraybuffer";
 
 export default function CreateEventPage() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -39,23 +41,27 @@ export default function CreateEventPage() {
     return;
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images, // Corrected from MediaType.Images
-    quality: 1,
-  });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Corrected from MediaType.Images
+      quality: 1,
+      base64: true,
+    });
 
-  console.log("Image Picker Result:", JSON.stringify(result, null, 2)); // <-- ADD THIS
+    
 
-  if (!result.canceled) {
-    const uri = result.assets[0].uri;
-    console.log("Selected Image URI:", uri); // <-- ADD THIS
-    setSelectedImage(uri);
-  } else {
-    console.log("User canceled image picking."); // <-- ADD THIS
-  }
-};
+    if (!result.canceled) {
+      const asset = result.assets[0]; 
+      setSelectedImage({ uri: asset.uri, base64: asset.base64 });
+      console.log("Selected Image URI:", uri); // <-- ADD THIS
+      
+    } else {
+      console.log("User canceled image picking."); // <-- ADD THIS
+    }
+  };
 
   const handleCreateEvent = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    console.log("Current user before upload:", user);
     if (!title || !price || !gcashNumber) {
       Alert.alert(
         "Missing Information",
@@ -64,11 +70,40 @@ export default function CreateEventPage() {
       return;
     }
 
-  
+    // 👇 5. HANDLE THE IMAGE UPLOAD
+    let imageUrl = null;
+    // 👇 THE FIX IS HERE
+    console.log("Checking image before upload:", selectedImage);
+    if (selectedImage && selectedImage.base64) {
+      try {
+        const fileName = `${Date.now()}.jpg`;
+        const { data, error } = await supabase.storage
+          .from("Capstone")
+          .upload(fileName, decode(selectedImage.base64), {
+            contentType: "image/jpeg",
+          });
 
+        if (error) {
+          throw error;
+        }
 
+        const { data: urlData } = supabase.storage
+          .from("Capstone")
+          .getPublicUrl(data.path);
+
+        imageUrl = urlData.publicUrl;
+        console.log("✅ Image uploaded successfully:", imageUrl);
+
+      } catch (uploadError) {
+        console.error("Image Upload Error:", uploadError);
+        Alert.alert("Upload Failed", "Failed to upload the event image.");
+        return;
+      }
+    }
+
+    // 👇 6. SEND THE PUBLIC URL TO YOUR API
     try {
-      const data = await post("/api/events", {
+      const eventData = {
         title,
         overview,
         itinerary,
@@ -79,8 +114,10 @@ export default function CreateEventPage() {
         elevationM: parseFloat(elevationM) || 0,
         price: parseFloat(price) || 0,
         gcashNumber,
-        imageUrl: selectedImage,
-      });
+        imageUrl: imageUrl, // Use the new public URL from Supabase
+      };
+
+      const data = await post("/api/events", eventData);
 
       Alert.alert("Success", "Event created successfully!");
       console.log("✅ Event created:", data);
@@ -95,7 +132,7 @@ export default function CreateEventPage() {
       {/* Header Image Section */}
       <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
         {selectedImage ? (
-          <Image source={{ uri: selectedImage }} style={styles.selectedImage} />
+          <Image source={{ uri: selectedImage.uri }} style={styles.selectedImage} />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Icon name="image" size={80} color="#999" />
