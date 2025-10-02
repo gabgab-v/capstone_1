@@ -1,63 +1,96 @@
-import React from "react";
-import { View, Text, Image, TouchableOpacity } from "react-native";
-import Icon from "react-native-vector-icons/Feather";
+import React from 'react';
+import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+
+// A small component for the action buttons (Like, Comment, Share)
+const ActionButton = ({ iconName, count, color = 'gray' }) => (
+  <TouchableOpacity className="flex-row items-center space-x-2">
+    <Feather name={iconName} size={20} color={color} />
+    <Text className="text-sm text-gray-600">{count}</Text>
+  </TouchableOpacity>
+);
+
+// Component to render the photo grid based on the number of photos
+const PhotoGrid = ({ photos }) => {
+  if (!photos || photos.length === 0) {
+    return null;
+  }
+
+  // Layout for 1 photo
+  if (photos.length === 1) {
+    return (
+      <Image
+        source={{ uri: photos[0] }}
+        className="w-full h-64 mt-2 rounded-lg"
+        resizeMode="cover"
+      />
+    );
+  }
+
+  // Layout for 2 photos
+  if (photos.length === 2) {
+    return (
+      <View className="flex-row mt-2 space-x-1 h-48">
+        <Image source={{ uri: photos[0] }} className="flex-1 h-full rounded-l-lg" resizeMode="cover" />
+        <Image source={{ uri: photos[1] }} className="flex-1 h-full rounded-r-lg" resizeMode="cover" />
+      </View>
+    );
+  }
+
+  // Layout for 3+ photos (as in your design)
+  return (
+    <View className="flex-row mt-2 space-x-1 h-64">
+      <Image
+        source={{ uri: photos[0] }}
+        className="flex-2 h-full rounded-l-lg"
+        resizeMode="cover"
+      />
+      <View className="flex-1 space-y-1 h-full">
+        <Image
+          source={{ uri: photos[1] }}
+          className="flex-1 w-full rounded-tr-lg"
+          resizeMode="cover"
+        />
+        <Image
+          source={{ uri: photos[2] }}
+          className="flex-1 w-full rounded-br-lg"
+          resizeMode="cover"
+        />
+      </View>
+    </View>
+  );
+};
+
 
 export default function PostCard({ post }) {
   return (
-    <View className="bg-white pt-3">
-      {/* ‑‑‑ User row ‑‑‑ */}
-      <View className="flex-row items-center px-3">
-        <Image
-          source={{ uri: post.avatar }}
-          className="w-8 h-8 rounded-full mr-2 border border-green-700"
-        />
-        <View className="flex-1">
-          <Text className="font-semibold text-sm">{post.name}</Text>
-          <Text className="text-[10px] text-gray-500">{post.date}</Text>
-        </View>
-        <Icon name="more-horizontal" size={20} color="#4B5563" />
-      </View>
-
-      {/* ‑‑‑ Caption ‑‑‑ */}
-      <Text className="px-3 mt-1 text-sm">{post.caption}</Text>
-
-      {/* ‑‑‑ 2x2 Image grid ‑‑‑ */}
-      <View className="flex-row flex-wrap mt-2">
-        {post.photos.slice(0, 4).map((uri, idx) => (
-          <View key={idx} className="w-1/2 h-40 p-[1px]">
-            <Image
-              source={{ uri }}
-              className="w-full h-full"
-              resizeMode="cover"
-            />
-            {idx === 3 && post.photos.length > 4 && (
-              <View className="absolute inset-0 bg-black/40 items-center justify-center">
-                <Text className="text-white font-bold text-xl">
-                  +{post.photos.length - 3}
-                </Text>
-              </View>
-            )}
+    <View className="bg-white mt-2 p-4">
+      {/* Post Header */}
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center">
+          <Image source={{ uri: post.avatar }} className="w-10 h-10 rounded-full" />
+          <View className="ml-3">
+            <Text className="font-bold">{post.name}</Text>
+            <Text className="text-xs text-gray-500">{post.date}</Text>
           </View>
-        ))}
+        </View>
+        <TouchableOpacity>
+          <Feather name="more-horizontal" size={24} color="gray" />
+        </TouchableOpacity>
       </View>
 
-      {/* ‑‑‑ Action bar ‑‑‑ */}
-      <View className="flex-row justify-between px-4 py-3">
-        <Action icon="heart" value={post.likes} />
-        <Action icon="message-circle" value={post.comments} />
-        <Action icon="share" value={post.shares} />
+      {/* Caption */}
+      <Text className="my-2">{post.caption}</Text>
+
+      {/* Photos */}
+      <PhotoGrid photos={post.photos} />
+
+      {/* Action Bar */}
+      <View className="flex-row justify-around mt-4 pt-2 border-t border-gray-100">
+        <ActionButton iconName="heart" count={post.likes} color="#4ade80" />
+        <ActionButton iconName="message-circle" count={post.comments} />
+        <ActionButton iconName="upload" count={post.shares} />
       </View>
-
-      <View className="h-[1px] bg-gray-200 mx-3" />
-    </View>
-  );
-}
-
-function Action({ icon, value }) {
-  return (
-    <View className="flex-row items-center space-x-1">
-      <Icon name={icon} size={18} color="#4B5563" />
-      <Text className="text-xs">{value}</Text>
     </View>
   );
 }

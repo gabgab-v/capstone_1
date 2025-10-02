@@ -1,24 +1,24 @@
-import React from "react";
-import { View, Text, Image, TouchableOpacity } from "react-native";
-import Icon from "react-native-vector-icons/Feather";
+import React from 'react';
+import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 export default function AppHeader() {
   return (
-    <View className="flex-row items-center justify-between px-3 py-2 bg-white">
+    <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
       <View className="flex-row items-center">
+        {/* Replace with your actual logo image */}
         <Image
-          source={require("../../assets/favicon.png")}
+          source={require('../../assets/icon.png')} // Make sure you have an icon in your assets
           className="w-8 h-8 mr-2"
         />
-        <Text className="text-green-700 font-extrabold text-xl">Pabukid</Text>
+        <Text className="text-2xl font-bold text-green-600">Pabukid</Text>
       </View>
-
-      <View className="flex-row space-x-4">
+      <View className="flex-row items-center space-x-4">
         <TouchableOpacity>
-          <Icon name="search" size={22} color="#2E7D32" />
+          <Feather name="search" size={24} color="black" />
         </TouchableOpacity>
         <TouchableOpacity>
-          <Icon name="menu" size={22} color="#2E7D32" />
+          <Feather name="menu" size={24} color="black" />
         </TouchableOpacity>
       </View>
     </View>

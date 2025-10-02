@@ -3,12 +3,12 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { ActivityIndicator, Text, View } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 
-import HomePage from "../pages/HomePage";
+import HomePage from "../app/HomePage";
 import ProfilePage from "../pages/ProfilePage";
 import CreateEventPage from "../pages/CreateEventPage";
 import EventsPage from "../pages/event/EventPage";
 import DiscoverPage from "../pages/DiscoverPage";
-import { get } from "../lib/api"; // ✅ import your API wrapper
+import { get } from "../lib/api";
 
 const Tab = createBottomTabNavigator();
 
@@ -19,11 +19,11 @@ export default function MainTabNavigator() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const data = await get("/api/users/me"); // ✅ auto-includes token
+        const data = await get("/api/users/me");
         setUser(data);
       } catch (err) {
         console.error("❌ Failed to fetch user:", err);
-        setUser(null); // fallback if unauthorized or error
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -72,18 +72,21 @@ export default function MainTabNavigator() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={HomePage} />
+      {/* Pass the user prop to the HomePage component */}
+      <Tab.Screen name="Home">
+        {(props) => <HomePage {...props} user={user} />}
+      </Tab.Screen>
+
       <Tab.Screen name="Discover" component={DiscoverPage} />
       {isOrganizer && (
         <Tab.Screen name="Create" component={CreateEventPage} />
       )}
       <Tab.Screen name="Events" component={EventsPage} />
-      <Tab.Screen name="Profile" component={ProfilePage} />
+
+      {/* Pass the user prop to the ProfilePage component */}
+      <Tab.Screen name="Profile">
+        {(props) => <ProfilePage {...props} user={user} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
-}
-
-// Placeholder
-function Dummy() {
-  return null;
 }
