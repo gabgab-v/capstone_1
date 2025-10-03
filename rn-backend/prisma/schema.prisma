@@ -12,6 +12,7 @@ model User {
   id         String   @id @default(uuid())
   email      String   @unique
   password   String
+  supabaseUserId String?  @unique
 
   // ── Profile fields ───────────────────────────────
   name       String?         // optional until user fills it
