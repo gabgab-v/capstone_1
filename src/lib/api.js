@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
+import { supabase } from './supabase';
 
 // --- Configuration (Ensure LOCAL_IP is correct for your network) ---
 const LOCAL_IP = '192.168.1.50'; // ⚠️ UPDATE THIS to your PC’s LAN IP
@@ -41,7 +42,10 @@ export class ApiError extends Error {
 
 // --- Helper to add JWT authentication headers ---
 async function authHeaders() {
-  const token = await SecureStore.getItemAsync('jwt');
+  // Get the session token directly from the Supabase client
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

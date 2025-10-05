@@ -57,6 +57,7 @@ export default function ProfilePage({ navigation }) {
           </View>
         </View>
       </View>
+
       
       {/* ... The rest of your JSX remains the same ... */}
 

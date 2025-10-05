@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { supabase } from '../lib/supabase';
+import { get } from '../lib/api';
 
 const AuthContext = createContext(null);
 
@@ -7,17 +8,44 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchUserProfile = async () => {
+    try {
+      const profile = await get('/api/users/me');
+      setUser(profile);
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      setUser(null); // Clear user if profile fetch fails
+    }
+  };
+
   useEffect(() => {
     // Get the initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session ? session.user : null);
+      if (session) {
+        // If a session exists, fetch the full user profile from your backend
+        get('/api/users/me')
+          .then(setUser)
+          .catch(err => {
+            console.error("Error fetching user profile:", err);
+            // If profile fetch fails, treat as logged out
+            supabase.auth.signOut(); 
+            setUser(null);
+          });
+      }
       setIsLoading(false);
     });
 
     // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session ? session.user : null);
+      async (_event, session) => {
+        if (session) {
+          // When user logs in, fetch their full profile
+          const profile = await get('/api/users/me');
+          setUser(profile);
+        } else {
+          // When user logs out, clear the user state
+          setUser(null);
+        }
       }
     );
 
@@ -33,6 +61,7 @@ export const AuthProvider = ({ children }) => {
       isLoading,
       login: async (email, password) => supabase.auth.signInWithPassword({ email, password }),
       logout: async () => supabase.auth.signOut(),
+      refreshUser: fetchUserProfile,
   };
 
   return (

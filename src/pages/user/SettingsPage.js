@@ -1,56 +1,38 @@
-// apps/mobile/src/pages/SettingsPage.js
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
-import { useFocusEffect } from '@react-navigation/native'; // Import useFocusEffect
-import { get, post } from '../../lib/api'; // Make sure your API lib is imported
+import { useAuth } from '../../context/AuthContext'; // ✅ Import the useAuth hook
+import { post } from '../../lib/api'; // Keep this for the apply-organizer call
 
 export default function SettingsPage({ navigation }) {
-    const [currentUser, setCurrentUser] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+    // ✅ Get user, loading state, and logout function from the global context
+    const { user, isLoading, logout, refreshUser} = useAuth();
 
-    // useFocusEffect runs every time the screen comes into view
-    useFocusEffect(
-        React.useCallback(() => {
-            async function fetchCurrentUser() {
-                try {
-                    setIsLoading(true);
-                    const me = await get('/api/users/me'); // You need this endpoint to exist
-                    setCurrentUser(me);
-                } catch (error) {
-                    console.error("Failed to fetch user data:", error);
-                } finally {
-                    setIsLoading(false);
-                }
-            }
-            fetchCurrentUser();
-        }, [])
-    );
-
-    async function handleLogout() {
-        await SecureStore.deleteItemAsync('jwt');
-        navigation.replace('Login');
-    }
-
+    // The handleApplyForOrganizer logic can stay, but we use the context's user
     async function handleApplyForOrganizer() {
         try {
             const response = await post('/api/users/apply-organizer', {});
             Alert.alert('Success', response.message);
-            // Refresh user data to update the button state
-            const me = await get('/api/users/me');
-            setCurrentUser(me);
+            // You may need a way to refresh the user context after this,
+            // or the user can re-login to see the change.
+            await refreshUser(); 
         } catch (error) {
             Alert.alert('Error', error.message);
         }
     }
     
+    // Logout is now a single call to the context function
+    async function handleLogout() {
+        await logout();
+        // No navigation needed! App.js will automatically show the Login screen.
+    }
+    
     const renderOrganizerButton = () => {
-        if (isLoading) {
+        if (isLoading && !user) {
             return <ActivityIndicator size="small" color="#0000ff" />;
         }
-        if (!currentUser) return null;
+        if (!user) return null; // User data comes from the context
 
-        if (currentUser.role === 'USER' && !currentUser.organizerRequestPending) {
+        if (user.role === 'USER' && !user.organizerRequestPending) {
             return (
                 <TouchableOpacity
                     className="bg-blue-600 px-6 py-3 rounded-xl mt-8"
@@ -61,12 +43,12 @@ export default function SettingsPage({ navigation }) {
             );
         }
 
-        if (currentUser.organizerRequestPending) {
-             return <Text className="text-center text-gray-500 mt-8">Your application is pending review.</Text>;
+        if (user.organizerRequestPending) {
+            return <Text className="text-center text-gray-500 mt-8">Your application is pending review.</Text>;
         }
         
-        if (currentUser.role === 'ORGANIZER') {
-             return <Text className="text-center text-green-600 mt-8">You are an Organizer!</Text>;
+        if (user.role === 'ORGANIZER') {
+            return <Text className="text-center text-green-600 mt-8">You are an Organizer!</Text>;
         }
 
         return null; // Don't show for ADMINs
@@ -79,7 +61,7 @@ export default function SettingsPage({ navigation }) {
             {renderOrganizerButton()}
 
             <TouchableOpacity
-                className="bg-red-600 px-6 py-3 rounded-xl mt-auto" // Use mt-auto to push to bottom
+                className="bg-red-600 px-6 py-3 rounded-xl mt-auto"
                 onPress={handleLogout}
             >
                 <Text className="text-white font-semibold text-center">Logout</Text>
