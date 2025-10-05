@@ -1,46 +1,55 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, Image } from 'react-native';
-import { post } from '../lib/api'; // make sure path is correct
+import { View, TextInput, TouchableOpacity, Text, Image, Alert, ActivityIndicator } from 'react-native';
+import { supabase } from '../lib/supabase';
+import { post } from '../lib/api';
 
 export default function SignupPage({ navigation }) {
+  const [name, setName] = useState(''); // ✅ Add state for the name
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false); // Add loading state
 
   async function handleSignup() {
-    console.log('🟡 Signup attempt with:', { email, password, confirm });
-
-    if (!email || !password || !confirm) {
-      alert('Please fill out all fields');
+    // ✅ Add name to the validation check
+    if (!name || !email || !password || !confirm) {
+      Alert.alert('Error', 'Please fill out all fields');
       return;
     }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      alert('Invalid email format');
-      return;
-    }
-
     if (password !== confirm) {
-      alert('Passwords do not match');
+      Alert.alert('Error', 'Passwords do not match');
       return;
     }
+
+    setLoading(true);
 
     try {
-      const res = await post('/api/auth/signup', { email, password });
-      console.log('🟢 Signup success:', res);
-      alert('Account created! You can now log in.');
-      
-    // after signup, send user to Preferences setup
- 
-    navigation.replace('Login'); // fallback
+      // Step 1: Create the user in Supabase Authentication
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email,
+        password: password,
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Signup failed, no user created in Supabase.');
+
+      // Step 2: Create the user profile in your own database via your backend API
+      await post('/api/auth/create-profile', {
+        id: authData.user.id, // The ID from Supabase
+        email: authData.user.email,
+        name: name,
+      });
+
+      Alert.alert('Success!', 'Your account has been created. Please check your email to verify your account before logging in.');
+      navigation.replace('Login');
 
     } catch (e) {
-      console.log('🔴 Signup failed:', e);
-      const errorMessage = e?.message || 'An unknown error occurred';
-      alert(`Signup failed: ${errorMessage}`);
+      console.error('🔴 Signup failed:', e);
+      Alert.alert(`Signup failed`, e.message || 'An unknown error occurred');
+    } finally {
+      setLoading(false);
     }
   }
-
 
   return (
     <View className="flex-1 bg-white px-6 pt-16">
@@ -55,6 +64,16 @@ export default function SignupPage({ navigation }) {
       <Text className="text-2xl font-bold text-center text-gray-800 mb-6">
         Create Your Account
       </Text>
+
+      {/* ✅ Add Name Input Field */}
+      <TextInput
+        className="border border-gray-300 rounded-xl p-4 mb-4"
+        placeholder="Full Name"
+        placeholderTextColor="#888"
+        value={name}
+        onChangeText={setName}
+        autoCapitalize="words"
+      />
 
       <TextInput
         className="border border-gray-300 rounded-xl p-4 mb-4"
@@ -85,12 +104,17 @@ export default function SignupPage({ navigation }) {
       />
 
       <TouchableOpacity
-        className="bg-green-700 rounded-xl py-4 mb-4"
+        className="bg-green-700 rounded-xl py-4 mb-4 flex-row justify-center"
         onPress={handleSignup}
+        disabled={loading}
       >
-        <Text className="text-center text-white font-semibold">
-          Create Account
-        </Text>
+        {loading ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <Text className="text-center text-white font-semibold">
+            Create Account
+          </Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -101,5 +125,3 @@ export default function SignupPage({ navigation }) {
     </View>
   );
 }
-
-//192.168.254.145

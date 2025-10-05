@@ -63,6 +63,9 @@ export async function POST(request) {
     });
   } catch (err) {
     console.error('❌ POST /users/preferences error:', err);
+    console.log('Token being verified:', token);
+    console.log('JWT_SECRET:', process.env.JWT_SECRET);
+
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
