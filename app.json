@@ -29,6 +29,9 @@
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.pabukid.capstone"
@@ -63,6 +66,12 @@
       "eas": {
         "projectId": "3d50f123-412f-4b83-a6e1-51ea53543153"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3d50f123-412f-4b83-a6e1-51ea53543153"
     }
   }
 }
