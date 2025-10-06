@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow prototype to access your location while recording trails.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow prototype to keep tracking your trail when the screen is locked."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +25,11 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,7 +41,23 @@
         {
           "photosPermission": "The app accesses your photos to let you share them with your friends."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow prototype to access your location while recording trails."
+        }
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxAccessToken": "pk.eyJ1IjoiZ2FiczEyMyIsImEiOiJjbWc4d2Vwa2wwY2owMmtvY3hlNGx3aTl3In0._QDl6Mw90aCVmgGY3vWxKw",
+          "RNMapboxMapsImpl": "mapbox"
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "mapboxAccessToken": "pk.eyJ1IjoiZ2FiczEyMyIsImEiOiJjbWc4d2Vwa2wwY2owMmtvY3hlNGx3aTl3In0._QDl6Mw90aCVmgGY3vWxKw"
+    }
   }
 }
