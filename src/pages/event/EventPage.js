@@ -1,7 +1,9 @@
 ﻿import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Linking,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,10 +13,21 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
-import { get } from "../../lib/api";
+import { get, BASE_URL } from "../../lib/api";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
+
+function resolveReceiptUrl(paymentUrl) {
+  if (typeof paymentUrl !== "string" || !paymentUrl.trim()) {
+    return null;
+  }
+  if (/^https?:/i.test(paymentUrl)) {
+    return paymentUrl.trim();
+  }
+  const normalized = paymentUrl.startsWith("/") ? paymentUrl : `/${paymentUrl}`;
+  return `${BASE_URL}${normalized}`;
+}
 
 function formatPrice(value) {
   const amount = Number(value);
@@ -123,6 +136,15 @@ function getTimeValue(value) {
 function AttendeeRow({ attendee, index }) {
   const initials = getInitials(attendee?.user?.name, attendee?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const receiptUrl = resolveReceiptUrl(attendee?.paymentUrl);
+  const handleOpenReceipt = useCallback(() => {
+    if (!receiptUrl) {
+      return;
+    }
+    Linking.openURL(receiptUrl).catch(() => {
+      Alert.alert("Unable to open receipt", "We couldn't open the receipt link. Please try again later.");
+    });
+  }, [receiptUrl]);
   return (
     <View style={styles.attendeeRow}>
       <View style={[styles.attendeeAvatar, { backgroundColor: avatarColor }]}>
@@ -132,7 +154,16 @@ function AttendeeRow({ attendee, index }) {
         <Text style={styles.attendeeName}>{attendee?.user?.name || "Anonymous hiker"}</Text>
         <Text style={styles.attendeeEmail}>{attendee?.user?.email || "No email provided"}</Text>
       </View>
-      <Text style={styles.attendeeAmount}>{formatPrice(attendee?.totalAmount)}</Text>
+      <View style={styles.attendeeMeta}>
+        <Text style={styles.attendeeAmount}>{formatPrice(attendee?.totalAmount)}</Text>
+        {receiptUrl ? (
+          <TouchableOpacity style={styles.receiptLink} onPress={handleOpenReceipt}>
+            <Text style={styles.receiptLinkText}>View receipt</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.noReceiptText}>No receipt</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -612,7 +643,11 @@ const styles = StyleSheet.create({
   attendeeDetails: { flex: 1 },
   attendeeName: { fontSize: 14, fontWeight: "600", color: "#1F2937" },
   attendeeEmail: { fontSize: 12, color: "#64748B" },
-  attendeeAmount: { fontSize: 12, fontWeight: "700", color: "#2E7D32" },
+  attendeeMeta: { alignItems: "flex-end", marginLeft: 8 },
+  attendeeAmount: { fontSize: 12, fontWeight: "700", color: "#2E7D32", textAlign: "right" },
+  receiptLink: { marginTop: 4 },
+  receiptLinkText: { fontSize: 12, fontWeight: "700", color: "#1D4ED8" },
+  noReceiptText: { fontSize: 12, color: "#9CA3AF", marginTop: 4, textAlign: "right" },
   emptyStateText: { fontSize: 13, color: "#94A3B8", lineHeight: 18 },
   actionRow: { flexDirection: "row", marginTop: 20 },
   secondaryButton: {

@@ -1,22 +1,54 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
+  ActivityIndicator,
+  Alert,
   Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import { formatMetersToKm } from '../../utils/geo';
+import { useAuth } from '../../context/AuthContext';
+import { get, BASE_URL } from '../../lib/api';
 
-const TABS = [
+const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'details', label: 'Details' },
   { key: 'itinerary', label: 'Itinerary' },
   { key: 'directions', label: 'Directions' },
 ];
+
+const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
+
+function resolveReceiptUrl(paymentUrl) {
+  if (typeof paymentUrl !== 'string' || !paymentUrl.trim()) {
+    return null;
+  }
+  if (/^https?:/i.test(paymentUrl)) {
+    return paymentUrl.trim();
+  }
+  const normalized = paymentUrl.startsWith('/') ? paymentUrl : `/${paymentUrl}`;
+  return `${BASE_URL}${normalized}`;
+}
+
+function getAttendeeInitials(name, email) {
+  if (typeof name === 'string' && name.trim().length) {
+    const parts = name.trim().split(/\s+/).slice(0, 2);
+    const letters = parts.map((part) => part.charAt(0).toUpperCase()).filter(Boolean);
+    if (letters.length) {
+      return letters.join('');
+    }
+  }
+  if (typeof email === 'string' && email.trim().length) {
+    return email.trim().charAt(0).toUpperCase();
+  }
+  return '?';
+}
 
 function sanitizeText(value) {
   if (typeof value !== 'string') {
@@ -127,10 +159,103 @@ function getDetailRows(event, locationLabel) {
   return rows;
 }
 
+function AttendeeRow({ booking, index }) {
+  const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
+  const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
+  const handleOpenReceipt = () => {
+    if (!receiptUrl) {
+      return;
+    }
+    Linking.openURL(receiptUrl).catch(() => {
+      Alert.alert('Unable to open receipt', "We couldn't open the receipt link. Please try again later.");
+    });
+  };
+
+  return (
+    <View style={styles.attendeeRow}>
+      <View style={[styles.attendeeAvatar, { backgroundColor: avatarColor }]}>
+        <Text style={styles.attendeeAvatarText}>{initials}</Text>
+      </View>
+      <View style={styles.attendeeDetails}>
+        <Text style={styles.attendeeName}>{booking?.user?.name || 'Anonymous hiker'}</Text>
+        <Text style={styles.attendeeEmail}>{booking?.user?.email || 'No email provided'}</Text>
+      </View>
+      <View style={styles.attendeeMeta}>
+        <Text style={styles.attendeeAmount}>{formatPrice(booking?.totalAmount)}</Text>
+        {receiptUrl ? (
+          <TouchableOpacity onPress={handleOpenReceipt}>
+            <Text style={styles.receiptLink}>View receipt</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.noReceipt}>No receipt</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 export default function EventDetailsPage({ route, navigation }) {
   const { event } = route.params ?? {};
 
+  const { user } = useAuth();
+  const isOrganizer = Boolean(user?.id && event?.organizerId && user.id === event.organizerId);
+
+  const [attendees, setAttendees] = useState([]);
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
+  const [attendeesError, setAttendeesError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+
+  const tabs = useMemo(() => {
+    const baseTabs = [...BASE_TABS];
+    if (isOrganizer) {
+      baseTabs.push({ key: 'attendees', label: 'Attendees' });
+    }
+    return baseTabs;
+  }, [isOrganizer]);
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(tabs[0]?.key ?? 'overview');
+    }
+  }, [tabs, activeTab]);
+
+  useEffect(() => {
+    if (!isOrganizer || !event?.id) {
+      setAttendees([]);
+      setAttendeesError(null);
+      setAttendeesLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const fetchAttendees = async () => {
+      setAttendeesLoading(true);
+      setAttendeesError(null);
+      try {
+        const data = await get(`/api/events/${event.id}/bookings`);
+        if (!isCancelled) {
+          setAttendees(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setAttendeesError(error?.body?.error || error?.message || 'Failed to load attendees.');
+          setAttendees([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setAttendeesLoading(false);
+        }
+      }
+    };
+
+    fetchAttendees();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [event?.id, isOrganizer]);
 
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
   const locationPoint = useMemo(() => getLocationPoint(event), [event]);
@@ -186,7 +311,7 @@ export default function EventDetailsPage({ route, navigation }) {
           )}
 
           <View style={styles.tabRow}>
-            {TABS.map((tab) => (
+            {tabs.map((tab) => (
               <TouchableOpacity
                 key={tab.key}
                 style={[styles.tabButton, activeTab === tab.key && styles.activeTabButton]}
@@ -240,6 +365,25 @@ export default function EventDetailsPage({ route, navigation }) {
                         {locationPoint.lat.toFixed(4)}° N, {locationPoint.lng.toFixed(4)}° E
                       </Text>
                     )}
+
+            {activeTab === 'attendees' && (
+              <View style={styles.sectionCard}>
+                {attendeesLoading ? (
+                  <View style={styles.attendeeLoading}>
+                    <ActivityIndicator size="small" color="#2E7D32" />
+                    <Text style={styles.attendeeLoadingText}>Loading attendees...</Text>
+                  </View>
+                ) : attendeesError ? (
+                  <Text style={styles.attendeeError}>{attendeesError}</Text>
+                ) : attendees.length ? (
+                  attendees.map((booking, index) => (
+                    <AttendeeRow key={booking?.id || index} booking={booking} index={index} />
+                  ))
+                ) : (
+                  <Text style={styles.attendeeEmpty}>No bookings yet.</Text>
+                )}
+              </View>
+            )}
                   </View>
                 </View>
 
@@ -474,6 +618,20 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
   },
+  attendeeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
+  attendeeLoadingText: { marginLeft: 10, color: '#4b5563', fontSize: 14 },
+  attendeeError: { color: '#b91c1c', fontSize: 13 },
+  attendeeEmpty: { color: '#6b7280', fontSize: 13 },
+  attendeeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  attendeeAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  attendeeAvatarText: { fontSize: 14, fontWeight: '700', color: '#1f2937' },
+  attendeeDetails: { flex: 1 },
+  attendeeName: { fontSize: 14, fontWeight: '600', color: '#1f2937' },
+  attendeeEmail: { fontSize: 12, color: '#6b7280' },
+  attendeeMeta: { alignItems: 'flex-end' },
+  attendeeAmount: { fontSize: 12, fontWeight: '700', color: '#047857', textAlign: 'right' },
+  receiptLink: { fontSize: 12, fontWeight: '700', color: '#1d4ed8', marginTop: 4 },
+  noReceipt: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
   bookText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   centerFallback: {
     flex: 1,
