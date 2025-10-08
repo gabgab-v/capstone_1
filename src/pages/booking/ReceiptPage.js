@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -7,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BASE_URL } from "../../lib/api";
+import { BASE_URL, put } from "../../lib/api";
 
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== "string" || !paymentUrl.trim()) {
@@ -28,11 +30,58 @@ function formatAmount(amount) {
   return `PHP ${value.toLocaleString()}`;
 }
 
+function getStatusMeta(status) {
+  const normalized = typeof status === "string" ? status.toUpperCase() : "PENDING";
+  switch (normalized) {
+    case "CONFIRMED":
+    case "APPROVED":
+      return { label: "Confirmed", color: "#047857", normalized };
+    case "REJECTED":
+    case "DECLINED":
+      return { label: "Rejected", color: "#b91c1c", normalized };
+    case "CANCELLED":
+      return { label: "Cancelled", color: "#b45309", normalized };
+    default:
+      return { label: "Pending", color: "#1d4ed8", normalized: normalized || "PENDING" };
+  }
+}
+
 export default function ReceiptPage({ route, navigation }) {
   const event = route?.params?.event ?? null;
-  const booking = route?.params?.booking ?? null;
+  const initialBooking = route?.params?.booking ?? null;
+  const [booking, setBooking] = useState(initialBooking);
+  const [confirming, setConfirming] = useState(false);
+
   const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
   const amountLabel = formatAmount(booking?.totalAmount ?? event?.price);
+
+  const statusMeta = useMemo(() => getStatusMeta(booking?.status), [booking?.status]);
+  const isConfirmed = statusMeta.normalized === "CONFIRMED" || statusMeta.normalized === "APPROVED";
+  const isRejected = statusMeta.normalized === "REJECTED" || statusMeta.normalized === "DECLINED";
+  const canConfirm =
+    Boolean(booking?.id) && !isConfirmed && !isRejected && statusMeta.normalized !== "CANCELLED";
+
+  const handleConfirmAttendance = async () => {
+    if (!canConfirm || confirming || !booking?.id) {
+      return;
+    }
+
+    setConfirming(true);
+    try {
+      const updatedBooking = await put(`/api/bookings/${booking.id}`, { status: "CONFIRMED" });
+      setBooking((prev) => ({ ...prev, ...updatedBooking }));
+      Alert.alert("Attendance confirmed", "You're now listed as an attendee for this event.");
+    } catch (error) {
+      console.error("Failed to confirm booking:", error);
+      const message =
+        error?.body?.error ||
+        error?.message ||
+        "Something went wrong while confirming your attendance.";
+      Alert.alert("Confirmation failed", message);
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -51,6 +100,8 @@ export default function ReceiptPage({ route, navigation }) {
         <Text style={styles.summaryValue}>{amountLabel}</Text>
         <Text style={[styles.summaryLabel, styles.summarySpacer]}>Booking Reference</Text>
         <Text style={styles.summaryValueSmall}>{booking?.id || "Pending"}</Text>
+        <Text style={[styles.summaryLabel, styles.summarySpacer]}>Status</Text>
+        <Text style={[styles.summaryStatus, { color: statusMeta.color }]}>{statusMeta.label}</Text>
       </View>
 
       {receiptUrl ? (
@@ -65,6 +116,31 @@ export default function ReceiptPage({ route, navigation }) {
         <Text style={styles.receiptPlaceholder}>
           No receipt was uploaded for this booking.
         </Text>
+      )}
+
+      {canConfirm ? (
+        <TouchableOpacity
+          style={[styles.confirmBtn, confirming && styles.disabledBtn]}
+          onPress={handleConfirmAttendance}
+          disabled={confirming}
+          activeOpacity={0.85}
+        >
+          {confirming ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.confirmText}>Confirm Attendance</Text>
+          )}
+        </TouchableOpacity>
+      ) : (
+        <View style={[styles.statusBanner, { borderColor: statusMeta.color }]}>
+          <Text style={[styles.statusBannerText, { color: statusMeta.color }]}>
+            {isConfirmed
+              ? "Attendance confirmed. See you on the trail!"
+              : isRejected
+                ? "This booking was rejected. Contact the organizer for details."
+                : "Waiting for organizer review."}
+          </Text>
+        </View>
       )}
 
       <TouchableOpacity
@@ -119,6 +195,7 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 18, fontWeight: "700", color: "#111827" },
   summaryValueSmall: { fontSize: 14, fontWeight: "600", color: "#1f2937" },
   summarySpacer: { marginTop: 14 },
+  summaryStatus: { fontSize: 14, fontWeight: "700" },
   receiptCard: {
     width: "100%",
     padding: 20,
@@ -133,6 +210,25 @@ const styles = StyleSheet.create({
   receiptImage: { width: "100%", height: 260, backgroundColor: "#f3f4f6", borderRadius: 12 },
   receiptHint: { fontSize: 12, color: "#6b7280", marginTop: 12, textAlign: "center" },
   receiptPlaceholder: { fontSize: 13, color: "#6b7280", marginBottom: 24 },
+  confirmBtn: {
+    width: "100%",
+    paddingVertical: 15,
+    borderRadius: 12,
+    backgroundColor: "#2563eb",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  confirmText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  disabledBtn: { opacity: 0.75 },
+  statusBanner: {
+    width: "100%",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: "#f8fafc",
+    marginBottom: 18,
+  },
+  statusBannerText: { fontSize: 13, fontWeight: "600", textAlign: "center" },
   okBtn: {
     backgroundColor: "#047857",
     paddingVertical: 16,

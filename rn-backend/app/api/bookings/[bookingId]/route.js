@@ -2,22 +2,25 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
+const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
+const ATTENDEE_ALLOWED_STATUSES = new Set(["CONFIRMED", "CANCELLED"]);
+
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
   try {
-    // 1. Authenticate the user (must be an organizer)
-    const organizer = await getUserFromToken(req);
-    if (!organizer || organizer.role !== "ORGANIZER") {
+    // 1. Authenticate the user performing the update
+    const actor = await getUserFromToken(req);
+    if (!actor) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // 2. Get the bookingId from the URL and the new status from the request body
     const { bookingId } = params;
     const { status } = await req.json();
+    const normalizedStatus = typeof status === "string" ? status.toUpperCase() : "";
 
-    // Validate the new status
-    if (status !== "APPROVED" && status !== "REJECTED") {
-      return NextResponse.json({ error: "Invalid status provided" }, { status: 400 });
+    if (!normalizedStatus) {
+      return NextResponse.json({ error: "Booking status is required." }, { status: 400 });
     }
 
     // 3. Find the original booking and its associated event
@@ -30,17 +33,37 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    // 4. --- Security Check ---
-    // Ensure the user updating the booking is the organizer of the event
-    if (bookingToUpdate.event.organizerId !== organizer.id) {
-      return NextResponse.json({ error: "Forbidden: You are not the organizer of this event" }, { status: 403 });
+    const isOrganizer =
+      actor.role === "ORGANIZER" && bookingToUpdate.event.organizerId === actor.id;
+    const isBookingOwner = actor.id === bookingToUpdate.userId;
+
+    const allowedStatuses = new Set();
+    if (isOrganizer) {
+      ORGANIZER_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
+    }
+    if (isBookingOwner) {
+      ATTENDEE_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
+    }
+
+    if (allowedStatuses.size === 0) {
+      return NextResponse.json(
+        { error: "Forbidden: You are not allowed to update this booking." },
+        { status: 403 }
+      );
+    }
+
+    if (!allowedStatuses.has(normalizedStatus)) {
+      return NextResponse.json({ error: "Invalid status provided" }, { status: 400 });
     }
 
     // 5. Update the booking's status in the database
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: status },
-      include: { user: true }, // Return the user details in the response
+      data: { status: normalizedStatus },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        event: { select: { id: true, title: true, organizerId: true } },
+      },
     });
 
     return NextResponse.json(updatedBooking, { status: 200 });

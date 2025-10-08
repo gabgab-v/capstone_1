@@ -93,6 +93,22 @@ function formatPrice(value) {
   return `PHP ${amount.toLocaleString()}`;
 }
 
+function getBookingStatusMeta(status) {
+  const normalized = typeof status === 'string' ? status.toUpperCase() : 'PENDING';
+  switch (normalized) {
+    case 'CONFIRMED':
+    case 'APPROVED':
+      return { label: 'Confirmed', color: '#047857', normalized };
+    case 'REJECTED':
+    case 'DECLINED':
+      return { label: 'Rejected', color: '#b91c1c', normalized };
+    case 'CANCELLED':
+      return { label: 'Cancelled', color: '#b45309', normalized };
+    default:
+      return { label: 'Pending', color: '#1d4ed8', normalized: normalized || 'PENDING' };
+  }
+}
+
 function getMetrics(event) {
   if (!event) {
     return [];
@@ -159,10 +175,11 @@ function getDetailRows(event, locationLabel) {
   return rows;
 }
 
-function AttendeeRow({ booking, index }) {
+function AttendeeRow({ booking, index, showReceiptLink, isCurrentUser }) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
-  const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
+  const receiptUrl = showReceiptLink ? resolveReceiptUrl(booking?.paymentUrl) : null;
+  const statusMeta = getBookingStatusMeta(booking?.status);
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
@@ -180,15 +197,21 @@ function AttendeeRow({ booking, index }) {
       <View style={styles.attendeeDetails}>
         <Text style={styles.attendeeName}>{booking?.user?.name || 'Anonymous hiker'}</Text>
         <Text style={styles.attendeeEmail}>{booking?.user?.email || 'No email provided'}</Text>
+        {isCurrentUser ? <Text style={styles.attendeeYou}>You</Text> : null}
       </View>
       <View style={styles.attendeeMeta}>
         <Text style={styles.attendeeAmount}>{formatPrice(booking?.totalAmount)}</Text>
+        <Text style={[styles.attendeeStatus, { color: statusMeta.color }]}>
+          {statusMeta.label}
+        </Text>
         {receiptUrl ? (
           <TouchableOpacity onPress={handleOpenReceipt}>
             <Text style={styles.receiptLink}>View receipt</Text>
           </TouchableOpacity>
-        ) : (
+        ) : showReceiptLink ? (
           <Text style={styles.noReceipt}>No receipt</Text>
+        ) : (
+          <Text style={styles.receiptRestricted}>Receipt hidden</Text>
         )}
       </View>
     </View>
@@ -206,13 +229,10 @@ export default function EventDetailsPage({ route, navigation }) {
   const [attendeesError, setAttendeesError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
-  const tabs = useMemo(() => {
-    const baseTabs = [...BASE_TABS];
-    if (isOrganizer) {
-      baseTabs.push({ key: 'attendees', label: 'Attendees' });
-    }
-    return baseTabs;
-  }, [isOrganizer]);
+  const tabs = useMemo(
+    () => [...BASE_TABS, { key: 'attendees', label: 'Attendees' }],
+    []
+  );
 
   useEffect(() => {
     if (!tabs.some((tab) => tab.key === activeTab)) {
@@ -221,7 +241,7 @@ export default function EventDetailsPage({ route, navigation }) {
   }, [tabs, activeTab]);
 
   useEffect(() => {
-    if (!isOrganizer || !event?.id) {
+    if (!event?.id) {
       setAttendees([]);
       setAttendeesError(null);
       setAttendeesLoading(false);
@@ -255,7 +275,7 @@ export default function EventDetailsPage({ route, navigation }) {
     return () => {
       isCancelled = true;
     };
-  }, [event?.id, isOrganizer]);
+  }, [event?.id, user?.id, isOrganizer]);
 
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
   const locationPoint = useMemo(() => getLocationPoint(event), [event]);
@@ -362,12 +382,17 @@ export default function EventDetailsPage({ route, navigation }) {
                     <Text style={styles.locationTitle}>{locationLabel}</Text>
                     {locationPoint && (
                       <Text style={styles.locationCoords}>
-                        {locationPoint.lat.toFixed(4)}° N, {locationPoint.lng.toFixed(4)}° E
+                        {locationPoint.lat.toFixed(4)}Â° N, {locationPoint.lng.toFixed(4)}Â° E
                       </Text>
                     )}
 
             {activeTab === 'attendees' && (
               <View style={styles.sectionCard}>
+                {!isOrganizer && (
+                  <Text style={styles.attendeeInfo}>
+                    Confirmed attendees are visible to everyone once the organizer approves them.
+                  </Text>
+                )}
                 {attendeesLoading ? (
                   <View style={styles.attendeeLoading}>
                     <ActivityIndicator size="small" color="#2E7D32" />
@@ -377,7 +402,13 @@ export default function EventDetailsPage({ route, navigation }) {
                   <Text style={styles.attendeeError}>{attendeesError}</Text>
                 ) : attendees.length ? (
                   attendees.map((booking, index) => (
-                    <AttendeeRow key={booking?.id || index} booking={booking} index={index} />
+                    <AttendeeRow
+                      key={booking?.id || index}
+                      booking={booking}
+                      index={index}
+                      isCurrentUser={user?.id === booking?.userId}
+                      showReceiptLink={Boolean(isOrganizer || user?.id === booking?.userId)}
+                    />
                   ))
                 ) : (
                   <Text style={styles.attendeeEmpty}>No bookings yet.</Text>
@@ -618,6 +649,7 @@ const styles = StyleSheet.create({
     padding: 18,
     alignItems: 'center',
   },
+  attendeeInfo: { fontSize: 12, color: '#64748b', marginBottom: 12 },
   attendeeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
   attendeeLoadingText: { marginLeft: 10, color: '#4b5563', fontSize: 14 },
   attendeeError: { color: '#b91c1c', fontSize: 13 },
@@ -630,8 +662,11 @@ const styles = StyleSheet.create({
   attendeeEmail: { fontSize: 12, color: '#6b7280' },
   attendeeMeta: { alignItems: 'flex-end' },
   attendeeAmount: { fontSize: 12, fontWeight: '700', color: '#047857', textAlign: 'right' },
+  attendeeStatus: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  attendeeYou: { fontSize: 12, fontWeight: '700', color: '#2563eb', marginTop: 4 },
   receiptLink: { fontSize: 12, fontWeight: '700', color: '#1d4ed8', marginTop: 4 },
   noReceipt: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
+  receiptRestricted: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
   bookText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   centerFallback: {
     flex: 1,

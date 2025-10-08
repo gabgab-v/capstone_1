@@ -1,11 +1,9 @@
-import path from "path";
-import { promises as fs } from "fs";
 import { randomUUID } from "crypto";
+import path from "path";
+import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
-const RECEIPT_DIR_SEGMENTS = ["uploads", "receipts"];
-const RECEIPT_URL_PREFIX = "/uploads/receipts";
 const ALLOWED_RECEIPT_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -19,6 +17,16 @@ const FALLBACK_EXTENSIONS = {
   "image/webp": ".webp",
   "image/gif": ".gif",
 };
+const RECEIPT_BUCKET = process.env.SUPABASE_RECEIPT_BUCKET || "Capstone";
+const RECEIPT_FOLDER = "receipts";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabaseStorageClient =
+  supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey)
+    : null;
 
 async function persistReceipt(file) {
   if (!file) {
@@ -35,6 +43,10 @@ async function persistReceipt(file) {
     throw new Error("Uploaded receipt is empty.");
   }
 
+  if (!supabaseStorageClient) {
+    throw new Error("Supabase storage is not configured on the server.");
+  }
+
   const originalName = typeof file.name === "string" ? file.name : "receipt";
   const extensionFromName = path.extname(originalName) || "";
   const extension =
@@ -42,12 +54,27 @@ async function persistReceipt(file) {
   const safeExtension = extension.startsWith(".") ? extension : `.${extension}`;
   const fileName = `${Date.now()}-${randomUUID()}${safeExtension}`;
 
-  const uploadDir = path.join(process.cwd(), "public", ...RECEIPT_DIR_SEGMENTS);
-  await fs.mkdir(uploadDir, { recursive: true });
-  const filePath = path.join(uploadDir, fileName);
-  await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+  const objectPath = `${RECEIPT_FOLDER}/${fileName}`;
 
-  return `${RECEIPT_URL_PREFIX}/${fileName}`.replace(/\\+/g, "/");
+  const { error: uploadError } = await supabaseStorageClient.storage
+    .from(RECEIPT_BUCKET)
+    .upload(objectPath, Buffer.from(arrayBuffer), {
+      contentType: mimeType || "image/jpeg",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw new Error(`Failed to upload receipt: ${uploadError.message}`);
+  }
+
+  const { data: publicUrlData, error: publicUrlError } =
+    supabaseStorageClient.storage.from(RECEIPT_BUCKET).getPublicUrl(objectPath);
+
+  if (publicUrlError || !publicUrlData?.publicUrl) {
+    throw new Error("Unable to generate public URL for uploaded receipt.");
+  }
+
+  return publicUrlData.publicUrl;
 }
 
 export async function POST(req) {
