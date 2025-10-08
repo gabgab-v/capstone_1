@@ -119,6 +119,25 @@ export default function DiscoverPage() {
 
         const directionText =
           truncate(item.directions) ?? "Directions will be shared soon.";
+        const approvedRaw = Number(item.approvedAttendeeCount);
+        const totalRaw = Number(item.totalBookingCount);
+        const approvedCount =
+          Number.isFinite(approvedRaw) && approvedRaw >= 0 ? approvedRaw : 0;
+        const totalCountCandidate =
+          Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : approvedCount;
+        const totalCount = Math.max(totalCountCandidate, approvedCount);
+        const attendeeProgress =
+          totalCount > 0 ? Math.max(0, Math.min(approvedCount / totalCount, 1)) : 0;
+        const attendeeProgressWidth =
+          attendeeProgress === 0
+            ? "0%"
+            : `${Math.min(100, Math.max(attendeeProgress * 100, 8)).toFixed(0)}%`;
+        const attendeeCaption =
+          totalCount === 0
+            ? "No bookings yet"
+            : `${approvedCount} approved of ${totalCount} booking${
+                totalCount === 1 ? "" : "s"
+              }`;
 
         return (
           <TouchableOpacity
@@ -149,6 +168,18 @@ export default function DiscoverPage() {
                   ))}
                 </View>
               )}
+              <View style={styles.attendeeBarContainer}>
+                <View style={styles.attendeeBarHeader}>
+                  <Text style={styles.attendeeBarLabel}>Attendees</Text>
+                  <Text style={styles.attendeeBarValue}>
+                    {approvedCount}/{totalCount}
+                  </Text>
+                </View>
+                <View style={styles.attendeeBarTrack}>
+                  <View style={[styles.attendeeBarFill, { width: attendeeProgressWidth }]} />
+                </View>
+                <Text style={styles.attendeeBarCaption}>{attendeeCaption}</Text>
+              </View>
               <View style={styles.sectionSpacing}>
                 <Text style={styles.sectionLabel}>Directions</Text>
                 <Text style={styles.sectionText}>{directionText}</Text>
@@ -237,6 +268,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  attendeeBarContainer: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    marginBottom: 12,
+  },
+  attendeeBarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 6,
+  },
+  attendeeBarLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1F2937",
+    textTransform: "uppercase",
+  },
+  attendeeBarValue: { fontSize: 13, fontWeight: "700", color: "#0F172A" },
+  attendeeBarTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#E2E8F0",
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  attendeeBarFill: {
+    height: "100%",
+    backgroundColor: "#2E7D32",
+    borderRadius: 999,
+  },
+  attendeeBarCaption: { fontSize: 12, color: "#475569" },
   sectionSpacing: {
     marginBottom: 12,
   },

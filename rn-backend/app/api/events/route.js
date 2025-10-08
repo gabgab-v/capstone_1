@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
 
+const ATTENDEE_STATUSES = ['APPROVED', 'CONFIRMED'];
+
 function sanitizeString(value) {
   if (typeof value !== 'string') {
     return null;
@@ -146,11 +148,41 @@ export async function POST(req) {
 }
 
 export async function GET() {
-  const events = await prisma.event.findMany({
-    include: {
-      organizer: { select: { id: true, email: true, name: true } },
-      trail: { select: { id: true, label: true, totalDistanceMeters: true } },
-    },
-  });
-  return new Response(JSON.stringify(events));
+  const [events, approvedCounts, totalCounts] = await Promise.all([
+    prisma.event.findMany({
+      include: {
+        organizer: { select: { id: true, email: true, name: true } },
+        trail: { select: { id: true, label: true, totalDistanceMeters: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.booking.groupBy({
+      by: ['eventId'],
+      where: {
+        status: {
+          in: ATTENDEE_STATUSES,
+        },
+      },
+      _count: { _all: true },
+    }),
+    prisma.booking.groupBy({
+      by: ['eventId'],
+      _count: { _all: true },
+    }),
+  ]);
+
+  const approvedCountMap = new Map(
+    approvedCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
+  );
+  const totalCountMap = new Map(
+    totalCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
+  );
+
+  const enrichedEvents = events.map((event) => ({
+    ...event,
+    approvedAttendeeCount: approvedCountMap.get(event.id) ?? 0,
+    totalBookingCount: totalCountMap.get(event.id) ?? 0,
+  }));
+
+  return new Response(JSON.stringify(enrichedEvents));
 }

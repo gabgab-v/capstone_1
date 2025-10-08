@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { get, BASE_URL } from "../../lib/api";
+import { get, put, BASE_URL } from "../../lib/api";
 
 function formatAmount(value) {
   const amount = Number(value ?? 0);
@@ -30,8 +30,103 @@ function resolveReceiptUrl(paymentUrl) {
   return `${BASE_URL}${path}`;
 }
 
-function BookingItem({ booking }) {
+function getBookingStatusMeta(status) {
+  const normalized = typeof status === "string" ? status.toUpperCase() : "PENDING";
+  switch (normalized) {
+    case "APPROVED":
+    case "CONFIRMED":
+      return { label: "Approved", color: "#166534", normalized };
+    case "REJECTED":
+    case "DECLINED":
+      return { label: "Rejected", color: "#B91C1C", normalized };
+    case "CANCELLED":
+      return { label: "Cancelled", color: "#B45309", normalized };
+    default:
+      return { label: "Pending", color: "#1D4ED8", normalized: normalized || "PENDING" };
+  }
+}
+
+function BookingItem({ booking, onUpdateStatus, actionInFlight }) {
   const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
+  const statusMeta = getBookingStatusMeta(booking?.status);
+  const normalizedStatus = statusMeta.normalized || "PENDING";
+  const isApproved = normalizedStatus === "APPROVED" || normalizedStatus === "CONFIRMED";
+  const isRejected = normalizedStatus === "REJECTED" || normalizedStatus === "DECLINED";
+  const approving =
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === "APPROVED";
+  const rejecting =
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === "REJECTED";
+  const pending =
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === "PENDING";
+  const disableActions = approving || rejecting || pending;
+  const statusBackgroundMap = {
+    APPROVED: "#DCFCE7",
+    CONFIRMED: "#DCFCE7",
+    REJECTED: "#FEE2E2",
+    DECLINED: "#FEE2E2",
+    CANCELLED: "#FEF3C7",
+    DEFAULT: "#DBEAFE",
+  };
+  const statusBackground = statusBackgroundMap[normalizedStatus] ?? statusBackgroundMap.DEFAULT;
+
+  const renderActionButton = (label, nextStatus, variant, loading) => {
+    const variantStyles = {
+      approve: {
+        container: [styles.actionButton, styles.actionApprove],
+        text: [styles.actionButtonText, styles.actionButtonTextLight],
+        spinnerColor: "#ffffff",
+      },
+      pending: {
+        container: [styles.actionButton, styles.actionPending],
+        text: [styles.actionButtonText, styles.actionButtonTextDark],
+        spinnerColor: "#1f2937",
+      },
+      reject: {
+        container: [styles.actionButton, styles.actionReject],
+        text: [styles.actionButtonText, styles.actionButtonTextLight],
+        spinnerColor: "#ffffff",
+      },
+    };
+    const stylesForVariant = variantStyles[variant] ?? variantStyles.pending;
+
+    return (
+      <TouchableOpacity
+        key={`${booking?.id}-${label}`}
+        style={[
+          ...stylesForVariant.container,
+          disableActions ? styles.actionButtonDisabled : null,
+        ].filter(Boolean)}
+        onPress={() => onUpdateStatus?.(booking?.id, nextStatus)}
+        disabled={disableActions}
+        activeOpacity={0.85}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={stylesForVariant.spinnerColor} />
+        ) : (
+          <Text
+            style={[
+              ...stylesForVariant.text,
+              disableActions ? styles.actionButtonTextDisabled : null,
+            ].filter(Boolean)}
+          >
+            {label}
+          </Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const actionButtons = [];
+  if (!isApproved) {
+    actionButtons.push(renderActionButton("Approve", "APPROVED", "approve", approving));
+  }
+  if (normalizedStatus !== "PENDING") {
+    actionButtons.push(renderActionButton("Mark pending", "PENDING", "pending", pending));
+  }
+  if (!isRejected) {
+    actionButtons.push(renderActionButton("Reject", "REJECTED", "reject", rejecting));
+  }
+
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
@@ -47,6 +142,19 @@ function BookingItem({ booking }) {
       <Text style={styles.userEmail}>{booking?.user?.email || "No email provided"}</Text>
       <Text style={styles.amountLabel}>Paid: {formatAmount(booking?.totalAmount)}</Text>
       <Text style={styles.referenceLabel}>Reference: {booking?.id}</Text>
+      <View style={styles.statusRow}>
+        <Text style={styles.statusLabel}>Status</Text>
+        <View
+          style={[
+            styles.statusPill,
+            { backgroundColor: statusBackground, borderColor: statusMeta.color },
+          ]}
+        >
+          <Text style={[styles.statusPillText, { color: statusMeta.color }]}>
+            {statusMeta.label}
+          </Text>
+        </View>
+      </View>
       {receiptUrl ? (
         <TouchableOpacity style={styles.receiptButton} onPress={handleOpenReceipt}>
           <Text style={styles.receiptButtonText}>View receipt</Text>
@@ -54,6 +162,7 @@ function BookingItem({ booking }) {
       ) : (
         <Text style={styles.noReceipt}>No receipt uploaded</Text>
       )}
+      {actionButtons.length ? <View style={styles.actionBar}>{actionButtons}</View> : null}
     </View>
   );
 }
@@ -62,6 +171,7 @@ export default function EventBookingsPage({ route }) {
   const { eventId, title } = route.params;
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionInFlight, setActionInFlight] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -89,6 +199,30 @@ export default function EventBookingsPage({ route }) {
     };
   }, [eventId]);
 
+  const handleUpdateStatus = useCallback(
+    async (bookingId, nextStatus) => {
+      if (!bookingId || !nextStatus) {
+        return;
+      }
+      setActionInFlight({ bookingId, status: nextStatus });
+      try {
+        const updated = await put(`/api/bookings/${bookingId}`, { status: nextStatus });
+        setBookings((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) => (item?.id === updated?.id ? { ...item, ...updated } : item))
+            : prev,
+        );
+      } catch (error) {
+        const message =
+          error?.body?.error || error?.message || "Failed to update booking status.";
+        Alert.alert("Update failed", message);
+      } finally {
+        setActionInFlight(null);
+      }
+    },
+    [],
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -107,7 +241,13 @@ export default function EventBookingsPage({ route }) {
         <FlatList
           data={bookings}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <BookingItem booking={item} />}
+          renderItem={({ item }) => (
+            <BookingItem
+              booking={item}
+              onUpdateStatus={handleUpdateStatus}
+              actionInFlight={actionInFlight}
+            />
+          )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
@@ -132,6 +272,21 @@ const styles = StyleSheet.create({
   userEmail: { fontSize: 14, color: "#4b5563", marginBottom: 6 },
   amountLabel: { fontSize: 14, fontWeight: "600", color: "#047857" },
   referenceLabel: { fontSize: 12, color: "#6b7280", marginTop: 4 },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 10,
+    justifyContent: "space-between",
+  },
+  statusLabel: { fontSize: 13, fontWeight: "600", color: "#475569" },
+  statusPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusPillText: { fontSize: 12, fontWeight: "700" },
   receiptButton: {
     marginTop: 10,
     alignSelf: "flex-start",
@@ -142,4 +297,25 @@ const styles = StyleSheet.create({
   },
   receiptButtonText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
   noReceipt: { fontSize: 12, color: "#9ca3af", marginTop: 10 },
+  actionBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+  actionButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  actionApprove: { backgroundColor: "#166534", borderColor: "#166534" },
+  actionPending: { backgroundColor: "#f8fafc", borderColor: "#cbd5f5" },
+  actionReject: { backgroundColor: "#b91c1c", borderColor: "#b91c1c" },
+  actionButtonDisabled: { opacity: 0.7 },
+  actionButtonText: { fontSize: 12, fontWeight: "700" },
+  actionButtonTextLight: { color: "#ffffff" },
+  actionButtonTextDark: { color: "#1f2937" },
+  actionButtonTextDisabled: { opacity: 0.7 },
 });

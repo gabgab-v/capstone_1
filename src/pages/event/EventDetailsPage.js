@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
-import { get, BASE_URL } from '../../lib/api';
+import { get, put, BASE_URL } from '../../lib/api';
 
 const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -24,6 +24,7 @@ const BASE_TABS = [
 ];
 
 const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
+const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
 
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== 'string' || !paymentUrl.trim()) {
@@ -175,19 +176,109 @@ function getDetailRows(event, locationLabel) {
   return rows;
 }
 
-function AttendeeRow({ booking, index, showReceiptLink, isCurrentUser }) {
+function AttendeeRow({
+  booking,
+  index,
+  showReceiptLink,
+  isCurrentUser,
+  canManage,
+  onUpdateStatus,
+  actionInFlight,
+}) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const receiptUrl = showReceiptLink ? resolveReceiptUrl(booking?.paymentUrl) : null;
   const statusMeta = getBookingStatusMeta(booking?.status);
+  const normalizedStatus = statusMeta.normalized || 'PENDING';
+  const isApproved = APPROVED_BOOKING_STATUSES.has(normalizedStatus);
+  const isRejected = normalizedStatus === 'REJECTED' || normalizedStatus === 'DECLINED';
+  const approving = Boolean(
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === 'APPROVED',
+  );
+  const rejecting = Boolean(
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === 'REJECTED',
+  );
+  const pending = Boolean(
+    actionInFlight?.bookingId === booking?.id && actionInFlight?.status === 'PENDING',
+  );
+  const disableActions = approving || rejecting || pending;
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
     }
     Linking.openURL(receiptUrl).catch(() => {
-      Alert.alert('Unable to open receipt', "We couldn't open the receipt link. Please try again later.");
+      Alert.alert(
+        'Unable to open receipt',
+        "We couldn't open the receipt link. Please try again later.",
+      );
     });
   };
+
+  const renderActionButton = (label, targetStatus, variant, isLoading) => {
+    const variantMap = {
+      approve: {
+        buttonStyle: [styles.attendeeActionButton, styles.attendeeApproveButton],
+        textStyle: [styles.attendeeActionText, styles.attendeeActionTextLight],
+        spinnerColor: '#ffffff',
+      },
+      pending: {
+        buttonStyle: [styles.attendeeActionButton, styles.attendeePendingButton],
+        textStyle: [styles.attendeeActionText, styles.attendeeActionTextDark],
+        spinnerColor: '#1f2937',
+      },
+      reject: {
+        buttonStyle: [styles.attendeeActionButton, styles.attendeeRejectButton],
+        textStyle: [styles.attendeeActionText, styles.attendeeActionTextLight],
+        spinnerColor: '#ffffff',
+      },
+    };
+    const selected = variantMap[variant] ?? variantMap.pending;
+
+    return (
+      <TouchableOpacity
+        key={`${booking?.id}-${label}`}
+        style={[
+          ...selected.buttonStyle,
+          disableActions ? styles.attendeeActionDisabled : null,
+        ].filter(Boolean)}
+        onPress={() => onUpdateStatus?.(booking?.id, targetStatus)}
+        disabled={disableActions}
+        activeOpacity={0.8}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color={selected.spinnerColor} />
+        ) : (
+          <Text
+            style={[
+              ...selected.textStyle,
+              disableActions ? styles.attendeeActionTextDisabled : null,
+            ].filter(Boolean)}
+          >
+            {label}
+          </Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const actionButtons = [];
+  if (canManage) {
+    if (!isApproved) {
+      actionButtons.push(
+        renderActionButton('Approve', 'APPROVED', 'approve', approving),
+      );
+    }
+    if (normalizedStatus !== 'PENDING') {
+      actionButtons.push(
+        renderActionButton('Mark pending', 'PENDING', 'pending', pending),
+      );
+    }
+    if (!isRejected) {
+      actionButtons.push(
+        renderActionButton('Reject', 'REJECTED', 'reject', rejecting),
+      );
+    }
+  }
 
   return (
     <View style={styles.attendeeRow}>
@@ -213,6 +304,9 @@ function AttendeeRow({ booking, index, showReceiptLink, isCurrentUser }) {
         ) : (
           <Text style={styles.receiptRestricted}>Receipt hidden</Text>
         )}
+        {canManage && actionButtons.length ? (
+          <View style={styles.attendeeActions}>{actionButtons}</View>
+        ) : null}
       </View>
     </View>
   );
@@ -227,6 +321,7 @@ export default function EventDetailsPage({ route, navigation }) {
   const [attendees, setAttendees] = useState([]);
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [attendeesError, setAttendeesError] = useState(null);
+  const [bookingActionInFlight, setBookingActionInFlight] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
 
   const tabs = useMemo(
@@ -277,10 +372,97 @@ export default function EventDetailsPage({ route, navigation }) {
     };
   }, [event?.id, user?.id, isOrganizer]);
 
+  const handleUpdateBookingStatus = useCallback(
+    async (bookingId, nextStatus) => {
+      if (!bookingId || !nextStatus) {
+        return;
+      }
+      setBookingActionInFlight({ bookingId, status: nextStatus });
+      try {
+        const updatedBooking = await put(`/api/bookings/${bookingId}`, { status: nextStatus });
+        setAttendees((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) => (item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item))
+            : prev,
+        );
+      } catch (error) {
+        const message =
+          error?.body?.error || error?.message || 'Failed to update booking status. Please try again.';
+        Alert.alert('Update failed', message);
+      } finally {
+        setBookingActionInFlight(null);
+      }
+    },
+    [],
+  );
+
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
   const locationPoint = useMemo(() => getLocationPoint(event), [event]);
   const metrics = useMemo(() => getMetrics(event), [event]);
   const detailRows = useMemo(() => getDetailRows(event, locationLabel), [event, locationLabel]);
+  const fallbackApproved = useMemo(() => {
+    const value = Number(event?.approvedAttendeeCount);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  }, [event?.approvedAttendeeCount]);
+  const fallbackTotal = useMemo(() => {
+    const value = Number(event?.totalBookingCount);
+    if (Number.isFinite(value) && value >= 0) {
+      return Math.max(value, fallbackApproved);
+    }
+    return fallbackApproved;
+  }, [event?.totalBookingCount, fallbackApproved]);
+  const attendeeStats = useMemo(() => {
+    if (!Array.isArray(attendees) || attendees.length === 0) {
+      const pending = Math.max(fallbackTotal - fallbackApproved, 0);
+      return { approved: fallbackApproved, total: fallbackTotal, pending };
+    }
+
+    const computedApproved = attendees.reduce((count, booking) => {
+      const status = typeof booking?.status === 'string' ? booking.status.toUpperCase() : '';
+      return APPROVED_BOOKING_STATUSES.has(status) ? count + 1 : count;
+    }, 0);
+
+    const baseApproved = Math.max(computedApproved, fallbackApproved);
+
+    if (isOrganizer) {
+      const total = Math.max(attendees.length, baseApproved);
+      const pending = Math.max(total - baseApproved, 0);
+      return { approved: baseApproved, total, pending };
+    }
+
+    const total = Math.max(fallbackTotal, baseApproved);
+    const pending = Math.max(total - baseApproved, 0);
+    return { approved: baseApproved, total, pending };
+  }, [attendees, fallbackApproved, fallbackTotal, isOrganizer]);
+  const attendeeProgress =
+    attendeeStats.total > 0 ? Math.min(attendeeStats.approved / attendeeStats.total, 1) : 0;
+  const attendeeProgressStyle = useMemo(() => {
+    const clamped = Math.max(0, Math.min(attendeeProgress || 0, 1));
+    return { width: `${(clamped * 100).toFixed(0)}%` };
+  }, [attendeeProgress]);
+  const attendeeSummaryMetaLabel = useMemo(() => {
+    if (attendeeStats.total > 0) {
+      return `${attendeeStats.approved}/${attendeeStats.total} approved`;
+    }
+    return `${attendeeStats.approved} approved`;
+  }, [attendeeStats]);
+  const attendeeSummaryCaption = useMemo(() => {
+    if (attendeeStats.total === 0) {
+      return 'No bookings yet.';
+    }
+    if (attendeeStats.pending > 0) {
+      if (isOrganizer) {
+        return `${attendeeStats.pending} booking${attendeeStats.pending === 1 ? '' : 's'} awaiting approval`;
+      }
+      return `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
+    }
+    if (attendeeStats.approved === 0) {
+      return 'No bookings yet.';
+    }
+    return isOrganizer
+      ? 'All current bookings approved'
+      : `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
+  }, [attendeeStats, isOrganizer]);
 
   const overviewText = useMemo(() => sanitizeText(event?.overview), [event?.overview]);
   const itineraryText = useMemo(() => sanitizeText(event?.itinerary), [event?.itinerary]);
@@ -329,6 +511,17 @@ export default function EventDetailsPage({ route, navigation }) {
               ))}
             </View>
           )}
+
+          <View style={styles.attendeeSummaryCard}>
+            <View style={styles.attendeeSummaryHeader}>
+              <Text style={styles.attendeeSummaryTitle}>Attendees</Text>
+              <Text style={styles.attendeeSummaryMeta}>{attendeeSummaryMetaLabel}</Text>
+            </View>
+            <View style={styles.attendeeSummaryBar}>
+              <View style={[styles.attendeeSummaryProgress, attendeeProgressStyle]} />
+            </View>
+            <Text style={styles.attendeeSummaryCaption}>{attendeeSummaryCaption}</Text>
+          </View>
 
           <View style={styles.tabRow}>
             {tabs.map((tab) => (
@@ -408,6 +601,9 @@ export default function EventDetailsPage({ route, navigation }) {
                       index={index}
                       isCurrentUser={user?.id === booking?.userId}
                       showReceiptLink={Boolean(isOrganizer || user?.id === booking?.userId)}
+                      canManage={isOrganizer}
+                      onUpdateStatus={handleUpdateBookingStatus}
+                      actionInFlight={bookingActionInFlight}
                     />
                   ))
                 ) : (
@@ -530,6 +726,40 @@ const styles = StyleSheet.create({
   },
   metricIcon: { marginRight: 6 },
   metricText: { color: '#166534', fontSize: 12, fontWeight: '600' },
+  attendeeSummaryCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 18,
+    backgroundColor: '#F8FAFC',
+  },
+  attendeeSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 10,
+  },
+  attendeeSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'uppercase',
+  },
+  attendeeSummaryMeta: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  attendeeSummaryBar: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  attendeeSummaryProgress: {
+    height: '100%',
+    backgroundColor: '#2E7D32',
+    borderRadius: 999,
+  },
+  attendeeSummaryCaption: { fontSize: 12, color: '#475569' },
   tabRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
@@ -661,6 +891,50 @@ const styles = StyleSheet.create({
   attendeeName: { fontSize: 14, fontWeight: '600', color: '#1f2937' },
   attendeeEmail: { fontSize: 12, color: '#6b7280' },
   attendeeMeta: { alignItems: 'flex-end' },
+  attendeeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  attendeeActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginLeft: 8,
+    marginTop: 6,
+    backgroundColor: '#e2e8f0',
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+  },
+  attendeeApproveButton: {
+    backgroundColor: '#166534',
+    borderColor: '#166534',
+  },
+  attendeePendingButton: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#cbd5f5',
+  },
+  attendeeRejectButton: {
+    backgroundColor: '#b91c1c',
+    borderColor: '#b91c1c',
+  },
+  attendeeActionDisabled: {
+    opacity: 0.7,
+  },
+  attendeeActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  attendeeActionTextLight: {
+    color: '#ffffff',
+  },
+  attendeeActionTextDark: {
+    color: '#1f2937',
+  },
+  attendeeActionTextDisabled: {
+    opacity: 0.7,
+  },
   attendeeAmount: { fontSize: 12, fontWeight: '700', color: '#047857', textAlign: 'right' },
   attendeeStatus: { fontSize: 12, fontWeight: '700', marginTop: 4 },
   attendeeYou: { fontSize: 12, fontWeight: '700', color: '#2563eb', marginTop: 4 },
