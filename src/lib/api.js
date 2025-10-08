@@ -106,7 +106,8 @@ async function request(path, options = {}) {
 
 export async function postFormData(path, formData) {
     const url = `${BASE_URL}${path}`;
-    const token = await SecureStore.getItemAsync('jwt');
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     console.log(`📡 POST (FormData) →`, url);
 
     const headers = {
