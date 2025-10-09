@@ -1,153 +1,289 @@
-import React, { useState } from "react";
-import { FlatList, View, Modal, Text, TextInput, Image, ScrollView, TouchableOpacity } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Platform,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import { decode } from "base64-arraybuffer";
+import { AntDesign } from "@expo/vector-icons";
+
 import AppHeader from "../components/AppHeader";
 import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
-import * as ImagePicker from 'expo-image-picker';
-import { AntDesign } from '@expo/vector-icons';
+import { get, post as postRequest } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
-/* Initial Demo data */
-const INITIAL_DATA = [
-  {
-    id: "2",
-    name: "Gabriel Rival",
-    avatar: "https://i.pravatar.cc/150?img=32",
-    date: "May 10, 2025",
-    caption: "Just conquered the Boulder Face of Mt. Apo. Unreal views and pure grit!",
-    photos: [
-      "https://picsum.photos/seed/grival1/640/640",
-      "https://picsum.photos/seed/grival2/640/640",
-      "https://picsum.photos/seed/grival3/640/640",
-    ],
-    likes: "2.1k",
-    comments: 150,
-    shares: 45,
-  },
-  {
-    id: "1",
-    name: "Jekey Parantar",
-    avatar: "https://i.pravatar.cc/150?img=47",
-    date: "May 10, 2025",
-    caption: "Mount Apo is one of the most popular hiking destination in Mindanao!!",
-    photos: [
-      "https://picsum.photos/seed/apo1/640/640",
-      "https://picsum.photos/seed/apo2/640/640",
-      "https://picsum.photos/seed/apo3/640/640",
-    ],
-    likes: "1.2k",
-    comments: 127,
-    shares: 27,
-  },
-];
+const MAX_IMAGES = 5;
 
-// The modal for creating a post now accepts the `user` prop
-const CreatePostModal = ({ visible, onClose, onPost, user }) => {
-    const [caption, setCaption] = useState('');
-    const [images, setImages] = useState([]);
+const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
+  const [caption, setCaption] = useState("");
+  const [images, setImages] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 1,
-            allowsMultipleSelection: true,
-        });
+  const canPost = caption.trim().length > 0 || images.length > 0;
 
-        if (!result.canceled) {
-            setImages(result.assets.map(asset => asset.uri));
-        }
-    };
+  const pickImage = useCallback(async () => {
+    if (images.length >= MAX_IMAGES) {
+      return;
+    }
 
-    const handlePost = () => {
-        if(caption.trim() === '' && images.length === 0) return;
-        
-        const newPost = {
-            id: Date.now().toString(),
-            // ✅ Use the actual user's data here!
-            name: user?.name || "Anonymous", 
-            avatar: user?.avatarUrl || "https://i.pravatar.cc/150", // ⚠️ Adjust 'avatarUrl' to your API's field name
-            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2025' }),
-            caption: caption,
-            photos: images,
-            likes: "0",
-            comments: 0,
-            shares: 0,
-        };
-        onPost(newPost);
-        setCaption('');
-        setImages([]);
-        onClose();
-    };
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission needed", "Please allow photo library access to share images.");
+      return;
+    }
 
-    return (
-        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-            <SafeAreaView className="flex-1">
-                <View className="p-4 flex-row justify-between items-center border-b border-gray-200">
-                    <TouchableOpacity onPress={onClose}>
-                         <AntDesign name="close" size={24} color="black" />
-                    </TouchableOpacity>
-                    <Text className="text-lg font-bold">Create Post</Text>
-                    <TouchableOpacity 
-                        className={`py-1 px-4 rounded-full ${caption.trim() || images.length > 0 ? 'bg-green-500' : 'bg-gray-300'}`}
-                        onPress={handlePost}
-                        disabled={!caption.trim() && images.length === 0}
-                    >
-                        <Text className="text-white font-bold">Post</Text>
-                    </TouchableOpacity>
-                </View>
-                <View className="p-4">
-                    <TextInput
-                        placeholder={`What's on your mind, ${user?.name || ''}?`}
-                        value={caption}
-                        onChangeText={setCaption}
-                        multiline
-                        className="text-lg"
-                    />
-                    <TouchableOpacity onPress={pickImage} className="mt-4 py-2 px-4 bg-gray-200 rounded-lg self-start">
-                        <Text>Add Photos</Text>
-                    </TouchableOpacity>
-                    <ScrollView horizontal className="mt-4">
-                        {images.map((uri, index) => (
-                            <Image key={index} source={{ uri }} className="w-24 h-24 rounded-lg mr-2" />
-                        ))}
-                    </ScrollView>
-                </View>
-            </SafeAreaView>
-        </Modal>
-    );
-};
+    const availableSlots = Math.max(MAX_IMAGES - images.length, 1);
 
 
-// The main component now accepts the `user` prop
-export default function HomePage({ user }) {
-  const [posts, setPosts] = useState(INITIAL_DATA);
-  const [isModalVisible, setModalVisible] = useState(false);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct enum and not an array
+      quality: 1,
+      allowsMultipleSelection: true,
+      selectionLimit: availableSlots,
+      base64: true,
+    });
 
-  const handleCreatePost = (newPost) => {
-    setPosts([newPost, ...posts]);
-  };
+    if (result.canceled) {
+      return;
+    }
+
+    const selectedAssets = result.assets.slice(0, availableSlots);
+
+    try {
+      const preparedImages = await Promise.all(
+        selectedAssets.map(async (asset) => {
+          let base64 = asset.base64 ?? null;
+
+          if (!base64 && FileSystem.readAsStringAsync) {
+            try {
+              base64 = await FileSystem.readAsStringAsync(asset.uri, {
+                encoding: "base64",
+              });
+            } catch (fsError) {
+              if (Platform.OS !== "web") {
+                throw fsError;
+              }
+            }
+          }
+
+          if (!base64) {
+            throw new Error("Unable to process the selected image.");
+          }
+
+          return {
+            uri: asset.uri,
+            base64,
+            mimeType: asset.mimeType ?? "image/jpeg",
+          };
+        }),
+      );
+
+      setImages((prev) => [...prev, ...preparedImages]);
+    } catch (error) {
+      console.error("Image processing error:", error);
+      Alert.alert("Image error", "Failed to process one of the selected images.");
+    }
+  }, [images.length]);
+
+  const handleRemoveImage = useCallback((index) => {
+    setImages((prev) => prev.filter((_, idx) => idx !== index));
+  }, []);
+
+  const handlePost = useCallback(async () => {
+    if (!canPost || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        caption: caption.trim(),
+        images,
+      });
+      setCaption("");
+      setImages([]);
+      onClose();
+    } catch (error) {
+      console.error("Post creation failed:", error);
+      Alert.alert("Post failed", error.message ?? "Unable to publish your post.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [canPost, caption, images, isSubmitting, onClose, onSubmit]);
 
   return (
-    // The SafeAreaView no longer needs edges=["bottom"] because the tab navigator handles it.
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView className="flex-1">
+        <View className="flex-row items-center justify-between border-b border-gray-200 p-4">
+          <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
+            <AntDesign name="close" size={24} color="black" />
+          </TouchableOpacity>
+          <Text className="text-lg font-bold">Create Post</Text>
+          <TouchableOpacity
+            className={`rounded-full py-1 px-4 ${canPost ? "bg-green-500" : "bg-gray-300"}`}
+            onPress={handlePost}
+            disabled={!canPost || isSubmitting}
+          >
+            <Text className="font-bold text-white">{isSubmitting ? "Posting..." : "Post"}</Text>
+          </TouchableOpacity>
+        </View>
+        <View className="p-4">
+          <TextInput
+            placeholder={`What's on your mind, ${user?.name || "explorer"}?`}
+            value={caption}
+            onChangeText={setCaption}
+            multiline
+            className="text-lg"
+          />
+          <TouchableOpacity
+            onPress={pickImage}
+            className="mt-4 self-start rounded-lg bg-gray-200 py-2 px-4"
+            disabled={images.length >= MAX_IMAGES || isSubmitting}
+          >
+            <Text>{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
+          </TouchableOpacity>
+          <ScrollView horizontal className="mt-4">
+            {images.map((image, index) => (
+              <TouchableOpacity
+                key={image.uri}
+                onPress={() => handleRemoveImage(index)}
+                disabled={isSubmitting}
+                className="mr-2"
+              >
+                <Image source={{ uri: image.uri }} className="h-24 w-24 rounded-lg" />
+                <Text className="mt-1 text-center text-xs text-gray-500">Tap to remove</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+export default function HomePage({ user }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isModalVisible, setModalVisible] = useState(false);
+
+  const fetchPosts = useCallback(async () => {
+    try {
+      const data = await get("/api/posts");
+      setPosts(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load posts:", error);
+      Alert.alert("Posts unavailable", "Unable to load the latest posts. Please try again.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const handleCreatePost = useCallback(
+    async ({ caption, images }) => {
+      const trimmedCaption = caption?.trim?.() ?? "";
+
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (!authUser) {
+        throw new Error("Your session expired. Please sign in again.");
+      }
+
+      const uploadedUrls = [];
+
+      for (let index = 0; index < images.length; index += 1) {
+        const image = images[index];
+        if (!image?.base64) {
+          continue;
+        }
+
+        const extension = image.mimeType?.split("/")[1] ?? "jpg";
+        const extensionParts = extension.split("+");
+        const safeExtension = extensionParts[extensionParts.length - 1] || "jpg";
+        const fileName = `posts/${authUser.id}-${Date.now()}-${index}.${safeExtension}`;
+
+        const { data, error } = await supabase.storage
+          .from("Capstone")
+          .upload(fileName, decode(image.base64), {
+            contentType: image.mimeType ?? "image/jpeg",
+            upsert: false,
+          });
+
+        if (error) {
+          console.error("Supabase upload error:", error);
+          throw new Error("Failed to upload one of your photos. Please try again.");
+        }
+
+        const { data: publicData } = supabase.storage.from("Capstone").getPublicUrl(data.path);
+        if (publicData?.publicUrl) {
+          uploadedUrls.push(publicData.publicUrl);
+        }
+      }
+
+      const createdPost = await postRequest("/api/posts", {
+        content: trimmedCaption,
+        imageUrls: uploadedUrls,
+      });
+
+      setPosts((current) => [createdPost, ...current]);
+    },
+    [],
+  );
+
+  return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-gray-100">
       <AppHeader />
 
       <FlatList
         data={posts}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => <PostCard post={item} />}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={<CreatePost user={user} onPostPress={() => setModalVisible(true)} />}
+        ListEmptyComponent={
+          <View className="items-center justify-center py-10">
+            {loading ? (
+              <ActivityIndicator size="large" color="#2E7D32" />
+            ) : (
+              <Text className="text-gray-500">No posts have been shared yet.</Text>
+            )}
+          </View>
+        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        contentContainerStyle={posts.length === 0 ? { flexGrow: 1 } : undefined}
       />
 
-      <CreatePostModal 
+      <CreatePostModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
-        onPost={handleCreatePost}
-        user={user} // Pass user to the modal
+        onSubmit={handleCreatePost}
+        user={user}
       />
-
-      {/* NO BOTTOM NAV COMPONENT HERE ANYMORE */}
     </SafeAreaView>
   );
 }

@@ -28,6 +28,7 @@ model User {
   bookings                Booking[]
   events                  Event[]
   trails                  Trail[]
+  posts                   Post[]
 
   createdAt               DateTime  @default(now())
 }
@@ -92,6 +93,18 @@ model Trail {
   events              Event[]
 
   @@index([userId, startedAt])
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  content   String?
+  imageUrls String[] @default([])
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 enum UserRole {
