@@ -39,6 +39,17 @@ function AppNavigator() {
     );
   }
 
+  const preferencesIncomplete = Boolean(user && !user.preferencesComplete);
+
+  if (user && preferencesIncomplete) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
+        <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
+      </Stack.Navigator>
+    );
+  }
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (

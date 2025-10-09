@@ -1,64 +1,74 @@
 import { NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
-import { prisma } from '@/lib/prisma'; // ✅ Prisma client
+import { prisma } from '@/lib/prisma';
 
-// GET /api/users/me → fetch user profile
+const userSelect = {
+  id: true,
+  email: true,
+  name: true,
+  birthdate: true,
+  experienceLevel: true,
+  preferredDifficulty: true,
+  preferredTrailType: true,
+  preferredDurationHrs: true,
+  budgetRange: true,
+  role: true,
+  organizerRequestPending: true,
+};
+
 export async function GET(request) {
   try {
-    const user = await getUserFromToken(request);
-    if (!user) {
+    const authUser = await getUserFromToken(request);
+    if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const fullUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        birthdate: true,
-        experienceLevel: true,
-        preferredDifficulty: true,
-        preferredTrailType: true,
-        preferredDurationHrs: true,
-        budgetRange: true,
-        // --- ADD THESE TWO LINES ---
-        role: true,
-        organizerRequestPending: true,
-      },
-    });
+    const dbUser =
+      (await prisma.user.findUnique({
+        where: { id: authUser.id },
+        select: userSelect,
+      })) ?? {
+        id: authUser.id,
+        email: authUser.email,
+        name: authUser.name,
+        birthdate: authUser.birthdate,
+        experienceLevel: authUser.experienceLevel,
+        preferredDifficulty: authUser.preferredDifficulty,
+        preferredTrailType: authUser.preferredTrailType,
+        preferredDurationHrs: authUser.preferredDurationHrs,
+        budgetRange: authUser.budgetRange,
+        role: authUser.role,
+        organizerRequestPending: authUser.organizerRequestPending ?? false,
+      };
 
-    if (!fullUser) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!dbUser?.email) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // ✅ check if preferences are all filled in
-    const profileComplete = !!(fullUser.name && fullUser.birthdate);
-    const preferencesComplete = !!(
-      fullUser.experienceLevel &&
-      fullUser.preferredDifficulty &&
-      fullUser.preferredTrailType &&
-      fullUser.preferredDurationHrs &&
-      fullUser.budgetRange
+    const profileComplete = Boolean(dbUser.name && dbUser.birthdate);
+    const preferencesComplete = Boolean(
+      dbUser.experienceLevel &&
+        dbUser.preferredDifficulty &&
+        dbUser.preferredTrailType &&
+        dbUser.preferredDurationHrs &&
+        dbUser.budgetRange,
     );
 
-    // The `...fullUser` spread will now automatically include `role` and `organizerRequestPending`
     return NextResponse.json({
-      ...fullUser,
+      ...dbUser,
       profileComplete,
       preferencesComplete,
-    }); // 200
+    });
   } catch (err) {
-    console.error('❌ GET /users/me error:', err);
+    console.error('GET /api/users/me error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
 
-// PUT /api/users/me → update profile (NO CHANGES NEEDED HERE)
 export async function PUT(request) {
   try {
-    const user = await getUserFromToken(request);
-    if (!user) {
+    const authUser = await getUserFromToken(request);
+    if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -69,17 +79,30 @@ export async function PUT(request) {
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: user.id },
+      where: { id: authUser.id },
       data: {
         name,
-        birthdate: new Date(birthdate), // if stored as Date
+        birthdate: new Date(birthdate),
       },
+      select: userSelect,
     });
 
-    return NextResponse.json(updatedUser); // 200
+    const profileComplete = Boolean(updatedUser.name && updatedUser.birthdate);
+    const preferencesComplete = Boolean(
+      updatedUser.experienceLevel &&
+        updatedUser.preferredDifficulty &&
+        updatedUser.preferredTrailType &&
+        updatedUser.preferredDurationHrs &&
+        updatedUser.budgetRange,
+    );
+
+    return NextResponse.json({
+      ...updatedUser,
+      profileComplete,
+      preferencesComplete,
+    });
   } catch (err) {
-    console.error('❌ PUT /users/me error:', err);
+    console.error('PUT /api/users/me error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
-

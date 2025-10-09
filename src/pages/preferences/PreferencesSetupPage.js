@@ -1,53 +1,108 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
-import { Picker } from '@react-native-picker/picker';   // ✅ updated import
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { post } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
-export default function PreferencesSetupPage({ navigation, route }) {
-  const { userId } = route.params; // get user_id from signup/login response
+const EXPERIENCE_OPTIONS = [
+  { label: 'Select...', value: '' },
+  { label: 'Beginner', value: 'Beginner' },
+  { label: 'Intermediate', value: 'Intermediate' },
+  { label: 'Expert', value: 'Expert' },
+];
 
+export default function PreferencesSetupPage({ navigation }) {
+  const { user, refreshUser } = useAuth();
   const [experience, setExperience] = useState('');
   const [difficulty, setDifficulty] = useState('');
   const [trailType, setTrailType] = useState('');
   const [duration, setDuration] = useState('');
   const [budget, setBudget] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  async function handleSave() {
-    if (!experience || !difficulty || !trailType || !duration || !budget) {
-      alert('Please fill out all preferences');
+  const hasExistingPreferences = useMemo(
+    () =>
+      Boolean(
+        user?.experienceLevel ||
+          user?.preferredDifficulty ||
+          user?.preferredTrailType ||
+          user?.preferredDurationHrs ||
+          user?.budgetRange
+      ),
+    [user]
+  );
+
+  useEffect(() => {
+    if (!user) {
       return;
     }
 
+    setExperience(user.experienceLevel ?? '');
+    setDifficulty(user.preferredDifficulty ?? '');
+    setTrailType(user.preferredTrailType ?? '');
+    setDuration(
+      typeof user.preferredDurationHrs === 'number' && Number.isFinite(user.preferredDurationHrs)
+        ? String(user.preferredDurationHrs)
+        : user.preferredDurationHrs
+        ? String(user.preferredDurationHrs)
+        : ''
+    );
+    setBudget(user.budgetRange ?? '');
+  }, [user]);
+
+  async function handleSave() {
+    if (!experience || !difficulty || !trailType || !duration || !budget) {
+      Alert.alert('Missing information', 'Please fill out all preferences before continuing.');
+      return;
+    }
+
+    const durationValue = Number(duration);
+    if (!Number.isFinite(durationValue) || durationValue <= 0) {
+      Alert.alert('Invalid duration', 'Please enter a valid preferred duration in hours.');
+      return;
+    }
+
+    setSaving(true);
     try {
-      const res = await post('/api/users/preferences', {
-        user_id: userId,
+      await post('/api/users/preferences', {
         experience_level: experience,
         preferred_difficulty: difficulty,
         preferred_trail_type: trailType,
-        preferred_duration_hours: parseFloat(duration),
+        preferred_duration_hours: durationValue,
         budget_range: budget,
       });
 
-      console.log('✅ Preferences saved:', res);
-      navigation.replace('MainTabs'); // or dashboard
-    } catch (e) {
-      console.log('❌ Failed to save preferences:', e);
-      alert('Could not save preferences. Try again.');
+      if (typeof refreshUser === 'function') {
+        await refreshUser();
+      }
+
+      if (hasExistingPreferences && navigation.canGoBack()) {
+        navigation.goBack();
+      }
+    } catch (error) {
+      console.log('Failed to save preferences:', error);
+      Alert.alert('Save failed', 'Could not save preferences. Try again.');
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <ScrollView className="flex-1 bg-white px-6 pt-16">
-      <Text className="text-2xl font-bold mb-6 text-center">
-        Set Up Your Preferences
-      </Text>
+      <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
       <Picker selectedValue={experience} onValueChange={setExperience}>
-        <Picker.Item label="Select..." value="" />
-        <Picker.Item label="Beginner" value="Beginner" />
-        <Picker.Item label="Intermediate" value="Intermediate" />
-        <Picker.Item label="Expert" value="Expert" />
+        {EXPERIENCE_OPTIONS.map((option) => (
+          <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />
+        ))}
       </Picker>
 
       <Text className="font-medium mt-4 mb-2">Preferred Difficulty</Text>
@@ -77,17 +132,22 @@ export default function PreferencesSetupPage({ navigation, route }) {
 
       <Text className="font-medium mt-4 mb-2">Budget Range</Text>
       <TextInput
-        placeholder="e.g., $50-$100"
+        placeholder="e.g., PHP 500 - 1000"
         className="border border-gray-300 rounded-xl p-4 mb-4"
         value={budget}
         onChangeText={setBudget}
       />
 
       <TouchableOpacity
-        className="bg-green-700 rounded-xl py-4 mt-6"
+        className={`bg-green-700 rounded-xl py-4 mt-6 ${saving ? 'opacity-70' : ''}`}
         onPress={handleSave}
+        disabled={saving}
       >
-        <Text className="text-center text-white font-semibold">Save Preferences</Text>
+        {saving ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text className="text-center text-white font-semibold">Save Preferences</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
