@@ -7,6 +7,8 @@ const userSelect = {
   email: true,
   name: true,
   gcashNumber: true,
+  avatarUrl: true,
+  bio: true,
   birthdate: true,
   experienceLevel: true,
   preferredDifficulty: true,
@@ -51,6 +53,8 @@ export async function GET(request) {
         email: authUser.email,
         name: authUser.name,
         gcashNumber: authUser.gcashNumber,
+        avatarUrl: authUser.avatarUrl,
+        bio: authUser.bio,
         birthdate: authUser.birthdate,
         experienceLevel: authUser.experienceLevel,
         preferredDifficulty: authUser.preferredDifficulty,
@@ -65,6 +69,18 @@ export async function GET(request) {
     if (!dbUser?.email) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    const [followersCount, followingCount, postCount] = await Promise.all([
+      prisma.follow.count({
+        where: { followingId: dbUser.id },
+      }),
+      prisma.follow.count({
+        where: { followerId: dbUser.id },
+      }),
+      prisma.post.count({
+        where: { userId: dbUser.id },
+      }),
+    ]);
 
     const profileComplete = Boolean(dbUser.name && dbUser.birthdate);
     const preferencesComplete = Boolean(
@@ -87,6 +103,9 @@ export async function GET(request) {
       organizerApplication,
       profileComplete,
       preferencesComplete,
+      followersCount,
+      followingCount,
+      postCount,
     });
   } catch (err) {
     console.error('GET /api/users/me error:', err);

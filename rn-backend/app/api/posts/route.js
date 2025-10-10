@@ -40,9 +40,15 @@ function mapPost(post) {
   };
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
+    const url = request.nextUrl;
+    const userId = url.searchParams.get('userId');
+
+    const where = userId ? { userId } : {};
+
     const posts = await prisma.post.findMany({
+      where,
       include: {
         user: {
           select: {

@@ -59,6 +59,7 @@ function AppNavigator() {
         <>
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
           <Stack.Screen name="Profile" component={ProfilePage} />
+          <Stack.Screen name="UserProfile" component={ProfilePage} />
           <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
           <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
           <Stack.Screen name="BookingPage" component={BookingPage} />

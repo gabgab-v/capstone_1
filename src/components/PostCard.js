@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
 const ActionButton = ({ iconName, label, color = 'gray' }) => (
   <TouchableOpacity className="flex-row items-center space-x-2">
@@ -106,17 +107,30 @@ export default function PostCard({ post }) {
   const createdAt = formatPostDate(post?.createdAt);
   const caption = post?.content ?? '';
   const photos = post?.imageUrls ?? [];
+  const navigation = useNavigation();
+
+  const handleAuthorPress = useCallback(() => {
+    const authorId = post?.author?.id;
+    if (!authorId) {
+      return;
+    }
+    navigation.navigate('UserProfile', { userId: authorId });
+  }, [navigation, post?.author?.id]);
 
   return (
     <View className="mt-2 bg-white p-4">
       <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center">
+        <TouchableOpacity
+          onPress={handleAuthorPress}
+          activeOpacity={0.7}
+          className="flex-row items-center"
+        >
           <Image source={{ uri: getAvatarUri(post) }} className="h-10 w-10 rounded-full" />
           <View className="ml-3">
-            <Text className="font-bold">{authorName}</Text>
+            <Text className="font-bold text-gray-900">{authorName}</Text>
             {createdAt ? <Text className="text-xs text-gray-500">{createdAt}</Text> : null}
           </View>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity>
           <Feather name="more-horizontal" size={24} color="gray" />
         </TouchableOpacity>
