@@ -1,27 +1,27 @@
 {
   "expo": {
-    "name": "prototype",
-    "slug": "prototype",
+    "name": "Pabukid",
+    "slug": "pabukid",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/pabukid-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/pabukid-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow prototype to access your location while recording trails.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow prototype to keep tracking your trail when the screen is locked."
+        "NSLocationWhenInUseUsageDescription": "Allow Pabukid to access your location while recording trails.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Pabukid to keep tracking your trail when the screen is locked."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/pabukid-adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -37,7 +37,7 @@
       "package": "com.pabukid.capstone"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/pabukid-favicon.png"
     },
     "plugins": [
       "expo-secure-store",
@@ -50,7 +50,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow prototype to access your location while recording trails."
+          "locationWhenInUsePermission": "Allow Pabukid to access your location while recording trails."
         }
       ],
       [
