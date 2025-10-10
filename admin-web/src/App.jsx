@@ -237,6 +237,8 @@ const OrganizerRequests = ({ onUnauthorized }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [approvingId, setApprovingId] = useState(null);
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -267,10 +269,11 @@ const OrganizerRequests = ({ onUnauthorized }) => {
   const handleApprove = async (userId) => {
     setMessage('');
     setError('');
+    setApprovingId(userId);
     try {
       const response = await adminApi.post(`/api/admin/approve-organizer/${userId}`);
       setMessage(response.data?.message || 'Organizer approved successfully.');
-      fetchRequests();
+      await fetchRequests();
     } catch (err) {
       console.error('Approve Request Error:', err);
       if (err.response) {
@@ -283,7 +286,113 @@ const OrganizerRequests = ({ onUnauthorized }) => {
       } else {
         setError('An unexpected error occurred.');
       }
+    } finally {
+      setApprovingId(null);
     }
+  };
+
+  const toggleExpanded = (requestId) => {
+    setExpandedId((prev) => (prev === requestId ? null : requestId));
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return 'Unknown submission time';
+    }
+    try {
+      return new Date(value).toLocaleString();
+    } catch (_err) {
+      return String(value);
+    }
+  };
+
+  const cardStyle = {
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '20px',
+    background: '#ffffff',
+    boxShadow: '0 2px 4px rgba(15, 23, 42, 0.05)',
+  };
+
+  const headerStyle = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '16px',
+    flexWrap: 'wrap',
+  };
+
+  const detailGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '12px',
+    marginTop: '16px',
+  };
+
+  const labelStyle = {
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  };
+
+  const valueStyle = {
+    fontSize: '14px',
+    color: '#0f172a',
+    marginTop: '4px',
+    whiteSpace: 'pre-wrap',
+  };
+
+  const buttonGroupStyle = {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  };
+
+  const toggleButtonStyle = {
+    background: '#e2e8f0',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    color: '#1f2937',
+  };
+
+  const approveButtonStyle = (disabled) => ({
+    background: disabled ? '#9ca3af' : '#047857',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '8px 16px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    color: '#ffffff',
+    fontWeight: 700,
+  });
+
+  const documentGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: '12px',
+    marginTop: '12px',
+  };
+
+  const documentButtonStyle = {
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    background: 'transparent',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.15)',
+  };
+
+  const documentImageStyle = {
+    width: '100%',
+    height: '110px',
+    objectFit: 'cover',
+    display: 'block',
   };
 
   return (
@@ -302,38 +411,109 @@ const OrganizerRequests = ({ onUnauthorized }) => {
           {requests.length === 0 ? (
             <p>No pending requests.</p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
-              <thead>
-                <tr style={{ background: '#f2f2f2' }}>
-                  <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Name</th>
-                  <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Email</th>
-                  <th style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'left' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((req) => (
-                  <tr key={req.id}>
-                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>{req.name}</td>
-                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>{req.email}</td>
-                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>
-                      <button
-                        onClick={() => handleApprove(req.id)}
-                        style={{
-                          cursor: 'pointer',
-                          background: 'green',
-                          color: 'white',
-                          border: 'none',
-                          padding: '5px 10px',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        Approve
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+              {requests.map((request) => {
+                const { user = {} } = request;
+                const isExpanded = expandedId === request.id;
+                return (
+                  <div key={request.id} style={cardStyle}>
+                    <div style={headerStyle}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a' }}>
+                          {request.legalName || user.name || 'Unknown applicant'}
+                        </h3>
+                        <p style={{ margin: '4px 0', color: '#334155' }}>{user.email || 'No email on file'}</p>
+                        <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                          Submitted {formatDateTime(request.submittedAt)}
+                        </p>
+                      </div>
+                      <div style={buttonGroupStyle}>
+                        <button style={toggleButtonStyle} onClick={() => toggleExpanded(request.id)}>
+                          {isExpanded ? 'Hide details' : 'View details'}
+                        </button>
+                        <button
+                          style={approveButtonStyle(approvingId === request.userId)}
+                          onClick={() => handleApprove(request.userId)}
+                          disabled={approvingId === request.userId}
+                        >
+                          {approvingId === request.userId ? 'Approving...' : 'Approve'}
+                        </button>
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <div style={{ marginTop: '16px' }}>
+                        <div style={detailGridStyle}>
+                          <div>
+                            <span style={labelStyle}>Legal Name</span>
+                            <p style={valueStyle}>{request.legalName || '—'}</p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Organization</span>
+                            <p style={valueStyle}>{request.organizationName || '—'}</p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Experience (years)</span>
+                            <p style={valueStyle}>
+                              {request.experienceYears === null ||
+                              request.experienceYears === undefined ||
+                              request.experienceYears === ''
+                                ? '—'
+                                : request.experienceYears}
+                            </p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Government ID</span>
+                            <p style={valueStyle}>{request.governmentIdNumber || '—'}</p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Contact Number</span>
+                            <p style={valueStyle}>{user.gcashNumber || '—'}</p>
+                          </div>
+                        </div>
+                        {request.certifications ? (
+                          <div style={{ marginTop: '16px' }}>
+                            <span style={labelStyle}>Certifications</span>
+                            <p style={valueStyle}>{request.certifications}</p>
+                          </div>
+                        ) : null}
+                        {request.bio ? (
+                          <div style={{ marginTop: '16px' }}>
+                            <span style={labelStyle}>Bio</span>
+                            <p style={valueStyle}>{request.bio}</p>
+                          </div>
+                        ) : null}
+                        {request.additionalNotes ? (
+                          <div style={{ marginTop: '16px' }}>
+                            <span style={labelStyle}>Additional Notes</span>
+                            <p style={valueStyle}>{request.additionalNotes}</p>
+                          </div>
+                        ) : null}
+                        {request.documentUrls && request.documentUrls.length > 0 ? (
+                          <div style={{ marginTop: '20px' }}>
+                            <span style={labelStyle}>Submitted Documents</span>
+                            <div style={documentGridStyle}>
+                              {request.documentUrls.map((url, index) => (
+                                <button
+                                  key={`${request.id}-doc-${index}`}
+                                  style={documentButtonStyle}
+                                  onClick={() => {
+                                    if (typeof window !== 'undefined') {
+                                      window.open(url, '_blank', 'noopener');
+                                    }
+                                  }}
+                                >
+                                  <img src={url} alt={`Document ${index + 1}`} style={documentImageStyle} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </>
       )}

@@ -29,6 +29,8 @@ model User {
   events                  Event[]
   trails                  Trail[]
   posts                   Post[]
+  organizerApplication    OrganizerApplication?
+  reviewedOrganizerApplications OrganizerApplication[] @relation("OrganizerApplicationReviewer")
 
   createdAt               DateTime  @default(now())
 }
@@ -111,4 +113,31 @@ enum UserRole {
   USER
   ADMIN
   ORGANIZER
+}
+
+enum OrganizerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model OrganizerApplication {
+  id                   String                      @id @default(uuid())
+  user                 User                        @relation(fields: [userId], references: [id])
+  userId               String                      @unique
+  legalName            String
+  organizationName     String?
+  certifications       String?
+  governmentIdNumber   String?
+  experienceYears      Int?
+  bio                  String?
+  documentUrls         String[]                    @default([])
+  additionalNotes      String?
+  status               OrganizerApplicationStatus  @default(PENDING)
+  reviewer             User?                       @relation("OrganizerApplicationReviewer", fields: [reviewerId], references: [id])
+  reviewerId           String?
+  reviewNotes          String?
+  reviewedAt           DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 }

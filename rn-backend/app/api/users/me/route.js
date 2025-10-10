@@ -6,6 +6,7 @@ const userSelect = {
   id: true,
   email: true,
   name: true,
+  gcashNumber: true,
   birthdate: true,
   experienceLevel: true,
   preferredDifficulty: true,
@@ -14,6 +15,24 @@ const userSelect = {
   budgetRange: true,
   role: true,
   organizerRequestPending: true,
+  organizerApplication: {
+    select: {
+      id: true,
+      status: true,
+      legalName: true,
+      organizationName: true,
+      certifications: true,
+      governmentIdNumber: true,
+      experienceYears: true,
+      bio: true,
+      additionalNotes: true,
+      documentUrls: true,
+      reviewNotes: true,
+      reviewedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
 };
 
 export async function GET(request) {
@@ -31,6 +50,7 @@ export async function GET(request) {
         id: authUser.id,
         email: authUser.email,
         name: authUser.name,
+        gcashNumber: authUser.gcashNumber,
         birthdate: authUser.birthdate,
         experienceLevel: authUser.experienceLevel,
         preferredDifficulty: authUser.preferredDifficulty,
@@ -39,6 +59,7 @@ export async function GET(request) {
         budgetRange: authUser.budgetRange,
         role: authUser.role,
         organizerRequestPending: authUser.organizerRequestPending ?? false,
+        organizerApplication: null,
       };
 
     if (!dbUser?.email) {
@@ -54,8 +75,16 @@ export async function GET(request) {
         dbUser.budgetRange,
     );
 
+    const organizerApplication = dbUser.organizerApplication
+      ? {
+          ...dbUser.organizerApplication,
+          documentUrls: dbUser.organizerApplication.documentUrls ?? [],
+        }
+      : null;
+
     return NextResponse.json({
       ...dbUser,
+      organizerApplication,
       profileComplete,
       preferencesComplete,
     });
@@ -96,8 +125,16 @@ export async function PUT(request) {
         updatedUser.budgetRange,
     );
 
+    const organizerApplication = updatedUser.organizerApplication
+      ? {
+          ...updatedUser.organizerApplication,
+          documentUrls: updatedUser.organizerApplication.documentUrls ?? [],
+        }
+      : null;
+
     return NextResponse.json({
       ...updatedUser,
+      organizerApplication,
       profileComplete,
       preferencesComplete,
     });
