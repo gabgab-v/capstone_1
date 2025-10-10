@@ -20,16 +20,46 @@ function sanitizeImageUrls(value) {
     .map((item) => item.trim());
 }
 
+function buildPostInclude(currentUserId) {
+  const include = {
+    user: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    },
+    _count: {
+      select: {
+        likes: true,
+        comments: true,
+      },
+    },
+  };
+
+  if (currentUserId) {
+    include.likes = {
+      where: { userId: currentUserId },
+      select: { id: true },
+    };
+  }
+
+  return include;
+}
+
 function mapPost(post) {
   if (!post) {
     return null;
   }
 
-  const { user, ...rest } = post;
+  const { user, likes, _count, ...rest } = post;
   return {
     ...rest,
     content: post.content ?? '',
     imageUrls: post.imageUrls ?? [],
+    likeCount: _count?.likes ?? 0,
+    commentCount: _count?.comments ?? 0,
+    likedByCurrentUser: Array.isArray(likes) ? likes.length > 0 : false,
     author: user
       ? {
           id: user.id,
@@ -42,22 +72,17 @@ function mapPost(post) {
 
 export async function GET(request) {
   try {
+    const authUser = await getUserFromToken(request);
     const url = request.nextUrl;
     const userId = url.searchParams.get('userId');
 
     const where = userId ? { userId } : {};
 
+    const include = buildPostInclude(authUser?.id);
+
     const posts = await prisma.post.findMany({
       where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      include,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -92,18 +117,14 @@ export async function POST(request) {
         imageUrls,
         userId: authUser.id,
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
     });
 
-    return NextResponse.json(mapPost(post), { status: 201 });
+    const postWithRelations = await prisma.post.findUnique({
+      where: { id: post.id },
+      include: buildPostInclude(authUser.id),
+    });
+
+    return NextResponse.json(mapPost(postWithRelations), { status: 201 });
   } catch (error) {
     console.error('POST /api/posts error:', error);
     return NextResponse.json({ error: 'Failed to create post' }, { status: 500 });

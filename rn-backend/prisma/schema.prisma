@@ -31,6 +31,8 @@ model User {
   events                  Event[]
   trails                  Trail[]
   posts                   Post[]
+  postLikes               PostLike[]
+  postComments            PostComment[]
   organizerApplication    OrganizerApplication?
   reviewedOrganizerApplications OrganizerApplication[] @relation("OrganizerApplicationReviewer")
   followers               Follow[] @relation("FollowedUser")
@@ -109,6 +111,8 @@ model Post {
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  likes     PostLike[]
+  comments  PostComment[]
 
   @@index([userId, createdAt])
 }
@@ -156,4 +160,30 @@ model Follow {
 
   @@unique([followerId, followingId])
   @@index([followingId])
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  post      Post     @relation(fields: [postId], references: [id])
+  postId    String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  content   String
+  post      Post     @relation(fields: [postId], references: [id])
+  postId    String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId, createdAt])
+  @@index([userId])
 }

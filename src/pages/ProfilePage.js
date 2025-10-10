@@ -10,11 +10,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
-import { get, post, del as deleteRequest } from '../lib/api';
+import { BASE_URL, get, post, patch, postFormData, del as deleteRequest } from '../lib/api';
 
 function getAvatarUri(profile) {
   if (!profile) {
@@ -58,6 +59,7 @@ export default function ProfilePage({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [followUpdating, setFollowUpdating] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
 
@@ -192,6 +194,86 @@ export default function ProfilePage({ navigation, route }) {
     }
   }, [followUpdating, isOwnProfile, profile, refreshUser]);
 
+  const handleAvatarPress = useCallback(async () => {
+    if (!isOwnProfile || avatarUploading) {
+      return;
+    }
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission?.granted) {
+        Alert.alert(
+          'Permission needed',
+          'We need access to your photos so you can choose a profile picture.',
+        );
+        return;
+      }
+
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (pickerResult.canceled) {
+        return;
+      }
+
+      const asset = pickerResult.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Upload canceled', 'No image was selected.');
+        return;
+      }
+
+      setAvatarUploading(true);
+
+      const fileName =
+        asset.fileName ?? asset.uri.split('/').pop() ?? `avatar-${Date.now()}.jpg`;
+      const mimeType =
+        asset.mimeType ?? (asset.type?.startsWith('image/') ? asset.type : 'image/jpeg');
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri: asset.uri,
+        name: fileName,
+        type: mimeType,
+      });
+
+      const uploadResponse = await postFormData('/api/upload', formData);
+      const uploadedUrl = uploadResponse?.url;
+      if (!uploadedUrl) {
+        throw new Error('Upload did not return a file URL.');
+      }
+
+      const absoluteUrl = uploadedUrl.startsWith('http')
+        ? uploadedUrl
+        : `${BASE_URL}${uploadedUrl}`;
+
+      await patch('/api/users/me', { avatarUrl: absoluteUrl });
+
+      profileRef.current = profileRef.current
+        ? { ...profileRef.current, avatarUrl: absoluteUrl }
+        : profileRef.current;
+      setProfile((current) => (current ? { ...current, avatarUrl: absoluteUrl } : current));
+
+      if (refreshUser) {
+        await refreshUser();
+      }
+
+      Alert.alert('Profile updated', 'Your profile picture has been updated.');
+    } catch (error) {
+      console.error('Failed to update avatar:', error);
+      const message =
+        error?.body?.error ||
+        error?.message ||
+        'Unable to update your profile picture right now.';
+      Alert.alert('Upload failed', message);
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [avatarUploading, isOwnProfile, refreshUser]);
+
   if (authLoading) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
@@ -265,10 +347,31 @@ export default function ProfilePage({ navigation, route }) {
       </View>
 
       <View className="mt-4 items-center px-4">
-        <Image
-          source={{ uri: getAvatarUri(profile) }}
-          className="h-24 w-24 rounded-full border-2 border-gray-200"
-        />
+        <View className="relative">
+          <TouchableOpacity
+            onPress={handleAvatarPress}
+            disabled={!isOwnProfile || avatarUploading}
+            activeOpacity={0.7}
+          >
+            <Image
+              source={{ uri: getAvatarUri(profile) }}
+              className="h-24 w-24 rounded-full border-2 border-gray-200"
+            />
+          </TouchableOpacity>
+          {isOwnProfile ? (
+            <View className="absolute -bottom-1 -right-1 rounded-full bg-green-600 p-1.5">
+              <Ionicons name="camera" size={14} color="#fff" />
+            </View>
+          ) : null}
+          {avatarUploading ? (
+            <View className="absolute inset-0 items-center justify-center rounded-full bg-black/40">
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          ) : null}
+        </View>
+        {isOwnProfile ? (
+          <Text className="mt-2 text-xs text-gray-500">Tap to update photo</Text>
+        ) : null}
         <Text className="mt-3 text-xl font-bold text-gray-900">
           {profile.name ?? profile.email ?? 'Explorer'}
         </Text>

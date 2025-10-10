@@ -162,3 +162,58 @@ export async function PUT(request) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+export async function PATCH(request) {
+  try {
+    const authUser = await getUserFromToken(request);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let avatarUrl = null;
+    try {
+      const body = await request.json();
+      avatarUrl = body?.avatarUrl ?? null;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    if (avatarUrl !== null && typeof avatarUrl !== 'string') {
+      return NextResponse.json({ error: 'avatarUrl must be a string or null' }, { status: 400 });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: authUser.id },
+      data: {
+        avatarUrl,
+      },
+      select: userSelect,
+    });
+
+    const profileComplete = Boolean(updatedUser.name && updatedUser.birthdate);
+    const preferencesComplete = Boolean(
+      updatedUser.experienceLevel &&
+        updatedUser.preferredDifficulty &&
+        updatedUser.preferredTrailType &&
+        updatedUser.preferredDurationHrs &&
+        updatedUser.budgetRange,
+    );
+
+    const organizerApplication = updatedUser.organizerApplication
+      ? {
+          ...updatedUser.organizerApplication,
+          documentUrls: updatedUser.organizerApplication.documentUrls ?? [],
+        }
+      : null;
+
+    return NextResponse.json({
+      ...updatedUser,
+      organizerApplication,
+      profileComplete,
+      preferencesComplete,
+    });
+  } catch (err) {
+    console.error('PATCH /api/users/me error:', err);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

@@ -165,6 +165,13 @@ export function put(path, body) {
     });
 }
 
+export function patch(path, body) {
+    return request(path, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+    });
+}
+
 export function del(path) {
     return request(path, { method: 'DELETE' });
 }
