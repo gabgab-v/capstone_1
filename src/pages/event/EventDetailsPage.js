@@ -14,7 +14,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
-import { get, put, BASE_URL } from '../../lib/api';
+import { get, put, post, BASE_URL } from '../../lib/api';
 
 const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -184,6 +184,8 @@ function AttendeeRow({
   canManage,
   onUpdateStatus,
   actionInFlight,
+  onMessage,
+  messagingUserId,
 }) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -202,6 +204,11 @@ function AttendeeRow({
     actionInFlight?.bookingId === booking?.id && actionInFlight?.status === 'PENDING',
   );
   const disableActions = approving || rejecting || pending;
+  const bookingUserId = booking?.user?.id;
+  const isMessaging = Boolean(
+    messagingUserId && bookingUserId && messagingUserId === bookingUserId,
+  );
+  const canMessage = Boolean(onMessage && bookingUserId && !isCurrentUser);
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
@@ -295,6 +302,23 @@ function AttendeeRow({
         <Text style={[styles.attendeeStatus, { color: statusMeta.color }]}>
           {statusMeta.label}
         </Text>
+        {canMessage ? (
+          <TouchableOpacity
+            onPress={() => onMessage?.(booking?.user)}
+            disabled={isMessaging}
+            activeOpacity={0.7}
+            style={[
+              styles.attendeeMessageButton,
+              isMessaging ? styles.attendeeMessageButtonDisabled : null,
+            ]}
+          >
+            {isMessaging ? (
+              <ActivityIndicator size="small" color="#1f2937" />
+            ) : (
+              <Text style={styles.attendeeMessageButtonText}>Message</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
         {receiptUrl ? (
           <TouchableOpacity onPress={handleOpenReceipt}>
             <Text style={styles.receiptLink}>View receipt</Text>
@@ -323,6 +347,7 @@ export default function EventDetailsPage({ route, navigation }) {
   const [attendeesError, setAttendeesError] = useState(null);
   const [bookingActionInFlight, setBookingActionInFlight] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [messageTargetId, setMessageTargetId] = useState(null);
 
   const tabs = useMemo(
     () => [...BASE_TABS, { key: 'attendees', label: 'Attendees' }],
@@ -394,6 +419,47 @@ export default function EventDetailsPage({ route, navigation }) {
       }
     },
     [],
+  );
+
+  const handleMessageUser = useCallback(
+    async (targetUser) => {
+      const targetId = targetUser?.id;
+      if (!targetId || targetId === user?.id) {
+        return;
+      }
+
+      setMessageTargetId(targetId);
+      try {
+        const conversation = await post('/api/chats', { userId: targetId });
+        const peersPayload =
+          conversation?.peers && conversation.peers.length
+            ? conversation.peers
+            : [
+                {
+                  id: targetUser.id,
+                  name: targetUser.name,
+                  email: targetUser.email,
+                  avatarUrl: targetUser.avatarUrl ?? null,
+                },
+              ];
+
+        navigation.navigate('ChatConversation', {
+          conversationId: conversation.id,
+          peers: peersPayload,
+          initialConversation: conversation,
+        });
+      } catch (error) {
+        console.error('Unable to start chat with attendee:', error);
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          'Unable to start a chat with this member right now.';
+        Alert.alert('Chat unavailable', message);
+      } finally {
+        setMessageTargetId(null);
+      }
+    },
+    [navigation, user?.id],
   );
 
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
@@ -604,6 +670,8 @@ export default function EventDetailsPage({ route, navigation }) {
                       canManage={isOrganizer}
                       onUpdateStatus={handleUpdateBookingStatus}
                       actionInFlight={bookingActionInFlight}
+                      onMessage={handleMessageUser}
+                      messagingUserId={messageTargetId}
                     />
                   ))
                 ) : (
@@ -896,6 +964,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
     marginTop: 8,
+  },
+  attendeeMessageButton: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#16A34A',
+    backgroundColor: '#DCFCE7',
+  },
+  attendeeMessageButtonDisabled: {
+    opacity: 0.7,
+  },
+  attendeeMessageButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#166534',
   },
   attendeeActionButton: {
     paddingHorizontal: 12,

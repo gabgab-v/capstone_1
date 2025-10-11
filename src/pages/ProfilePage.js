@@ -60,6 +60,7 @@ export default function ProfilePage({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [followUpdating, setFollowUpdating] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [chatStarting, setChatStarting] = useState(false);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
 
@@ -193,6 +194,41 @@ export default function ProfilePage({ navigation, route }) {
       setFollowUpdating(false);
     }
   }, [followUpdating, isOwnProfile, profile, refreshUser]);
+
+  const handleMessagePress = useCallback(async () => {
+    if (!profile?.id || isOwnProfile || chatStarting) {
+      return;
+    }
+
+    setChatStarting(true);
+    try {
+      const conversation = await post('/api/chats', { userId: profile.id });
+      const peersPayload =
+        conversation?.peers && conversation.peers.length
+          ? conversation.peers
+          : [
+              {
+                id: profile.id,
+                name: profile.name,
+                email: profile.email,
+                avatarUrl: profile.avatarUrl ?? null,
+              },
+            ];
+
+      navigation.navigate('ChatConversation', {
+        conversationId: conversation.id,
+        peers: peersPayload,
+        initialConversation: conversation,
+      });
+    } catch (error) {
+      console.error('Failed to open chat:', error);
+      const message =
+        error?.body?.error || error?.message || 'Unable to start a chat with this user right now.';
+      Alert.alert('Chat unavailable', message);
+    } finally {
+      setChatStarting(false);
+    }
+  }, [chatStarting, isOwnProfile, navigation, profile]);
 
   const handleAvatarPress = useCallback(async () => {
     if (!isOwnProfile || avatarUploading) {
@@ -393,21 +429,34 @@ export default function ProfilePage({ navigation, route }) {
             <Text className="text-center font-semibold text-green-600">Edit Profile</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            onPress={handleFollowToggle}
-            disabled={followUpdating}
-            className={`mt-4 w-full rounded-full py-2 ${
-              profile.isFollowing ? 'border border-green-600 bg-white' : 'bg-green-600'
-            }`}
-          >
-            <Text
-              className={`text-center font-semibold ${
-                profile.isFollowing ? 'text-green-600' : 'text-white'
+          <View className="mt-4 w-full flex-row space-x-3">
+            <TouchableOpacity
+              onPress={handleFollowToggle}
+              disabled={followUpdating}
+              className={`flex-1 rounded-full py-2 ${
+                profile.isFollowing ? 'border border-green-600 bg-white' : 'bg-green-600'
               }`}
+              style={followUpdating ? { opacity: 0.7 } : null}
             >
-              {followUpdating ? 'Updating…' : profile.isFollowing ? 'Following' : 'Follow'}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                className={`text-center font-semibold ${
+                  profile.isFollowing ? 'text-green-600' : 'text-white'
+                }`}
+              >
+                {followUpdating ? 'Updating...' : profile.isFollowing ? 'Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleMessagePress}
+              disabled={chatStarting}
+              className="flex-1 rounded-full border border-green-600 bg-white py-2"
+              style={chatStarting ? { opacity: 0.7 } : null}
+            >
+              <Text className="text-center font-semibold text-green-600">
+                {chatStarting ? 'Opening...' : 'Message'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4">

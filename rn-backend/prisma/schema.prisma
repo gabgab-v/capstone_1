@@ -37,6 +37,8 @@ model User {
   reviewedOrganizerApplications OrganizerApplication[] @relation("OrganizerApplicationReviewer")
   followers               Follow[] @relation("FollowedUser")
   following               Follow[] @relation("FollowingUser")
+  conversations           ConversationParticipant[]
+  messages                Message[]
 
   createdAt               DateTime  @default(now())
 }
@@ -186,4 +188,39 @@ model PostComment {
 
   @@index([postId, createdAt])
   @@index([userId])
+}
+
+model Conversation {
+  id           String                    @id @default(uuid())
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String        @id @default(uuid())
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  lastReadAt     DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  sender         User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String
+  body           String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
 }

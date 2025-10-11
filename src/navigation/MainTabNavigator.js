@@ -9,6 +9,7 @@ import CreateEventPage from '../pages/CreateEventPage';
 import EventsPage from '../pages/event/EventPage';
 import TrailRecorderPage from '../pages/TrailRecorderPage';
 import ProfilePage from '../pages/ProfilePage';
+import ChatListPage from '../pages/chat/ChatListPage';
 import { get } from '../lib/api';
 
 const Tab = createBottomTabNavigator();
@@ -57,6 +58,7 @@ export default function MainTabNavigator() {
             Record: 'map',
             Create: 'plus-square',
             Events: 'bell',
+            Messages: 'message-circle',
             Profile: 'user',
           };
           return <Icon name={icons[route.name]} size={size} color={color} />;
@@ -82,6 +84,7 @@ export default function MainTabNavigator() {
       <Tab.Screen name="Record" component={TrailRecorderPage} />
       {isOrganizer && <Tab.Screen name="Create" component={CreateEventPage} />}
       <Tab.Screen name="Events" component={EventsPage} />
+      <Tab.Screen name="Messages" component={ChatListPage} />
 
       <Tab.Screen name="Profile">
         {(props) => <ProfilePage {...props} user={user} />}
