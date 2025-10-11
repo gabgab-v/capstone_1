@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
-import { get, BASE_URL } from "../../lib/api";
+import { get, put, BASE_URL } from "../../lib/api";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -168,7 +168,7 @@ function AttendeeRow({ attendee, index }) {
   );
 }
 
-function BookingCard({ booking, onOpenEvent }) {
+function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
   const event = booking?.event ?? null;
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
   const priceLabel = formatPrice(event?.price);
@@ -178,6 +178,9 @@ function BookingCard({ booking, onOpenEvent }) {
   const overview = truncate(event?.overview);
   const statusStyles = getStatusStyles(booking?.status);
   const bookedAtLabel = formatDateTime(booking?.createdAt);
+  const normalizedStatus =
+    typeof booking?.status === "string" ? booking.status.toUpperCase() : "PENDING";
+  const canCancel = normalizedStatus === "PENDING" && typeof onCancelBooking === "function";
 
   return (
     <View style={styles.card}>
@@ -225,6 +228,20 @@ function BookingCard({ booking, onOpenEvent }) {
         >
           <Text style={styles.primaryButtonText}>View Event Details</Text>
         </TouchableOpacity>
+        {canCancel ? (
+          <TouchableOpacity
+            style={[styles.cancelButton, isCancelling ? styles.cancelButtonDisabled : null]}
+            activeOpacity={0.85}
+            onPress={() => onCancelBooking(booking)}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator size="small" color="#B91C1C" />
+            ) : (
+              <Text style={styles.cancelButtonText}>Cancel Booking</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -334,6 +351,7 @@ export default function EventsPage({ navigation }) {
   const [eventAttendees, setEventAttendees] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancellingBookingId, setCancellingBookingId] = useState(null);
 
   const hasLoadedRef = useRef(false);
 
@@ -430,6 +448,57 @@ export default function EventsPage({ navigation }) {
     [navigation]
   );
 
+  const cancelBooking = useCallback(
+    async (bookingId) => {
+      if (!bookingId) {
+        return;
+      }
+
+      setCancellingBookingId(bookingId);
+      try {
+        const updatedBooking = await put(`/api/bookings/${bookingId}`, { status: "CANCELLED" });
+        setBookedEvents((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) => (item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item))
+            : prev,
+        );
+        Alert.alert("Booking cancelled", "Your booking has been cancelled successfully.");
+      } catch (error) {
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          "We couldn't cancel your booking right now. Please try again.";
+        Alert.alert("Cancellation failed", message);
+      } finally {
+        setCancellingBookingId(null);
+      }
+    },
+    [],
+  );
+
+  const handleCancelBooking = useCallback(
+    (booking) => {
+      if (!booking?.id) {
+        return;
+      }
+
+      Alert.alert(
+        "Cancel booking?",
+        "This will release your spot for other hikers. You can book again if slots remain open.",
+        [
+          { text: "Keep Booking", style: "cancel" },
+          {
+            text: "Cancel Booking",
+            style: "destructive",
+            onPress: () => cancelBooking(booking.id),
+          },
+        ],
+        { cancelable: true },
+      );
+    },
+    [cancelBooking],
+  );
+
   const handleViewBookings = useCallback(
     (event) => {
       if (!event?.id) {
@@ -493,7 +562,13 @@ export default function EventsPage({ navigation }) {
 
         {sortedBookings.length ? (
           sortedBookings.map((booking) => (
-            <BookingCard key={booking?.id || booking?.eventId} booking={booking} onOpenEvent={handleOpenEvent} />
+            <BookingCard
+              key={booking?.id || booking?.eventId}
+              booking={booking}
+              onOpenEvent={handleOpenEvent}
+              onCancelBooking={handleCancelBooking}
+              isCancelling={cancellingBookingId === (booking?.id || null)}
+            />
           ))
         ) : (
           <View style={styles.emptyCard}>
@@ -611,6 +686,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  cancelButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#B91C1C",
+    backgroundColor: "#FEF2F2",
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  cancelButtonText: { color: "#B91C1C", fontSize: 14, fontWeight: "700" },
+  cancelButtonDisabled: { opacity: 0.7 },
   metricSummary: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -36,6 +36,10 @@ export async function PUT(req, { params }) {
     const isOrganizer =
       actor.role === "ORGANIZER" && bookingToUpdate.event.organizerId === actor.id;
     const isBookingOwner = actor.id === bookingToUpdate.userId;
+    const currentStatus =
+      typeof bookingToUpdate.status === "string"
+        ? bookingToUpdate.status.toUpperCase()
+        : "PENDING";
 
     const allowedStatuses = new Set();
     if (isOrganizer) {
@@ -54,6 +58,17 @@ export async function PUT(req, { params }) {
 
     if (!allowedStatuses.has(normalizedStatus)) {
       return NextResponse.json({ error: "Invalid status provided" }, { status: 400 });
+    }
+
+    if (
+      isBookingOwner &&
+      normalizedStatus === "CANCELLED" &&
+      (currentStatus === "APPROVED" || currentStatus === "CONFIRMED")
+    ) {
+      return NextResponse.json(
+        { error: "Approved bookings can no longer be cancelled." },
+        { status: 409 },
+      );
     }
 
     // 5. Update the booking's status in the database
