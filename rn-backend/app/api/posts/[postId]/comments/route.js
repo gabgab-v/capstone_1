@@ -36,6 +36,7 @@ function mapComment(comment) {
           id: user.id,
           name: user.name ?? null,
           email: user.email ?? null,
+          avatarUrl: user.avatarUrl ?? null,
         }
       : null,
   };
@@ -56,6 +57,7 @@ export async function GET(_request, { params }) {
             id: true,
             name: true,
             email: true,
+            avatarUrl: true,
           },
         },
       },
@@ -101,6 +103,7 @@ export async function POST(request, { params }) {
             id: true,
             name: true,
             email: true,
+            avatarUrl: true,
           },
         },
       },

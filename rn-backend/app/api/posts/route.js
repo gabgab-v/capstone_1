@@ -27,6 +27,7 @@ function buildPostInclude(currentUserId) {
         id: true,
         name: true,
         email: true,
+        avatarUrl: true,
       },
     },
     _count: {
@@ -65,6 +66,7 @@ function mapPost(post) {
           id: user.id,
           name: user.name ?? null,
           email: user.email ?? null,
+          avatarUrl: user.avatarUrl ?? null,
         }
       : null,
   };

@@ -107,6 +107,13 @@ function getAuthorName(post) {
 }
 
 function getAvatarUri(post) {
+  const explicitAvatar = post?.author?.avatarUrl;
+  if (typeof explicitAvatar === 'string') {
+    const trimmed = explicitAvatar.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
   const sourceId = post?.author?.id ?? post?.id ?? Math.random().toString(36).slice(2);
   return `https://i.pravatar.cc/150?u=${encodeURIComponent(sourceId)}`;
 }
