@@ -98,7 +98,7 @@ export function ThemeProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    NativeWindStyleSheet.setColorScheme(isDarkMode ? 'dark' : 'light');
+    NativeWindStyleSheet?.setColorScheme?.(isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   useEffect(() => {

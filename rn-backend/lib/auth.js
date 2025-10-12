@@ -11,12 +11,71 @@ export async function getUserFromToken(request) {
   const token = header.split(' ')[1];
   if (!token) return null;
 
+  if (!SUPABASE_JWT_SECRET) {
+    console.error('Token verification failed: SUPABASE_JWT_SECRET is not configured.');
+    return null;
+  }
+
   try {
     const payload = jwt.verify(token, SUPABASE_JWT_SECRET);
 
-    const user = await prisma.user.findUnique({
-      where: { supabaseUserId: payload.sub },
-    });
+    const emailFromToken =
+      payload.email ??
+      payload?.user_metadata?.email ??
+      payload?.user_metadata?.email_address ??
+      null;
+
+    let user =
+      (await prisma.user.findUnique({
+        where: { supabaseUserId: payload.sub },
+      })) ?? null;
+
+    if (!user && emailFromToken) {
+      // Handle legacy records that were created before Supabase integration.
+      user = await prisma.user.findUnique({
+        where: { email: emailFromToken },
+      });
+      if (user && !user.supabaseUserId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            supabaseUserId: payload.sub,
+          },
+        });
+      }
+    }
+
+    if (!user) {
+      if (!emailFromToken) {
+        console.error(
+          'Token verification failed: Supabase payload did not include an email for user',
+          payload.sub,
+        );
+        return null;
+      }
+
+      const inferredName =
+        payload?.user_metadata?.full_name ??
+        payload?.user_metadata?.name ??
+        payload?.user_metadata?.user_name ??
+        null;
+
+      user = await prisma.user.create({
+        data: {
+          id: payload.sub,
+          supabaseUserId: payload.sub,
+          email: emailFromToken,
+          name: inferredName,
+        },
+      });
+    } else if (!user.email && emailFromToken) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          email: emailFromToken,
+        },
+      });
+    }
 
     if (!user) return null;
 

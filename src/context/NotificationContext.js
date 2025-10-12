@@ -9,7 +9,12 @@ import React, {
 } from 'react';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
+
+const {
+  module: Notifications,
+  isAvailable: isNotificationsModuleAvailable,
+  unavailablePermissionsState,
+} = loadNotificationsModule();
 
 function resolveIosStatuses() {
   const constants = Notifications?.IosAuthorizationStatus;
@@ -49,17 +54,27 @@ const NotificationContext = createContext({
   notificationsEnabled: false,
   permissions: null,
   isDeviceSupported: false,
+  isNativeModuleAvailable: false,
+  isPhysicalDevice: false,
   requestPermission: async () => false,
   scheduleNotification: async () => null,
   refreshPermissions: async () => null,
 });
 
 export function NotificationProvider({ children }) {
-  const [permissions, setPermissions] = useState(null);
-  const isDeviceSupported = Device.isDevice;
+  const [permissions, setPermissions] = useState(
+    isNotificationsModuleAvailable ? null : unavailablePermissionsState,
+  );
+  const isPhysicalDevice = Device.isDevice;
+  const isDeviceSupported = isPhysicalDevice && isNotificationsModuleAvailable;
   const hasInitialisedHandler = useRef(false);
 
   const refreshPermissions = useCallback(async () => {
+    if (!isNotificationsModuleAvailable) {
+      setPermissions(unavailablePermissionsState);
+      return unavailablePermissionsState;
+    }
+
     try {
       const status = await Notifications.getPermissionsAsync();
       setPermissions(status);
@@ -135,6 +150,10 @@ export function NotificationProvider({ children }) {
   }, [isDeviceSupported, refreshPermissions]);
 
   useEffect(() => {
+    if (!isNotificationsModuleAvailable) {
+      return;
+    }
+
     if (hasInitialisedHandler.current) {
       return;
     }
@@ -150,6 +169,10 @@ export function NotificationProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (!isNotificationsModuleAvailable) {
+      return;
+    }
+
     if (Platform.OS !== 'android') {
       return;
     }
@@ -170,11 +193,21 @@ export function NotificationProvider({ children }) {
       notificationsEnabled: isPermissionGranted(permissions),
       permissions,
       isDeviceSupported,
+      isNativeModuleAvailable: isNotificationsModuleAvailable,
+      isPhysicalDevice,
       requestPermission,
       scheduleNotification,
       refreshPermissions,
     }),
-    [isDeviceSupported, permissions, requestPermission, scheduleNotification, refreshPermissions],
+    [
+      isDeviceSupported,
+      isNotificationsModuleAvailable,
+      isPhysicalDevice,
+      permissions,
+      requestPermission,
+      scheduleNotification,
+      refreshPermissions,
+    ],
   );
 
   return (
@@ -186,4 +219,49 @@ export function NotificationProvider({ children }) {
 
 export function useNotifications() {
   return useContext(NotificationContext);
+}
+
+function loadNotificationsModule() {
+  const unavailablePermissions = Object.freeze({
+    granted: false,
+    status: 'unavailable',
+    canAskAgain: false,
+  });
+
+  try {
+    const module = require('expo-notifications');
+    return {
+      module,
+      isAvailable: true,
+      unavailablePermissionsState: unavailablePermissions,
+    };
+  } catch (error) {
+    if (typeof __DEV__ === 'boolean' && __DEV__) {
+      console.warn(
+        'expo-notifications native module is unavailable; push notifications are disabled for this build.',
+        error,
+      );
+    }
+
+    return {
+      module: createUnavailableNotificationsModule(unavailablePermissions),
+      isAvailable: false,
+      unavailablePermissionsState: unavailablePermissions,
+    };
+  }
+}
+
+function createUnavailableNotificationsModule(fallbackPermissions) {
+  const resolvePermissions = async () => fallbackPermissions;
+
+  return {
+    getPermissionsAsync: resolvePermissions,
+    requestPermissionsAsync: resolvePermissions,
+    scheduleNotificationAsync: async () => null,
+    setNotificationHandler: () => {},
+    setNotificationChannelAsync: async () => {},
+    AndroidNotificationPriority: {},
+    AndroidImportance: {},
+    AndroidNotificationVisibility: {},
+  };
 }

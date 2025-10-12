@@ -44,7 +44,7 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const dbUser =
+    let dbUser =
       (await prisma.user.findUnique({
         where: { id: authUser.id },
         select: userSelect,
@@ -67,7 +67,17 @@ export async function GET(request) {
       };
 
     if (!dbUser?.email) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      if (authUser.email) {
+        await prisma.user.update({
+          where: { id: authUser.id },
+          data: {
+            email: authUser.email,
+          },
+        });
+        dbUser = { ...dbUser, email: authUser.email };
+      } else {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
     }
 
     const [followersCount, followingCount, postCount] = await Promise.all([

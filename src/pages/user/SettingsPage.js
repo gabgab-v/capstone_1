@@ -34,6 +34,8 @@ export default function SettingsPage({ navigation }) {
     requestPermission,
     isDeviceSupported,
     refreshPermissions,
+    isNativeModuleAvailable,
+    isPhysicalDevice,
   } = useNotifications();
   const [isRequestingPush, setIsRequestingPush] = useState(false);
   const [emailUpdates, setEmailUpdates] = useState(true);
@@ -75,13 +77,16 @@ export default function SettingsPage({ navigation }) {
   }, []);
 
   const pushStatusMessage = useMemo(() => {
-    if (!isDeviceSupported) {
+    if (!isPhysicalDevice) {
       return 'Notifications require running TrailMate on a physical device.';
+    }
+    if (!isNativeModuleAvailable) {
+      return 'Push notifications are not available in this build of TrailMate.';
     }
     return notificationsEnabled
       ? 'Enabled on this device.'
       : 'Turn on notifications to get booking confirmations and event reminders.';
-  }, [isDeviceSupported, notificationsEnabled]);
+  }, [isNativeModuleAvailable, isPhysicalDevice, notificationsEnabled]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -129,7 +134,9 @@ export default function SettingsPage({ navigation }) {
       if (!isDeviceSupported) {
         Alert.alert(
           'Notifications unavailable',
-          'Enable notifications on a physical device to receive real-time updates.',
+          !isPhysicalDevice
+            ? 'Enable notifications on a physical device to receive real-time updates.'
+            : 'This build is missing push notification support. Install the latest TrailMate build with push enabled to receive alerts.',
         );
         return;
       }
@@ -179,6 +186,7 @@ export default function SettingsPage({ navigation }) {
     [
       isRequestingPush,
       isDeviceSupported,
+      isPhysicalDevice,
       requestPermission,
       refreshPermissions,
     ],
