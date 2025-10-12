@@ -63,7 +63,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
+          "icon": "./assets/pabukid-icon.png",
           "color": "#ffffff"
         }
       ]
