@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
@@ -101,6 +102,16 @@ export default function ProfilePage({ navigation, route }) {
   const [deletingReview, setDeletingReview] = useState(false);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
+  const insets = useSafeAreaInsets();
+  const headerTopPadding = useMemo(() => Math.max(insets.top, 16), [insets.top]);
+  const listContentInset = useMemo(
+    () => ({ paddingBottom: Math.max(32, insets.bottom + 16) }),
+    [insets.bottom],
+  );
+  const scrollIndicatorInsets = useMemo(
+    () => ({ top: headerTopPadding, bottom: insets.bottom }),
+    [headerTopPadding, insets.bottom],
+  );
 
   const routeUserId = route?.params?.userId;
   const viewedUserId = useMemo(() => {
@@ -534,20 +545,30 @@ export default function ProfilePage({ navigation, route }) {
   const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const renderHeader = () => (
-    <View className="bg-white pb-6 dark:bg-slate-900">
-      <View className="flex-row items-center justify-between px-4 pt-4">
+    <View
+      className="bg-white pb-6 dark:bg-slate-900"
+      style={{ paddingTop: headerTopPadding }}
+    >
+      <View className="flex-row items-center justify-between px-4 pt-2">
         {navigation.canGoBack() ? (
-          <TouchableOpacity onPress={() => navigation.goBack()} className="rounded-full p-1">
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="rounded-full p-1"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
         ) : (
           <Text className="text-lg font-semibold text-gray-900 dark:text-slate-100">Hiker</Text>
         )}
-        <View className="flex-row items-center space-x-4">
+        <View className="flex-row items-center space-x-3">
           {isOwnProfile ? (
             <>
               <Ionicons name="notifications-outline" size={24} color="#16a34a" />
-              <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Settings')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Ionicons name="settings-outline" size={24} color="#16a34a" />
               </TouchableOpacity>
             </>
@@ -778,7 +799,8 @@ export default function ProfilePage({ navigation, route }) {
             </View>
           ) : null
         }
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={listContentInset}
+        scrollIndicatorInsets={scrollIndicatorInsets}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2E7D32" />
         }

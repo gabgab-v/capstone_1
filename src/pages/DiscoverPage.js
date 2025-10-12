@@ -9,6 +9,7 @@ import {
   Image,
   RefreshControl,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { get } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -285,6 +286,21 @@ export default function DiscoverPage() {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const listContentInsets = useMemo(
+    () => ({
+      paddingTop: Math.max(18, insets.top + 12),
+      paddingBottom: Math.max(24, insets.bottom + 24),
+    }),
+    [insets.bottom, insets.top]
+  );
+  const scrollIndicatorInsets = useMemo(
+    () => ({
+      top: Math.max(12, insets.top + 8),
+      bottom: Math.max(16, insets.bottom + 8),
+    }),
+    [insets.bottom, insets.top]
+  );
 
   const preferenceVector = useMemo(() => {
     if (!user?.preferencesComplete) {
@@ -401,35 +417,41 @@ export default function DiscoverPage() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-      </View>
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2E7D32" />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!events.length) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.empty}>No events yet. Check back later!</Text>
-      </View>
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        <View style={styles.center}>
+          <Text style={styles.empty}>No events yet. Check back later!</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <FlatList
-      data={scoredEvents}
-      keyExtractor={(item, index) => item.event?.id?.toString() ?? `event-${index}`}
-      contentContainerStyle={styles.listContent}
-      ListHeaderComponent={preferenceHeader}
-      ListHeaderComponentStyle={preferenceHeaderStyle}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => fetchEvents({ useRefreshControl: true })}
-          colors={["#2E7D32"]}
-        />
-      }
-      renderItem={({ item }) => {
+    <SafeAreaView edges={["top"]} style={styles.safeArea}>
+      <FlatList
+        data={scoredEvents}
+        keyExtractor={(item, index) => item.event?.id?.toString() ?? `event-${index}`}
+        contentContainerStyle={[styles.listContent, listContentInsets]}
+        scrollIndicatorInsets={scrollIndicatorInsets}
+        ListHeaderComponent={preferenceHeader}
+        ListHeaderComponentStyle={preferenceHeaderStyle}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchEvents({ useRefreshControl: true })}
+            colors={["#2E7D32"]}
+          />
+        }
+        renderItem={({ item }) => {
         const { event, score } = item;
 
         const metrics = [
@@ -551,10 +573,12 @@ export default function DiscoverPage() {
         );
       }}
     />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   empty: { fontSize: 16, color: "#666" },
   listContent: {

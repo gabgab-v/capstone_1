@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { get, put, BASE_URL } from "../../lib/api";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
@@ -354,6 +355,21 @@ export default function EventsPage({ navigation }) {
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
 
   const hasLoadedRef = useRef(false);
+  const insets = useSafeAreaInsets();
+  const contentInsets = useMemo(
+    () => ({
+      paddingTop: Math.max(16, insets.top + 8),
+      paddingBottom: Math.max(32, insets.bottom + 16),
+    }),
+    [insets.bottom, insets.top]
+  );
+  const scrollIndicatorInsets = useMemo(
+    () => ({
+      top: Math.max(8, insets.top),
+      bottom: Math.max(8, insets.bottom),
+    }),
+    [insets.bottom, insets.top]
+  );
 
   const sortedBookings = useMemo(() => {
     return [...bookedEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
@@ -533,27 +549,31 @@ export default function EventsPage({ navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-      </View>
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2E7D32" />
+        </View>
+      </SafeAreaView>
     );
   }
 
 
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor="#2E7D32"
-          colors={["#2E7D32"]}
-        />
-      }
-    >
+    <SafeAreaView edges={["top"]} style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, contentInsets]}
+        scrollIndicatorInsets={scrollIndicatorInsets}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#2E7D32"
+            colors={["#2E7D32"]}
+          />
+        }
+      >
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>My Bookings</Text>
@@ -607,14 +627,16 @@ export default function EventsPage({ navigation }) {
           )}
         </View>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   contentContainer: { padding: 16, paddingBottom: 32 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFFFF" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8FAFC" },
   section: { marginBottom: 30 },
   sectionHeader: {
     flexDirection: "row",

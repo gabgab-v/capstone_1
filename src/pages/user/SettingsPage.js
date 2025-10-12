@@ -14,6 +14,7 @@ import Constants from 'expo-constants';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function statusMeta(status) {
   switch (status) {
@@ -41,6 +42,15 @@ export default function SettingsPage({ navigation }) {
   const [shareActivityStatus, setShareActivityStatus] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const { isDarkMode, setDarkMode: setThemeDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
+  const contentContainerStyle = useMemo(
+    () => ({
+      paddingHorizontal: 24,
+      paddingBottom: Math.max(32, insets.bottom + 24),
+      paddingTop: Math.max(32, insets.top + 16),
+    }),
+    [insets.bottom, insets.top],
+  );
 
   const avatarUri = useMemo(() => {
     if (user?.avatarUrl) {
@@ -482,7 +492,7 @@ export default function SettingsPage({ navigation }) {
   return (
     <ScrollView
       className="flex-1 bg-slate-50 dark:bg-slate-950"
-      contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32, paddingTop: 32 }}
+      contentContainerStyle={contentContainerStyle}
       showsVerticalScrollIndicator={false}
     >
       <Text className="text-3xl font-bold text-slate-900 dark:text-slate-100">Settings</Text>
