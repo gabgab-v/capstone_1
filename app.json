@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Pabukid",
-    "slug": "pabukid",
+    "slug": "prototype",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/pabukid-icon.png",
