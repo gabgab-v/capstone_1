@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
+import { useTheme } from '../../context/ThemeContext';
 
 function statusMeta(status) {
   switch (status) {
@@ -26,13 +28,19 @@ function statusMeta(status) {
 
 export default function SettingsPage({ navigation }) {
   const { user, isLoading, logout } = useAuth();
-  const [pushNotifications, setPushNotifications] = useState(true);
+  const {
+    notificationsEnabled,
+    requestPermission,
+    isDeviceSupported,
+    refreshPermissions,
+  } = useNotifications();
+  const [isRequestingPush, setIsRequestingPush] = useState(false);
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [smsAlerts, setSmsAlerts] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
   const [locationServices, setLocationServices] = useState(true);
   const [shareActivityStatus, setShareActivityStatus] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const { isDarkMode, setDarkMode: setThemeDarkMode } = useTheme();
 
   const avatarUri = useMemo(() => {
     if (user?.avatarUrl) {
@@ -55,6 +63,15 @@ export default function SettingsPage({ navigation }) {
       return 'N/A';
     }
   }, []);
+
+  const pushStatusMessage = useMemo(() => {
+    if (!isDeviceSupported) {
+      return 'Notifications require running TrailMate on a physical device.';
+    }
+    return notificationsEnabled
+      ? 'Enabled on this device.'
+      : 'Turn on notifications to get booking confirmations and event reminders.';
+  }, [isDeviceSupported, notificationsEnabled]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -93,20 +110,84 @@ export default function SettingsPage({ navigation }) {
     handleOpenLink('https://trailmate.app/rate');
   };
 
+  const handleTogglePushNotifications = useCallback(
+    async (value) => {
+      if (isRequestingPush) {
+        return;
+      }
+
+      if (!isDeviceSupported) {
+        Alert.alert(
+          'Notifications unavailable',
+          'Enable notifications on a physical device to receive real-time updates.',
+        );
+        return;
+      }
+
+      if (value) {
+        setIsRequestingPush(true);
+        try {
+          const granted = await requestPermission();
+          await refreshPermissions();
+          if (granted) {
+            Alert.alert(
+              'Notifications enabled',
+              'You will receive alerts for bookings, event updates, and other important activity.',
+            );
+          } else {
+            Alert.alert(
+              'Permission needed',
+              'Enable notifications from your device settings to stay up to date.',
+            );
+          }
+        } catch (error) {
+          console.error('Failed to enable notifications:', error);
+          Alert.alert('Error', 'Unable to update notification settings right now.');
+        } finally {
+          setIsRequestingPush(false);
+        }
+        return;
+      }
+
+      const actions = [{ text: 'Cancel', style: 'cancel' }];
+      if (typeof Linking.openSettings === 'function') {
+        actions.push({
+          text: 'Open settings',
+          onPress: () => {
+            Linking.openSettings();
+          },
+        });
+      }
+
+      Alert.alert(
+        'Manage notifications',
+        'Use your device settings to turn notifications off or customise alerts.',
+        actions,
+      );
+      await refreshPermissions();
+    },
+    [
+      isRequestingPush,
+      isDeviceSupported,
+      requestPermission,
+      refreshPermissions,
+    ],
+  );
+
   const handleSavePreferences = () => {
     Alert.alert('Preferences saved', 'Your settings will be synced the next time you sign in.');
   };
 
   const renderProfileCard = () => (
-    <View className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <View className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
       <View className="flex-row items-center">
         <Image source={{ uri: avatarUri }} className="h-14 w-14 rounded-full" />
         <View className="ml-4 flex-1">
-          <Text className="text-lg font-semibold text-slate-900">
+          <Text className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             {user?.name ?? user?.email ?? 'Explorer'}
           </Text>
           {user?.email ? (
-            <Text className="mt-1 text-sm text-slate-500">{user.email}</Text>
+            <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">{user.email}</Text>
           ) : null}
         </View>
         <TouchableOpacity
@@ -117,11 +198,11 @@ export default function SettingsPage({ navigation }) {
         </TouchableOpacity>
       </View>
       <TouchableOpacity
-        className="mt-4 rounded-xl border border-slate-200 px-4 py-3"
+        className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3"
         onPress={() => navigation.navigate('ProfileCreation')}
       >
-        <Text className="text-base font-semibold text-slate-800">Complete your profile</Text>
-        <Text className="mt-1 text-sm text-slate-500">
+        <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Complete your profile</Text>
+        <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Update personal details so organizers can tailor better experiences.
         </Text>
       </TouchableOpacity>
@@ -157,11 +238,11 @@ export default function SettingsPage({ navigation }) {
     if (application) {
       const status = statusMeta(application.status);
       return (
-        <View className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-          <Text className="text-base font-semibold text-slate-800 mb-1">Organizer application</Text>
+        <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-5">
+          <Text className="text-base font-semibold text-slate-800 mb-1 dark:text-slate-100">Organizer application</Text>
           <Text className={`text-sm font-semibold ${status.textClass}`}>{status.label}</Text>
           {application.documentUrls?.length ? (
-            <Text className="mt-2 text-sm text-slate-600">
+            <Text className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {application.documentUrls.length} document
               {application.documentUrls.length > 1 ? 's' : ''} uploaded
             </Text>
@@ -183,9 +264,9 @@ export default function SettingsPage({ navigation }) {
 
     if (user.role === 'USER') {
       return (
-        <View className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-          <Text className="text-base font-semibold text-slate-800">Become an organizer</Text>
-          <Text className="mt-2 text-sm text-slate-600">
+        <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-5">
+          <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Become an organizer</Text>
+          <Text className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Submit your credentials and IDs so the admin team can review and approve you to host
             events.
           </Text>
@@ -201,7 +282,7 @@ export default function SettingsPage({ navigation }) {
 
     if (user.organizerRequestPending) {
       return (
-        <Text className="mt-6 text-center text-slate-500">
+        <Text className="mt-6 text-center text-slate-500 dark:text-slate-400">
           Your organizer application is currently pending review.
         </Text>
       );
@@ -211,28 +292,33 @@ export default function SettingsPage({ navigation }) {
   };
 
   const renderNotificationsSection = () => (
-    <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
-      <Text className="text-sm font-semibold uppercase text-slate-500">Notifications</Text>
+    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Notifications</Text>
       <View className="mt-4">
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Push notifications</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Push notifications</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Stay informed about new events and booking updates.
           </Text>
-          <View className="mt-2 flex-row justify-end">
+          <Text className="mt-1 text-xs text-slate-400 dark:text-slate-500">{pushStatusMessage}</Text>
+          <View className="mt-2 flex-row items-center justify-end">
+            {isRequestingPush ? (
+              <ActivityIndicator size="small" color="#2563eb" style={{ marginRight: 8 }} />
+            ) : null}
             <Switch
-              value={pushNotifications}
-              onValueChange={setPushNotifications}
+              value={notificationsEnabled}
+              onValueChange={handleTogglePushNotifications}
               trackColor={{ false: '#d6d3d1', true: '#2563eb' }}
-              thumbColor={pushNotifications ? '#1d4ed8' : '#f4f3f4'}
+              thumbColor={notificationsEnabled ? '#1d4ed8' : '#f4f3f4'}
               ios_backgroundColor="#d6d3d1"
+              disabled={!isDeviceSupported || isRequestingPush}
             />
           </View>
         </View>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Email updates</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Email updates</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Receive curated trail tips and trip reminders to your inbox.
           </Text>
           <View className="mt-2 flex-row justify-end">
@@ -245,10 +331,10 @@ export default function SettingsPage({ navigation }) {
             />
           </View>
         </View>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">SMS alerts</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">SMS alerts</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Get last-minute updates and critical safety notices by text.
           </Text>
           <View className="mt-2 flex-row justify-end">
@@ -266,12 +352,12 @@ export default function SettingsPage({ navigation }) {
   );
 
   const renderPrivacySection = () => (
-    <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
-      <Text className="text-sm font-semibold uppercase text-slate-500">Privacy & Safety</Text>
+    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Privacy & Safety</Text>
       <View className="mt-4">
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Share activity status</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Share activity status</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Let friends know when you are actively exploring trails.
           </Text>
           <View className="mt-2 flex-row justify-end">
@@ -284,10 +370,10 @@ export default function SettingsPage({ navigation }) {
             />
           </View>
         </View>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Location services</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Location services</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Allow TrailMate to use your location for navigation and safety alerts.
           </Text>
           <View className="mt-2 flex-row justify-end">
@@ -300,10 +386,10 @@ export default function SettingsPage({ navigation }) {
             />
           </View>
         </View>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Two-factor authentication</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Two-factor authentication</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Add an extra layer of security when signing in on new devices.
           </Text>
           <View className="mt-2 flex-row justify-end">
@@ -321,28 +407,28 @@ export default function SettingsPage({ navigation }) {
   );
 
   const renderAppearanceSection = () => (
-    <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
-      <Text className="text-sm font-semibold uppercase text-slate-500">App Preferences</Text>
+    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">App Preferences</Text>
       <View className="mt-4">
         <View className="py-3">
-          <Text className="text-base font-medium text-slate-900">Dark mode</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Dark mode</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Switch between light and dark themes to match your environment.
           </Text>
           <View className="mt-2 flex-row justify-end">
             <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
+              value={isDarkMode}
+              onValueChange={setThemeDarkMode}
               trackColor={{ false: '#d6d3d1', true: '#2563eb' }}
-              thumbColor={darkMode ? '#1d4ed8' : '#f4f3f4'}
+              thumbColor={isDarkMode ? '#1d4ed8' : '#f4f3f4'}
               ios_backgroundColor="#d6d3d1"
             />
           </View>
         </View>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <TouchableOpacity className="py-3" onPress={() => navigation.navigate('PreferencesSetup')}>
-          <Text className="text-base font-medium text-slate-900">Trail preferences</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Trail preferences</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Update preferred difficulty, duration, and terrain types.
           </Text>
         </TouchableOpacity>
@@ -351,43 +437,43 @@ export default function SettingsPage({ navigation }) {
   );
 
   const renderSupportSection = () => (
-    <View className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
-      <Text className="text-sm font-semibold uppercase text-slate-500">Support</Text>
+    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Support</Text>
       <View className="mt-4">
         <TouchableOpacity className="py-3" onPress={handleHelpCenter}>
-          <Text className="text-base font-medium text-slate-900">Help center</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Help center</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Browse FAQs and troubleshooting tips.
           </Text>
         </TouchableOpacity>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <TouchableOpacity className="py-3" onPress={handleSupportEmail}>
-          <Text className="text-base font-medium text-slate-900">Contact support</Text>
-          <Text className="mt-1 text-sm text-slate-500">Email our team for personalized help.</Text>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Contact support</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">Email our team for personalized help.</Text>
         </TouchableOpacity>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <TouchableOpacity className="py-3" onPress={handleRateApp}>
-          <Text className="text-base font-medium text-slate-900">Rate TrailMate</Text>
-          <Text className="mt-1 text-sm text-slate-500">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Rate TrailMate</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Tell others about your experience on the stores.
           </Text>
         </TouchableOpacity>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <TouchableOpacity className="py-3" onPress={() => handleOpenLink('https://trailmate.app/terms')}>
-          <Text className="text-base font-medium text-slate-900">Terms of service</Text>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Terms of service</Text>
         </TouchableOpacity>
-        <View className="h-px bg-slate-100" />
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
         <TouchableOpacity className="py-3" onPress={() => handleOpenLink('https://trailmate.app/privacy')}>
-          <Text className="text-base font-medium text-slate-900">Privacy policy</Text>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Privacy policy</Text>
         </TouchableOpacity>
       </View>
-      <Text className="mt-6 text-xs uppercase text-slate-400">App version {appVersion}</Text>
+      <Text className="mt-6 text-xs uppercase text-slate-400 dark:text-slate-500">App version {appVersion}</Text>
     </View>
   );
 
   if (isLoading && !user) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-900">
         <ActivityIndicator size="large" color="#2563eb" />
       </View>
     );
@@ -395,11 +481,11 @@ export default function SettingsPage({ navigation }) {
 
   return (
     <ScrollView
-      className="flex-1 bg-slate-50"
+      className="flex-1 bg-slate-50 dark:bg-slate-950"
       contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32, paddingTop: 32 }}
       showsVerticalScrollIndicator={false}
     >
-      <Text className="text-3xl font-bold text-slate-900">Settings</Text>
+      <Text className="text-3xl font-bold text-slate-900 dark:text-slate-100">Settings</Text>
 
       {renderProfileCard()}
 
@@ -414,13 +500,13 @@ export default function SettingsPage({ navigation }) {
       {renderSupportSection()}
 
       <TouchableOpacity
-        className="mt-6 rounded-xl border border-slate-200 bg-white px-4 py-4"
+        className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4"
         onPress={handleSavePreferences}
       >
-        <Text className="text-center text-base font-semibold text-slate-900">
+        <Text className="text-center text-base font-semibold text-slate-900 dark:text-slate-100">
           Save preferences
         </Text>
-        <Text className="mt-1 text-center text-sm text-slate-500">
+        <Text className="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">
           Changes apply across all of your devices.
         </Text>
       </TouchableOpacity>

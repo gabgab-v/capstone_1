@@ -52,7 +52,7 @@ export default function SignupPage({ navigation }) {
   }
 
   return (
-    <View className="flex-1 bg-white px-6 pt-16">
+    <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       <View className="flex-row items-center justify-center mb-10">
         <Image
           source={require('../../assets/favicon.png')}
@@ -61,13 +61,13 @@ export default function SignupPage({ navigation }) {
         <Text className="text-green-700 text-2xl font-bold">Pabukid</Text>
       </View>
 
-      <Text className="text-2xl font-bold text-center text-gray-800 mb-6">
+      <Text className="text-2xl font-bold text-center text-gray-800 mb-6 dark:text-slate-100">
         Create Your Account
       </Text>
 
       {/* ✅ Add Name Input Field */}
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         placeholder="Full Name"
         placeholderTextColor="#888"
         value={name}
@@ -76,7 +76,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         placeholder="Email"
         placeholderTextColor="#888"
         value={email}
@@ -86,7 +86,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         placeholder="Password"
         placeholderTextColor="#888"
         secureTextEntry
@@ -95,7 +95,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-6"
+        className="border border-gray-300 rounded-xl p-4 mb-6 dark:border-slate-600"
         placeholder="Confirm Password"
         placeholderTextColor="#888"
         secureTextEntry

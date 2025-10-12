@@ -98,6 +98,55 @@ export async function GET(request) {
         }
       : null;
 
+    let organizerRating = null;
+    if (dbUser.role === 'ORGANIZER') {
+      const [aggregate, recentReviews] = await Promise.all([
+        prisma.organizerReview.aggregate({
+          where: { organizerId: dbUser.id },
+          _avg: { rating: true },
+          _count: true,
+        }),
+        prisma.organizerReview.findMany({
+          where: { organizerId: dbUser.id },
+          include: {
+            reviewer: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+      ]);
+
+      const average = aggregate._avg?.rating ?? null;
+      const reviewCount = typeof aggregate._count === 'number' ? aggregate._count : 0;
+
+      organizerRating = {
+        averageRating: average === null ? null : Number(average),
+        reviewCount,
+        reviews: recentReviews.map((review) => ({
+          id: review.id,
+          rating: review.rating,
+          feedback: review.feedback ?? null,
+          createdAt: review.createdAt,
+          reviewer: review.reviewer
+            ? {
+                id: review.reviewer.id,
+                name: review.reviewer.name ?? null,
+                email: review.reviewer.email ?? null,
+                avatarUrl: review.reviewer.avatarUrl ?? null,
+              }
+            : null,
+        })),
+        viewerReview: null,
+      };
+    }
+
     return NextResponse.json({
       ...dbUser,
       organizerApplication,
@@ -106,6 +155,8 @@ export async function GET(request) {
       followersCount,
       followingCount,
       postCount,
+      viewerCanReview: false,
+      organizerRating,
     });
   } catch (err) {
     console.error('GET /api/users/me error:', err);

@@ -54,25 +54,25 @@ export default function ProfileCreationPage({ navigation }) {
 
   /* UI */
   return (
-    <ScrollView className="flex-1 bg-white px-6 pt-16">
+    <ScrollView className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       <Text className="text-2xl font-bold text-center mb-8">
         Complete Your Profile
       </Text>
 
       {/* name */}
-      <Text className="text-gray-700 font-medium mb-2">Full Name</Text>
+      <Text className="text-gray-700 font-medium mb-2 dark:text-slate-300">Full Name</Text>
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-6"
+        className="border border-gray-300 rounded-xl p-4 mb-6 dark:border-slate-600"
         placeholder="Juan Dela Cruz"
         value={name}
         onChangeText={setName}
       />
 
       {/* birthdate */}
-      <Text className="text-gray-700 font-medium mb-2">Birthdate</Text>
+      <Text className="text-gray-700 font-medium mb-2 dark:text-slate-300">Birthdate</Text>
       <TouchableOpacity
         onPress={() => setShow(true)}
-        className="border border-gray-300 rounded-xl p-4 mb-6"
+        className="border border-gray-300 rounded-xl p-4 mb-6 dark:border-slate-600"
       >
         <Text className={birthdate ? 'text-gray-900' : 'text-gray-400'}>
           {birthdate || 'YYYY-MM-DD'}

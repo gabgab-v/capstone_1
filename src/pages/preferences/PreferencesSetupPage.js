@@ -95,7 +95,7 @@ export default function PreferencesSetupPage({ navigation }) {
   }
 
   return (
-    <ScrollView className="flex-1 bg-white px-6 pt-16">
+    <ScrollView className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
@@ -108,7 +108,7 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="font-medium mt-4 mb-2">Preferred Difficulty</Text>
       <TextInput
         placeholder="e.g., Easy, Moderate, Hard"
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         value={difficulty}
         onChangeText={setDifficulty}
       />
@@ -116,7 +116,7 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="font-medium mt-4 mb-2">Preferred Trail Type</Text>
       <TextInput
         placeholder="e.g., Forest, Summit"
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         value={trailType}
         onChangeText={setTrailType}
       />
@@ -124,7 +124,7 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="font-medium mt-4 mb-2">Preferred Duration (hours)</Text>
       <TextInput
         placeholder="e.g., 3"
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         value={duration}
         onChangeText={setDuration}
         keyboardType="numeric"
@@ -133,7 +133,7 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="font-medium mt-4 mb-2">Budget Range</Text>
       <TextInput
         placeholder="e.g., PHP 500 - 1000"
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         value={budget}
         onChangeText={setBudget}
       />

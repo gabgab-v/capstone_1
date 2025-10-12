@@ -29,6 +29,7 @@ const userProfileSelect = {
   name: true,
   avatarUrl: true,
   bio: true,
+  role: true,
   experienceLevel: true,
   preferredDifficulty: true,
   preferredTrailType: true,
@@ -120,7 +121,74 @@ export async function GET(request, { params }) {
       postCount,
       isSelf,
       isFollowing,
+      viewerCanReview: !isSelf && user.role === 'ORGANIZER',
     };
+
+    if (user.role === 'ORGANIZER') {
+      const [aggregate, recentReviews, viewerReview] = await Promise.all([
+        prisma.organizerReview.aggregate({
+          where: { organizerId: targetUserId },
+          _avg: { rating: true },
+          _count: true,
+        }),
+        prisma.organizerReview.findMany({
+          where: { organizerId: targetUserId },
+          include: {
+            reviewer: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        prisma.organizerReview.findUnique({
+          where: {
+            organizerId_reviewerId: {
+              organizerId: targetUserId,
+              reviewerId: authUser.id,
+            },
+          },
+        }),
+      ]);
+
+      const average = aggregate._avg?.rating ?? null;
+      const reviewCount = typeof aggregate._count === 'number' ? aggregate._count : 0;
+
+      response.organizerRating = {
+        averageRating: average === null ? null : Number(average),
+        reviewCount,
+        reviews: recentReviews.map((review) => ({
+          id: review.id,
+          rating: review.rating,
+          feedback: review.feedback ?? null,
+          createdAt: review.createdAt,
+          reviewer: review.reviewer
+            ? {
+                id: review.reviewer.id,
+                name: review.reviewer.name ?? null,
+                email: review.reviewer.email ?? null,
+                avatarUrl: review.reviewer.avatarUrl ?? null,
+              }
+            : null,
+        })),
+        viewerReview: viewerReview
+          ? {
+              id: viewerReview.id,
+              rating: viewerReview.rating,
+              feedback: viewerReview.feedback ?? null,
+              createdAt: viewerReview.createdAt,
+              updatedAt: viewerReview.updatedAt,
+            }
+          : null,
+      };
+    } else {
+      response.organizerRating = null;
+    }
 
     if (includePosts) {
       response.posts = posts;

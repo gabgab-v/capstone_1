@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { post } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useNotifications } from '../context/NotificationContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
@@ -57,6 +58,7 @@ export default function CreateEventPage() {
   const [elevationM, setElevationM] = useState('');
   const [price, setPrice] = useState('');
   const [gcashNumber, setGcashNumber] = useState('');
+  const { scheduleNotification } = useNotifications();
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -263,6 +265,14 @@ export default function CreateEventPage() {
       };
 
       const createdEvent = await post('/api/events', eventPayload);
+      await scheduleNotification({
+        title: 'Event published',
+        body: `${trimmedTitle} is now live and ready for bookings.`,
+        data: {
+          type: 'event',
+          eventId: createdEvent?.id ?? null,
+        },
+      });
       Alert.alert('Success', 'Event created successfully!');
       console.log('Event created:', createdEvent);
     } catch (err) {
@@ -288,6 +298,7 @@ export default function CreateEventPage() {
     locationName,
     locationBounds,
     locationZoomLevel,
+    scheduleNotification,
   ]);
 
   const selectedLocationText =

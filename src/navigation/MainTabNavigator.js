@@ -11,12 +11,14 @@ import TrailRecorderPage from '../pages/TrailRecorderPage';
 import ProfilePage from '../pages/ProfilePage';
 import ChatListPage from '../pages/chat/ChatListPage';
 import { get } from '../lib/api';
+import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
 export default function MainTabNavigator() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { colors } = useTheme();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -37,7 +39,7 @@ export default function MainTabNavigator() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#2E7D32" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -48,9 +50,14 @@ export default function MainTabNavigator() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#2E7D32',
-        tabBarInactiveTintColor: '#999999',
-        tabBarStyle: { height: 60, paddingBottom: 6 },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          height: 60,
+          paddingBottom: 6,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+        },
         tabBarIcon: ({ color, size }) => {
           const icons = {
             Home: 'home',

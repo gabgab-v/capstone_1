@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { useNotifications } from "../../context/NotificationContext";
 import { postFormData } from "../../lib/api";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -18,6 +19,7 @@ export default function BookingPage({ route, navigation }) {
   const { event } = route.params;
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
+  const { scheduleNotification } = useNotifications();
 
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
 
@@ -91,6 +93,17 @@ export default function BookingPage({ route, navigation }) {
       }
 
       const booking = await postFormData("/api/bookings", formData);
+
+      await scheduleNotification({
+        title: "Booking confirmed",
+        body: `Your spot for ${event?.title ?? "the event"} is secured.`,
+        data: {
+          type: "booking",
+          eventId: event?.id,
+          bookingId: booking?.id ?? null,
+        },
+      });
+
       navigation.navigate("ReceiptPage", { event, booking });
     } catch (err) {
       console.error("Booking failed:", err);

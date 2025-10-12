@@ -39,6 +39,8 @@ model User {
   following               Follow[] @relation("FollowingUser")
   conversations           ConversationParticipant[]
   messages                Message[]
+  organizerReviewsReceived OrganizerReview[] @relation("OrganizerReviewsReceived")
+  organizerReviewsGiven   OrganizerReview[] @relation("OrganizerReviewsGiven")
 
   createdAt               DateTime  @default(now())
 }
@@ -223,4 +225,20 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+model OrganizerReview {
+  id          String   @id @default(uuid())
+  organizer   User     @relation("OrganizerReviewsReceived", fields: [organizerId], references: [id], onDelete: Cascade)
+  organizerId String
+  reviewer    User     @relation("OrganizerReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  rating      Int
+  feedback    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([organizerId, reviewerId])
+  @@index([organizerId])
+  @@index([reviewerId])
 }

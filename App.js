@@ -1,15 +1,16 @@
 import 'react-native-gesture-handler';
-import './global.css'; // Tailwind
-import React from 'react';
+import './global.css';
+import React, { useMemo } from 'react';
 import 'react-native-url-polyfill/auto';
 import { ActivityIndicator, View } from 'react-native';
 
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-// ✅ The context provider and hook are the source of truth
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { NotificationProvider } from './src/context/NotificationContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 
 // Import all your page components
 import LoginPage from './src/pages/LoginPage';
@@ -28,15 +29,14 @@ import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 
 const Stack = createNativeStackNavigator();
 
-// This component decides which screens to show based on auth state
 function AppNavigator() {
   const { user, isLoading } = useAuth();
+  const { colors } = useTheme();
 
-  // Show a loading spinner while the session is being restored
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#2E7D32" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -55,8 +55,6 @@ function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        // --- User is Logged In ---
-        // These screens are available only after authentication.
         <>
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
           <Stack.Screen name="Profile" component={ProfilePage} />
@@ -72,8 +70,6 @@ function AppNavigator() {
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />
         </>
       ) : (
-        // --- No User ---
-        // These screens are for authentication.
         <>
           <Stack.Screen name="Login" component={LoginPage} />
           <Stack.Screen name="Signup" component={SignupPage} />
@@ -83,15 +79,42 @@ function AppNavigator() {
   );
 }
 
-// This is the root component that wraps the entire app
+function ThemedNavigation() {
+  const { isDarkMode, colors } = useTheme();
+
+  const navigationTheme = useMemo(() => {
+    const base = isDarkMode ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.accent,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.textPrimary,
+        border: colors.border,
+        notification: colors.accent,
+      },
+    };
+  }, [colors, isDarkMode]);
+
+  return (
+    <NavigationContainer theme={navigationTheme}>
+      <AppNavigator />
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <AppNavigator />
-        </NavigationContainer>
-      </AuthProvider>
+      <ThemeProvider>
+        <NotificationProvider>
+          <AuthProvider>
+            <ThemedNavigation />
+          </AuthProvider>
+        </NotificationProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

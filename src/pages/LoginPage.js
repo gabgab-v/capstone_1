@@ -36,7 +36,7 @@ export default function LoginPage({ navigation }) {
   }
 
   return (
-    <View className="flex-1 bg-white px-6 pt-16">
+    <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       {/* Header */}
       <View className="flex-row items-center justify-center mb-10">
         <Image
@@ -47,12 +47,12 @@ export default function LoginPage({ navigation }) {
       </View>
 
       {/* Login Form */}
-      <Text className="text-2xl font-bold text-center text-gray-800 mb-6">
+      <Text className="text-2xl font-bold text-center text-gray-800 mb-6 dark:text-slate-100">
         Welcome Back
       </Text>
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         placeholder="Email"
         placeholderTextColor="#888"
         value={email}
@@ -62,7 +62,7 @@ export default function LoginPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-6"
+        className="border border-gray-300 rounded-xl p-4 mb-6 dark:border-slate-600"
         placeholder="Password"
         placeholderTextColor="#888"
         secureTextEntry

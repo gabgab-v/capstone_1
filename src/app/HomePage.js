@@ -23,11 +23,13 @@ import AppHeader from "../components/AppHeader";
 import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
 import { get, post as postRequest } from "../lib/api";
+import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../lib/supabase";
 
 const MAX_IMAGES = 5;
 
 const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
+  const { colors } = useTheme();
   const [caption, setCaption] = useState("");
   const [images, setImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -126,14 +128,16 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView className="flex-1">
-        <View className="flex-row items-center justify-between border-b border-gray-200 p-4">
+      <SafeAreaView className="flex-1 bg-white dark:bg-slate-950">
+        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
           <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
-            <AntDesign name="close" size={24} color="black" />
+            <AntDesign name="close" size={24} color={colors.icon} />
           </TouchableOpacity>
-          <Text className="text-lg font-bold">Create Post</Text>
+          <Text className="text-lg font-bold text-slate-900 dark:text-slate-100">Create Post</Text>
           <TouchableOpacity
-            className={`rounded-full py-1 px-4 ${canPost ? "bg-green-500" : "bg-gray-300"}`}
+            className={`rounded-full py-1 px-4 ${
+              canPost ? "bg-green-500 dark:bg-green-600" : "bg-gray-300 dark:bg-slate-700"
+            }`}
             onPress={handlePost}
             disabled={!canPost || isSubmitting}
           >
@@ -147,13 +151,15 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
             onChangeText={setCaption}
             multiline
             className="text-lg"
+            placeholderTextColor={colors.textMuted}
+            style={{ color: colors.textPrimary }}
           />
           <TouchableOpacity
             onPress={pickImage}
-            className="mt-4 self-start rounded-lg bg-gray-200 py-2 px-4"
+            className="mt-4 self-start rounded-lg bg-gray-200 dark:bg-slate-700 py-2 px-4"
             disabled={images.length >= MAX_IMAGES || isSubmitting}
           >
-            <Text>{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
+            <Text className="text-slate-900 dark:text-slate-100">{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
           </TouchableOpacity>
           <ScrollView horizontal className="mt-4">
             {images.map((image, index) => (
@@ -164,7 +170,9 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
                 className="mr-2"
               >
                 <Image source={{ uri: image.uri }} className="h-24 w-24 rounded-lg" />
-                <Text className="mt-1 text-center text-xs text-gray-500">Tap to remove</Text>
+                <Text className="mt-1 text-center text-xs text-gray-500 dark:text-slate-400">
+                  Tap to remove
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -256,7 +264,7 @@ export default function HomePage({ user }) {
   );
 
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-gray-100">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-gray-100 dark:bg-slate-950">
       <AppHeader />
 
       <FlatList
@@ -270,7 +278,7 @@ export default function HomePage({ user }) {
             {loading ? (
               <ActivityIndicator size="large" color="#2E7D32" />
             ) : (
-              <Text className="text-gray-500">No posts have been shared yet.</Text>
+              <Text className="text-gray-500 dark:text-slate-400">No posts have been shared yet.</Text>
             )}
           </View>
         }

@@ -14,30 +14,39 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { del, get, post as apiPost } from '../lib/api';
+import { useTheme } from '../context/ThemeContext';
 
 const ActionButton = ({
   iconName,
   label,
-  color = 'gray',
-  labelColor = '#4b5563',
+  color,
+  labelColor,
   count,
   onPress,
   disabled = false,
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    disabled={disabled}
-    className="flex-row items-center space-x-2 py-2"
-    style={disabled ? { opacity: 0.5 } : undefined}
-  >
-    <Feather name={iconName} size={20} color={color} />
-    <Text className="text-sm font-medium" style={{ color: labelColor }}>
-      {label}
-    </Text>
-    {typeof count === 'number' ? <Text className="text-xs text-gray-500">{count}</Text> : null}
-  </TouchableOpacity>
-);
+}) => {
+  const { colors } = useTheme();
+  const resolvedIconColor = color ?? colors.icon;
+  const resolvedLabelColor = labelColor ?? colors.textSecondary;
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={disabled}
+      className="flex-row items-center space-x-2 py-2"
+      style={disabled ? { opacity: 0.5 } : undefined}
+    >
+      <Feather name={iconName} size={20} color={resolvedIconColor} />
+      <Text className="text-sm font-medium" style={{ color: resolvedLabelColor }}>
+        {label}
+      </Text>
+      {typeof count === 'number' ? (
+        <Text className="text-xs text-gray-500 dark:text-slate-400">{count}</Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+};
 
 const PhotoGrid = ({ photos }) => {
   if (!photos || photos.length === 0) {
@@ -139,6 +148,7 @@ function formatPostDate(value) {
 }
 
 export default function PostCard({ post }) {
+  const { colors } = useTheme();
   const authorName = getAuthorName(post);
   const createdAt = formatPostDate(post?.createdAt);
   const caption = post?.content ?? '';
@@ -281,7 +291,7 @@ export default function PostCard({ post }) {
   const canSubmitComment = commentText.trim().length > 0 && !commentSubmitting;
 
   return (
-    <View className="mt-2 bg-white p-4">
+    <View className="mt-2 bg-white dark:bg-slate-900 p-4">
       <View className="flex-row items-center justify-between">
         <TouchableOpacity
           onPress={handleAuthorPress}
@@ -290,8 +300,8 @@ export default function PostCard({ post }) {
         >
           <Image source={{ uri: getAvatarUri(post) }} className="h-10 w-10 rounded-full" />
           <View className="ml-3">
-            <Text className="font-bold text-gray-900">{authorName}</Text>
-            {createdAt ? <Text className="text-xs text-gray-500">{createdAt}</Text> : null}
+            <Text className="font-bold text-gray-900 dark:text-slate-100">{authorName}</Text>
+            {createdAt ? <Text className="text-xs text-gray-500 dark:text-slate-400">{createdAt}</Text> : null}
           </View>
         </TouchableOpacity>
         <TouchableOpacity>
@@ -299,11 +309,11 @@ export default function PostCard({ post }) {
         </TouchableOpacity>
       </View>
 
-      {caption ? <Text className="my-2">{caption}</Text> : null}
+      {caption ? <Text className="my-2 text-slate-900 dark:text-slate-100">{caption}</Text> : null}
 
       <PhotoGrid photos={photos} />
 
-      <View className="mt-4 flex-row justify-around border-t border-gray-100 pt-2">
+      <View className="mt-4 flex-row justify-around border-t border-gray-100 dark:border-slate-700 pt-2">
         <ActionButton
           iconName="heart"
           label={isLiked ? 'Liked' : 'Like'}
@@ -328,9 +338,9 @@ export default function PostCard({ post }) {
         onRequestClose={handleCloseComments}
         presentationStyle="pageSheet"
       >
-        <View className="flex-1 bg-white">
-          <View className="flex-row items-center justify-between border-b border-gray-200 p-4">
-            <Text className="text-lg font-semibold text-gray-900">Comments</Text>
+        <View className="flex-1 bg-white dark:bg-slate-900">
+          <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
+            <Text className="text-lg font-semibold text-gray-900 dark:text-slate-100">Comments</Text>
             <TouchableOpacity onPress={handleCloseComments}>
               <Feather name="x" size={22} color="gray" />
             </TouchableOpacity>
@@ -347,25 +357,25 @@ export default function PostCard({ post }) {
               </View>
             ) : comments.length > 0 ? (
               comments.map((comment) => (
-                <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 p-3">
-                  <Text className="text-sm font-semibold text-gray-900">{getAuthorName(comment)}</Text>
-                  <Text className="mt-1 text-sm text-gray-700">{comment.content}</Text>
-                  <Text className="mt-2 text-xs text-gray-400">{formatPostDate(comment.createdAt)}</Text>
+                <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 dark:bg-slate-800 p-3">
+                  <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">{getAuthorName(comment)}</Text>
+                  <Text className="mt-1 text-sm text-gray-700 dark:text-slate-300">{comment.content}</Text>
+                  <Text className="mt-2 text-xs text-gray-400 dark:text-slate-500">{formatPostDate(comment.createdAt)}</Text>
                 </View>
               ))
             ) : (
-              <Text className="text-center text-sm text-gray-500">
+              <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
                 Be the first to leave a comment.
               </Text>
             )}
           </ScrollView>
 
-          <View className="border-t border-gray-200 p-4">
-            <View className="flex-row items-end rounded-full border border-gray-300 bg-gray-50 px-3">
+          <View className="border-t border-gray-200 dark:border-slate-700 p-4">
+            <View className="flex-row items-end rounded-full border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 px-3">
               <TextInput
-                className="flex-1 py-2 pr-2 text-gray-900"
+                className="flex-1 py-2 pr-2 text-gray-900 dark:text-slate-100"
                 placeholder="Add a comment..."
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.textMuted}
                 value={commentText}
                 onChangeText={setCommentText}
                 editable={!commentSubmitting}
@@ -380,7 +390,7 @@ export default function PostCard({ post }) {
               >
                 <Text
                   className={`text-sm font-semibold ${
-                    canSubmitComment ? 'text-green-600' : 'text-gray-400'
+                    canSubmitComment ? 'text-green-600' : 'text-gray-400 dark:text-slate-500'
                   }`}
                 >
                   {commentSubmitting ? 'Posting...' : 'Post'}
