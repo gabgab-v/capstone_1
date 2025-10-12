@@ -59,6 +59,13 @@
           "RNMapboxAccessToken": "pk.eyJ1IjoiZ2FiczEyMyIsImEiOiJjbWc4d2Vwa2wwY2owMmtvY3hlNGx3aTl3In0._QDl6Mw90aCVmgGY3vWxKw",
           "RNMapboxMapsImpl": "mapbox"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
       ]
     ],
     "extra": {
