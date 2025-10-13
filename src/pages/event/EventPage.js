@@ -248,7 +248,7 @@ function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
   );
 }
 
-function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings }) {
+function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings, onEditEvent }) {
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
   const priceLabel = formatPrice(event?.price);
   const locationLabel = getLocationLabel(event);
@@ -319,6 +319,15 @@ function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings })
         </View>
 
         <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            activeOpacity={0.85}
+            onPress={() => onEditEvent?.(event)}
+            disabled={!event?.id}
+          >
+            <Icon name="edit-2" size={16} color="#2E7D32" />
+            <Text style={styles.secondaryButtonText}>Edit Event</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryButton}
             activeOpacity={0.85}
@@ -528,6 +537,24 @@ export default function EventsPage({ navigation }) {
     [navigation]
   );
 
+  const handleEditEvent = useCallback(
+    (event) => {
+      if (!event?.id) {
+        return;
+      }
+
+      navigation.navigate("EditEvent", {
+        mode: "edit",
+        eventId: event.id,
+        event,
+        onEventUpdated: () => {
+          fetchData({ showSpinner: false });
+        },
+      });
+    },
+    [navigation, fetchData]
+  );
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -615,6 +642,7 @@ export default function EventsPage({ navigation }) {
                 attendees={eventAttendees[event.id] || []}
                 onViewDetails={handleOpenEvent}
                 onViewBookings={handleViewBookings}
+                onEditEvent={handleEditEvent}
               />
             ))
           ) : (
@@ -757,7 +785,7 @@ const styles = StyleSheet.create({
   receiptLinkText: { fontSize: 12, fontWeight: "700", color: "#1D4ED8" },
   noReceiptText: { fontSize: 12, color: "#9CA3AF", marginTop: 4, textAlign: "right" },
   emptyStateText: { fontSize: 13, color: "#94A3B8", lineHeight: 18 },
-  actionRow: { flexDirection: "row", marginTop: 20 },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 20 },
   secondaryButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -767,6 +795,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     marginRight: 12,
+    marginBottom: 12,
   },
   secondaryButtonAlt: { backgroundColor: "#2E7D32", borderColor: "#2E7D32" },
   secondaryButtonText: { marginLeft: 8, color: "#2E7D32", fontSize: 13, fontWeight: "600" },

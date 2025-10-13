@@ -23,6 +23,7 @@ import BookingPage from './src/pages/booking/BookingPage';
 import ReceiptPage from './src/pages/booking/ReceiptPage';
 import EventDetailsPage from './src/pages/event/EventDetailsPage';
 import EventBookingsPage from './src/pages/event/EventBookingsPage';
+import CreateEventPage from './src/pages/CreateEventPage';
 import SettingsPage from './src/pages/user/SettingsPage';
 import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
@@ -65,6 +66,7 @@ function AppNavigator() {
           <Stack.Screen name="ReceiptPage" component={ReceiptPage} />
           <Stack.Screen name="EventDetails" component={EventDetailsPage} />
           <Stack.Screen name="EventBookings" component={EventBookingsPage} />
+          <Stack.Screen name="EditEvent" component={CreateEventPage} />
           <Stack.Screen name="Settings" component={SettingsPage} />
           <Stack.Screen name="ApplyOrganizer" component={ApplyOrganizerPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />

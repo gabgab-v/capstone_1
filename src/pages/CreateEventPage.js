@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
 import Icon from 'react-native-vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
-import { post } from '../lib/api';
+import { get, post, patch } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../context/NotificationContext';
 import { useUserTrails } from '../hooks/useUserTrails';
@@ -45,28 +45,72 @@ function toIntOrNull(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
-export default function CreateEventPage() {
+export default function CreateEventPage({ route, navigation }) {
+  const isEditMode = route?.params?.mode === 'edit';
+  const eventFromParams = route?.params?.event ?? null;
+  const eventIdFromParams = route?.params?.eventId ?? eventFromParams?.id ?? null;
+  const onEventUpdated = route?.params?.onEventUpdated;
+
+  const [editingEvent, setEditingEvent] = useState(eventFromParams ?? null);
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(isEditMode && !eventFromParams));
+  const hasPrefilledRef = useRef(false);
+
   const [activeTab, setActiveTab] = useState('overview');
 
-  const [title, setTitle] = useState('');
-  const [overview, setOverview] = useState('');
-  const [itinerary, setItinerary] = useState('');
-  const [directions, setDirections] = useState('');
-  const [distanceKm, setDistanceKm] = useState('');
-  const [durationHrs, setDurationHrs] = useState('');
-  const [steps, setSteps] = useState('');
-  const [elevationM, setElevationM] = useState('');
-  const [price, setPrice] = useState('');
-  const [gcashNumber, setGcashNumber] = useState('');
+  const [title, setTitle] = useState(() => eventFromParams?.title ?? '');
+  const [overview, setOverview] = useState(() => eventFromParams?.overview ?? '');
+  const [itinerary, setItinerary] = useState(() => eventFromParams?.itinerary ?? '');
+  const [directions, setDirections] = useState(() => eventFromParams?.directions ?? '');
+  const [distanceKm, setDistanceKm] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.distanceKm)) ? String(eventFromParams.distanceKm) : '',
+  );
+  const [durationHrs, setDurationHrs] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.durationHrs)) ? String(eventFromParams.durationHrs) : '',
+  );
+  const [steps, setSteps] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.steps)) ? String(eventFromParams.steps) : '',
+  );
+  const [elevationM, setElevationM] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.elevationM)) ? String(eventFromParams.elevationM) : '',
+  );
+  const [price, setPrice] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.price)) ? String(eventFromParams.price) : '',
+  );
+  const [gcashNumber, setGcashNumber] = useState(() => eventFromParams?.gcashNumber ?? '');
   const { scheduleNotification } = useNotifications();
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(() =>
+    eventFromParams?.imageUrl ? { uri: eventFromParams.imageUrl } : null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [selectedTrailId, setSelectedTrailId] = useState(null);
-  const [locationName, setLocationName] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState(null);
-  const [locationZoomLevel, setLocationZoomLevel] = useState(null);
-  const [locationBounds, setLocationBounds] = useState(null);
+  const [selectedTrailId, setSelectedTrailId] = useState(() => eventFromParams?.trailId ?? null);
+  const [locationName, setLocationName] = useState(() => eventFromParams?.locationName ?? '');
+
+  const initialLatitude = Number(eventFromParams?.locationLatitude);
+  const initialLongitude = Number(eventFromParams?.locationLongitude);
+  const [selectedLocation, setSelectedLocation] = useState(() =>
+    Number.isFinite(initialLatitude) && Number.isFinite(initialLongitude)
+      ? { lat: initialLatitude, lng: initialLongitude }
+      : null,
+  );
+
+  const initialZoom = Number(eventFromParams?.locationZoomLevel);
+  const [locationZoomLevel, setLocationZoomLevel] = useState(() =>
+    Number.isFinite(initialZoom) ? initialZoom : null,
+  );
+  const [locationBounds, setLocationBounds] = useState(() => {
+    const bounds = eventFromParams?.locationBounds;
+    if (
+      bounds &&
+      Array.isArray(bounds.northEast) &&
+      bounds.northEast.length === 2 &&
+      Array.isArray(bounds.southWest) &&
+      bounds.southWest.length === 2
+    ) {
+      return bounds;
+    }
+    return null;
+  });
 
   const {
     trails,
@@ -75,10 +119,107 @@ export default function CreateEventPage() {
     refresh: refreshTrails,
   } = useUserTrails();
 
-  const selectedTrail = useMemo(
-    () => trails.find((trail) => trail.id === selectedTrailId) ?? null,
-    [trails, selectedTrailId],
-  );
+  const selectedTrail = useMemo(() => {
+    if (selectedTrailId) {
+      const matched = trails.find((trail) => trail.id === selectedTrailId);
+      if (matched) {
+        return matched;
+      }
+    }
+    if (isEditMode) {
+      return editingEvent?.trail ?? eventFromParams?.trail ?? null;
+    }
+    return null;
+  }, [trails, selectedTrailId, isEditMode, editingEvent, eventFromParams]);
+
+  const activeEvent = editingEvent ?? eventFromParams ?? null;
+
+  useEffect(() => {
+    if (!isEditMode || !activeEvent || hasPrefilledRef.current) {
+      return;
+    }
+
+    setTitle(activeEvent.title ?? '');
+    setOverview(activeEvent.overview ?? '');
+    setItinerary(activeEvent.itinerary ?? '');
+    setDirections(activeEvent.directions ?? '');
+
+    setDistanceKm(
+      Number.isFinite(Number(activeEvent.distanceKm)) ? String(activeEvent.distanceKm) : '',
+    );
+    setDurationHrs(
+      Number.isFinite(Number(activeEvent.durationHrs)) ? String(activeEvent.durationHrs) : '',
+    );
+    setSteps(Number.isFinite(Number(activeEvent.steps)) ? String(activeEvent.steps) : '');
+    setElevationM(
+      Number.isFinite(Number(activeEvent.elevationM)) ? String(activeEvent.elevationM) : '',
+    );
+    setPrice(Number.isFinite(Number(activeEvent.price)) ? String(activeEvent.price) : '');
+    setGcashNumber(activeEvent.gcashNumber ?? '');
+
+    setSelectedImage(activeEvent.imageUrl ? { uri: activeEvent.imageUrl } : null);
+    setSelectedTrailId(activeEvent.trailId ?? null);
+    setLocationName(activeEvent.locationName ?? '');
+
+    const lat = Number(activeEvent.locationLatitude);
+    const lng = Number(activeEvent.locationLongitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setSelectedLocation({ lat, lng });
+    } else {
+      setSelectedLocation(null);
+    }
+
+    const zoom = Number(activeEvent.locationZoomLevel);
+    setLocationZoomLevel(Number.isFinite(zoom) ? zoom : null);
+
+    const bounds = activeEvent.locationBounds;
+    if (
+      bounds &&
+      Array.isArray(bounds.northEast) &&
+      bounds.northEast.length === 2 &&
+      Array.isArray(bounds.southWest) &&
+      bounds.southWest.length === 2
+    ) {
+      setLocationBounds(bounds);
+    } else {
+      setLocationBounds(null);
+    }
+
+    hasPrefilledRef.current = true;
+  }, [isEditMode, activeEvent]);
+
+  useEffect(() => {
+    if (!isEditMode || editingEvent || !eventIdFromParams) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadEvent = async () => {
+      try {
+        setLoadingExisting(true);
+        const response = await get(`/api/events/${eventIdFromParams}`);
+        if (!cancelled) {
+          setEditingEvent(response ?? null);
+        }
+      } catch (error) {
+        console.error(`Failed to load event ${eventIdFromParams}:`, error);
+        if (!cancelled) {
+          Alert.alert('Unable to load event', 'Please try again later.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingExisting(false);
+        }
+      }
+    };
+
+    loadEvent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, editingEvent, eventIdFromParams]);
 
   const handleSelectTrail = useCallback((trail) => {
     if (!trail) {
@@ -170,7 +311,7 @@ export default function CreateEventPage() {
     }
   }, []);
 
-  const handleCreateEvent = useCallback(async () => {
+  const handleSubmit = useCallback(async () => {
     const trimmedTitle = trimOrNull(title);
     const trimmedGcash = trimOrNull(gcashNumber);
     if (!trimmedTitle) {
@@ -191,7 +332,8 @@ export default function CreateEventPage() {
       return;
     }
 
-    if (!selectedTrail) {
+    const effectiveTrail = selectedTrail;
+    if (!effectiveTrail) {
       Alert.alert('Trail Required', 'Select one of your recorded trails for this event.');
       setActiveTab('trail');
       return;
@@ -203,18 +345,24 @@ export default function CreateEventPage() {
       return;
     }
 
+    const targetEventId = activeEvent?.id ?? eventIdFromParams ?? null;
+    if (isEditMode && !targetEventId) {
+      Alert.alert('Missing Event', 'We could not determine which event to update. Please reopen the editor.');
+      return;
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
-      Alert.alert('Authentication', 'Sign in again to create an event.');
+      Alert.alert('Authentication', 'Sign in again to continue.');
       return;
     }
 
     setIsSubmitting(true);
 
-    let imageUrl = null;
+    let imageUrl = isEditMode ? activeEvent?.imageUrl ?? null : null;
     try {
       if (selectedImage?.base64) {
         const fileName = `${Date.now()}-${user.id}.jpg`;
@@ -233,6 +381,8 @@ export default function CreateEventPage() {
           .getPublicUrl(data.path);
 
         imageUrl = urlData.publicUrl;
+      } else if (isEditMode && selectedImage?.uri) {
+        imageUrl = selectedImage.uri;
       }
     } catch (uploadError) {
       console.error('Image Upload Error:', uploadError);
@@ -242,6 +392,14 @@ export default function CreateEventPage() {
     }
 
     try {
+      const trailGeoJson = effectiveTrail?.geoJson ?? activeEvent?.trailGeoJson ?? null;
+      const trailDistanceMeters =
+        Number.isFinite(Number(effectiveTrail?.totalDistanceMeters))
+          ? Number(effectiveTrail.totalDistanceMeters)
+          : Number.isFinite(Number(activeEvent?.trailDistanceMeters))
+            ? Number(activeEvent.trailDistanceMeters)
+            : null;
+
       const eventPayload = {
         title: trimmedTitle,
         overview: trimOrNull(overview),
@@ -254,9 +412,9 @@ export default function CreateEventPage() {
         price: priceValue,
         gcashNumber: trimmedGcash,
         imageUrl,
-        trailId: selectedTrail.id,
-        trailGeoJson: selectedTrail.geoJson,
-        trailDistanceMeters: selectedTrail.totalDistanceMeters,
+        trailId: effectiveTrail.id,
+        trailGeoJson,
+        trailDistanceMeters: trailDistanceMeters ?? 0,
         locationName: trimOrNull(locationName),
         locationLatitude: selectedLocation.lat,
         locationLongitude: selectedLocation.lng,
@@ -264,19 +422,28 @@ export default function CreateEventPage() {
         locationBounds,
       };
 
-      const createdEvent = await post('/api/events', eventPayload);
-      await scheduleNotification({
-        title: 'Event published',
-        body: `${trimmedTitle} is now live and ready for bookings.`,
-        data: {
-          type: 'event',
-          eventId: createdEvent?.id ?? null,
-        },
-      });
-      Alert.alert('Success', 'Event created successfully!');
-      console.log('Event created:', createdEvent);
+      let savedEvent;
+      if (isEditMode && targetEventId) {
+        savedEvent = await patch(`/api/events/${targetEventId}`, eventPayload);
+        Alert.alert('Success', 'Event updated successfully!');
+        onEventUpdated?.(savedEvent);
+        navigation?.goBack?.();
+      } else {
+        savedEvent = await post('/api/events', eventPayload);
+        await scheduleNotification({
+          title: 'Event published',
+          body: `${trimmedTitle} is now live and ready for bookings.`,
+          data: {
+            type: 'event',
+            eventId: savedEvent?.id ?? null,
+          },
+        });
+        Alert.alert('Success', 'Event created successfully!');
+        console.log('Event created:', savedEvent);
+      }
     } catch (err) {
-      console.error('Create event error:', err);
+      const action = isEditMode ? 'Update' : 'Create';
+      console.error(`${action} event error:`, err);
       Alert.alert('Error', err.message || 'Something went wrong');
     } finally {
       setIsSubmitting(false);
@@ -299,11 +466,24 @@ export default function CreateEventPage() {
     locationBounds,
     locationZoomLevel,
     scheduleNotification,
+    isEditMode,
+    activeEvent,
+    eventIdFromParams,
+    onEventUpdated,
+    navigation,
   ]);
 
   const selectedLocationText =
     selectedLocation &&
     `Lat ${selectedLocation.lat.toFixed(5)}, Lng ${selectedLocation.lng.toFixed(5)}`;
+
+  if (isEditMode && loadingExisting && !activeEvent) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -541,13 +721,17 @@ export default function CreateEventPage() {
         <TouchableOpacity
           style={[
             styles.createButton,
-            isSubmitting && styles.buttonDisabled,
+            (isSubmitting || loadingExisting) && styles.buttonDisabled,
           ]}
-          onPress={handleCreateEvent}
-          disabled={isSubmitting}
+          onPress={handleSubmit}
+          disabled={isSubmitting || loadingExisting}
         >
           <Text style={styles.createButtonText}>
-            {isSubmitting ? 'Saving...' : 'Create Event'}
+            {isSubmitting
+              ? 'Saving...'
+              : isEditMode
+                ? 'Update Event'
+                : 'Create Event'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -557,6 +741,13 @@ export default function CreateEventPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   headerImageContainer: {
     height: 250,
     backgroundColor: '#E0E0E0',
