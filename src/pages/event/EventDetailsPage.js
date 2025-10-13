@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Linking,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import { formatMetersToKm } from '../../utils/geo';
@@ -366,7 +368,7 @@ function AttendeeRow({
 export default function EventDetailsPage({ route, navigation }) {
   const { event } = route.params ?? {};
 
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isOrganizer = Boolean(user?.id && event?.organizerId && user.id === event.organizerId);
 
   const [attendees, setAttendees] = useState([]);
@@ -384,38 +386,30 @@ export default function EventDetailsPage({ route, navigation }) {
   const [commentsError, setCommentsError] = useState(null);
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentsVisible, setCommentsVisible] = useState(false);
+
+  const organizerId = useMemo(
+    () => event?.organizer?.id ?? event?.organizerId ?? null,
+    [event?.organizer?.id, event?.organizerId],
+  );
 
   useEffect(() => {
-    const baseId = event?.organizer?.id ?? event?.organizerId ?? null;
-    if (!baseId) {
+    if (!organizerId) {
       setOrganizerProfile(null);
       return;
     }
 
     setOrganizerProfile((current) => {
-      if (current?.id === baseId) {
-        return {
-          ...current,
-          name: sanitizeText(event?.organizer?.name) ?? current.name ?? null,
-          email: event?.organizer?.email ?? current.email ?? null,
-          avatarUrl: event?.organizer?.avatarUrl ?? current.avatarUrl ?? null,
-        };
-      }
-
+      const base = current ?? {};
       return {
-        id: baseId,
-        name: sanitizeText(event?.organizer?.name) ?? null,
-        email: event?.organizer?.email ?? null,
-        avatarUrl: event?.organizer?.avatarUrl ?? null,
+        ...base,
+        id: organizerId,
+        name: sanitizeText(event?.organizer?.name) ?? base.name ?? null,
+        email: event?.organizer?.email ?? base.email ?? null,
+        avatarUrl: event?.organizer?.avatarUrl ?? base.avatarUrl ?? null,
       };
     });
-  }, [
-    event?.organizerId,
-    event?.organizer?.id,
-    event?.organizer?.name,
-    event?.organizer?.email,
-    event?.organizer?.avatarUrl,
-  ]);
+  }, [organizerId, event?.organizer?.name, event?.organizer?.email, event?.organizer?.avatarUrl]);
 
   const tabs = useMemo(
     () => [...BASE_TABS, { key: 'attendees', label: 'Attendees' }],
@@ -428,57 +422,58 @@ export default function EventDetailsPage({ route, navigation }) {
     }
   }, [tabs, activeTab]);
 
-  useEffect(() => {
-    const organizerId = event?.organizerId ?? event?.organizer?.id;
+  const fetchOrganizerProfile = useCallback(async () => {
     if (!organizerId) {
       setOrganizerLoading(false);
       return;
     }
 
-    let isCancelled = false;
+    if (!user?.id) {
+      setOrganizerProfile((current) => (current ? { ...current, isFollowing: false } : current));
+      setOrganizerLoading(false);
+      return;
+    }
+
     setOrganizerLoading(true);
-
-    get(`/api/users/${organizerId}`)
-      .then((data) => {
-        if (isCancelled || !data) {
-          return;
-        }
-
-        setOrganizerProfile((current) => {
-          const nextProfile = {
-            id: data.id ?? current?.id ?? organizerId,
-            name: sanitizeText(data.name) ?? current?.name ?? null,
-            email: data.email ?? current?.email ?? null,
-            avatarUrl: data.avatarUrl ?? current?.avatarUrl ?? null,
-            isFollowing:
-              typeof data.isFollowing === 'boolean'
-                ? data.isFollowing
-                : current?.isFollowing ?? false,
-            followersCount:
-              typeof data.followersCount === 'number'
-                ? data.followersCount
-                : current?.followersCount ?? null,
-          };
-
-          return current ? { ...current, ...nextProfile } : nextProfile;
-        });
-      })
-      .catch((error) => {
-        if (isCancelled) {
-          return;
-        }
-        console.error('Failed to load organizer profile:', error);
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setOrganizerLoading(false);
-        }
+    try {
+      const data = await get(`/api/users/${organizerId}`);
+      setOrganizerProfile((current) => {
+        const base = current ?? { id: organizerId };
+        return {
+          ...base,
+          id: data?.id ?? base.id ?? organizerId,
+          name: sanitizeText(data?.name) ?? base.name ?? null,
+          email: data?.email ?? base.email ?? null,
+          avatarUrl: data?.avatarUrl ?? base.avatarUrl ?? null,
+          isFollowing:
+            typeof data?.isFollowing === 'boolean'
+              ? data.isFollowing
+              : base.isFollowing ?? false,
+          followersCount:
+            typeof data?.followersCount === 'number'
+              ? data.followersCount
+              : base.followersCount ?? null,
+        };
       });
+    } catch (error) {
+      if (error?.status === 401) {
+        return;
+      }
+      console.error('Failed to load organizer profile:', error);
+    } finally {
+      setOrganizerLoading(false);
+    }
+  }, [organizerId, user?.id]);
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [event?.organizerId, event?.organizer?.id]);
+  useEffect(() => {
+    fetchOrganizerProfile();
+  }, [fetchOrganizerProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrganizerProfile();
+    }, [fetchOrganizerProfile]),
+  );
 
   useEffect(() => {
     if (!event?.id) {
@@ -517,7 +512,7 @@ export default function EventDetailsPage({ route, navigation }) {
     };
   }, [event?.id, user?.id, isOrganizer]);
 
-  useEffect(() => {
+  const fetchComments = useCallback(async () => {
     if (!event?.id) {
       setComments([]);
       setCommentCount(0);
@@ -526,42 +521,35 @@ export default function EventDetailsPage({ route, navigation }) {
       return;
     }
 
-    let isCancelled = false;
     setCommentsLoading(true);
     setCommentsError(null);
+    try {
+      const data = await get(`/api/events/${event.id}/comments`);
+      const loadedComments = Array.isArray(data?.comments) ? data.comments : [];
+      const loadedCount =
+        typeof data?.commentCount === 'number' ? data.commentCount : loadedComments.length;
 
-    get(`/api/events/${event.id}/comments`)
-      .then((data) => {
-        if (isCancelled) {
-          return;
-        }
-
-        const loadedComments = Array.isArray(data?.comments) ? data.comments : [];
-        const loadedCount =
-          typeof data?.commentCount === 'number' ? data.commentCount : loadedComments.length;
-
-        setComments(loadedComments);
-        setCommentCount(loadedCount);
-      })
-      .catch((error) => {
-        if (isCancelled) {
-          return;
-        }
-        console.error('Failed to load event comments:', error);
-        setCommentsError(error?.body?.error || error?.message || 'Failed to load comments.');
-        setComments([]);
-        setCommentCount(0);
-      })
-      .finally(() => {
-        if (!isCancelled) {
-          setCommentsLoading(false);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
+      setComments(loadedComments);
+      setCommentCount(loadedCount);
+    } catch (error) {
+      console.error('Failed to load event comments:', error);
+      setComments([]);
+      setCommentCount(0);
+      setCommentsError(error?.body?.error || error?.message || 'Failed to load comments.');
+    } finally {
+      setCommentsLoading(false);
+    }
   }, [event?.id]);
+
+  useEffect(() => {
+    fetchComments();
+  }, [fetchComments]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchComments();
+    }, [fetchComments]),
+  );
 
   const handleUpdateBookingStatus = useCallback(
     async (bookingId, nextStatus) => {
@@ -634,7 +622,6 @@ export default function EventDetailsPage({ route, navigation }) {
   );
 
   const handleOrganizerFollowToggle = useCallback(async () => {
-    const organizerId = organizerProfile?.id ?? event?.organizerId ?? event?.organizer?.id;
     if (!organizerId || followUpdating || isOrganizer) {
       return;
     }
@@ -652,26 +639,31 @@ export default function EventDetailsPage({ route, navigation }) {
         : await post(endpoint, {});
 
       setOrganizerProfile((current) => {
-        if (!current) {
-          return current;
-        }
+        const base = current ?? { id: organizerId };
+        const wasFollowing = Boolean(base.isFollowing);
         const nextFollowers =
           typeof result?.followersCount === 'number'
             ? result.followersCount
             : Math.max(
                 0,
-                (current.followersCount ?? 0) + (current.isFollowing ? -1 : 1),
+                (base.followersCount ?? 0) + (wasFollowing ? -1 : 1),
               );
 
         return {
-          ...current,
+          ...base,
           isFollowing:
             typeof result?.isFollowing === 'boolean'
               ? result.isFollowing
-              : !current.isFollowing,
+              : !wasFollowing,
           followersCount: nextFollowers,
         };
       });
+
+      if (typeof refreshUser === 'function') {
+        refreshUser().catch((err) =>
+          console.error('Failed to refresh viewer profile after follow toggle:', err),
+        );
+      }
     } catch (error) {
       console.error('Failed to update follow state:', error);
       Alert.alert(
@@ -680,15 +672,16 @@ export default function EventDetailsPage({ route, navigation }) {
       );
     } finally {
       setFollowUpdating(false);
+      fetchOrganizerProfile();
     }
   }, [
-    organizerProfile?.id,
     organizerProfile?.isFollowing,
+    organizerId,
     followUpdating,
     isOrganizer,
     user?.id,
-    event?.organizerId,
-    event?.organizer?.id,
+    fetchOrganizerProfile,
+    refreshUser,
   ]);
 
   const handleSubmitComment = useCallback(async () => {
@@ -733,6 +726,15 @@ export default function EventDetailsPage({ route, navigation }) {
       setCommentSubmitting(false);
     }
   }, [commentSubmitting, commentText, event?.id, user?.id]);
+
+  const handleOpenComments = useCallback(() => {
+    setCommentsVisible(true);
+    fetchComments();
+  }, [fetchComments]);
+
+  const handleCloseComments = useCallback(() => {
+    setCommentsVisible(false);
+  }, []);
 
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
   const locationPoint = useMemo(() => getLocationPoint(event), [event]);
@@ -802,7 +804,6 @@ export default function EventDetailsPage({ route, navigation }) {
       : `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
   }, [attendeeStats, isOrganizer]);
 
-  const organizerId = organizerProfile?.id ?? event?.organizerId ?? event?.organizer?.id ?? null;
   const organizerName = useMemo(
     () =>
       getUserDisplayName(organizerProfile) ??
@@ -832,6 +833,54 @@ export default function EventDetailsPage({ route, navigation }) {
   const organizerMessageInFlight = organizerId && messageTargetId === organizerId;
   const canSubmitComment = commentText.trim().length > 0 && !commentSubmitting;
   const viewerCanComment = Boolean(user?.id);
+  const previewComments = useMemo(() => comments.slice(0, 2), [comments]);
+  const hasMoreComments = useMemo(
+    () => typeof commentCount === 'number' && commentCount > previewComments.length,
+    [commentCount, previewComments],
+  );
+  const commentsCtaLabel = useMemo(() => {
+    if (commentsLoading) {
+      return 'Loading...';
+    }
+    if (typeof commentCount === 'number' && commentCount > 0) {
+      return hasMoreComments ? 'View all comments' : 'Open comments';
+    }
+    return viewerCanComment ? 'Add a comment' : 'View comments';
+  }, [commentsLoading, commentCount, hasMoreComments, viewerCanComment]);
+
+  const renderCommentItem = useCallback(
+    (comment) => {
+      if (!comment) {
+        return null;
+      }
+
+      const commentKey = comment.id ?? `comment-${comment?.createdAt ?? ''}-${comment?.author?.id ?? ''}`;
+      const authorName =
+        getUserDisplayName(comment?.author) ??
+        getAttendeeInitials(comment?.author?.name, comment?.author?.email);
+      const initials = getAttendeeInitials(comment?.author?.name, comment?.author?.email);
+      const timestamp = formatCommentTimestamp(comment?.createdAt);
+      const avatarUrl = comment?.author?.avatarUrl ?? null;
+
+      return (
+        <View key={commentKey} style={styles.commentCard}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.commentAvatar} />
+          ) : (
+            <View style={styles.commentAvatarPlaceholder}>
+              <Text style={styles.commentAvatarInitials}>{initials}</Text>
+            </View>
+          )}
+          <View style={styles.commentBody}>
+            <Text style={styles.commentAuthor}>{authorName}</Text>
+            <Text style={styles.commentText}>{comment?.content ?? ''}</Text>
+            {timestamp ? <Text style={styles.commentMeta}>{timestamp}</Text> : null}
+          </View>
+        </View>
+      );
+    },
+    [],
+  );
 
   const overviewText = useMemo(() => sanitizeText(event?.overview), [event?.overview]);
   const itineraryText = useMemo(() => sanitizeText(event?.itinerary), [event?.itinerary]);
@@ -1035,7 +1084,12 @@ export default function EventDetailsPage({ route, navigation }) {
                   {followUpdating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={styles.followText}>
+                    <Text
+                      style={[
+                        styles.followText,
+                        isFollowingOrganizer ? styles.followingText : null,
+                      ]}
+                    >
                       {isFollowingOrganizer ? 'Following' : 'Follow'}
                     </Text>
                   )}
@@ -1060,87 +1114,57 @@ export default function EventDetailsPage({ route, navigation }) {
             ) : null}
           </View>
 
-          <View style={styles.commentsHeader}>
-            <Text style={styles.commentsTitle}>Comments</Text>
-            {typeof commentCount === 'number' ? (
-              <Text style={styles.commentsCount}>
-                {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
+          <View style={styles.commentsSection}>
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>Comments</Text>
+              {typeof commentCount === 'number' ? (
+                <TouchableOpacity
+                  onPress={handleOpenComments}
+                  disabled={commentsLoading}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.commentsCount}>
+                    {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {commentsError ? (
+              <Text style={styles.commentError}>{commentsError}</Text>
+            ) : commentsLoading && previewComments.length === 0 ? (
+              <View style={styles.commentsLoading}>
+                <ActivityIndicator size="small" color="#2E7D32" />
+                <Text style={styles.commentsLoadingText}>Loading comments...</Text>
+              </View>
+            ) : previewComments.length === 0 ? (
+              <Text style={styles.commentEmpty}>
+                Be the first to share a thought about this event.
+              </Text>
+            ) : (
+              previewComments.map((comment) => renderCommentItem(comment))
+            )}
+
+            {(previewComments.length > 0 || viewerCanComment) && (
+              <TouchableOpacity
+                style={[
+                  styles.commentPreviewButton,
+                  commentsLoading ? styles.commentPreviewButtonDisabled : null,
+                ]}
+                onPress={handleOpenComments}
+                disabled={commentsLoading}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.commentPreviewButtonText}>{commentsCtaLabel}</Text>
+              </TouchableOpacity>
+            )}
+
+            {!viewerCanComment ? (
+              <Text style={styles.commentAuthNote}>
+                Sign in to join the discussion and ask the organizer questions.
               </Text>
             ) : null}
           </View>
-
-          {commentsLoading ? (
-            <View style={styles.commentsLoading}>
-              <ActivityIndicator size="small" color="#2E7D32" />
-              <Text style={styles.commentsLoadingText}>Loading comments...</Text>
-            </View>
-          ) : commentsError ? (
-            <Text style={styles.commentError}>{commentsError}</Text>
-          ) : comments.length === 0 ? (
-            <Text style={styles.commentEmpty}>Be the first to share a thought about this event.</Text>
-          ) : (
-            comments.map((comment) => {
-              const authorName =
-                getUserDisplayName(comment?.author) ??
-                getAttendeeInitials(comment?.author?.name, comment?.author?.email);
-              const commentInitials = getAttendeeInitials(
-                comment?.author?.name,
-                comment?.author?.email,
-              );
-              const timestamp = formatCommentTimestamp(comment?.createdAt);
-              const avatarUrl = comment?.author?.avatarUrl ?? null;
-
-              return (
-                <View key={comment.id} style={styles.commentCard}>
-                  {avatarUrl ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.organizerAvatar} />
-                  ) : (
-                    <View style={styles.avatarPlaceholder}>
-                      <Text style={styles.avatarInitials}>{commentInitials}</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.commentAuthor}>{authorName}</Text>
-                    <Text style={styles.commentText}>{comment?.content ?? ''}</Text>
-                    {timestamp ? <Text style={styles.commentMeta}>{timestamp}</Text> : null}
-                  </View>
-                </View>
-              );
-            })
-          )}
-
-          {viewerCanComment ? (
-            <View style={styles.commentInputContainer}>
-              <TextInput
-                style={styles.commentInputField}
-                placeholder="Add a comment..."
-                placeholderTextColor="#94A3B8"
-                value={commentText}
-                onChangeText={setCommentText}
-                editable={!commentSubmitting}
-                multiline
-                maxLength={280}
-              />
-              <View style={styles.commentSubmitRow}>
-                <TouchableOpacity
-                  onPress={handleSubmitComment}
-                  disabled={!canSubmitComment}
-                  style={[
-                    styles.commentSubmitButton,
-                    !canSubmitComment ? styles.commentSubmitButtonDisabled : null,
-                  ]}
-                >
-                  <Text style={styles.commentSubmitText}>
-                    {commentSubmitting ? 'Posting...' : 'Post'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.commentAuthNote}>
-              Sign in to join the discussion and ask the organizer questions.
-            </Text>
-          )}
         </View>
       </ScrollView>
 
@@ -1150,6 +1174,78 @@ export default function EventDetailsPage({ route, navigation }) {
       >
         <Text style={styles.bookText}>Book Now</Text>
       </TouchableOpacity>
+
+      <Modal
+        visible={commentsVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseComments}
+      >
+        <View style={styles.commentsModalContainer}>
+          <View style={styles.commentsModalHeader}>
+            <Text style={styles.commentsModalTitle}>Comments</Text>
+            <TouchableOpacity
+              onPress={handleCloseComments}
+              hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            >
+              <Icon name="x" size={22} color="#475569" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.commentsModalScroll}
+            contentContainerStyle={styles.commentsModalList}
+            showsVerticalScrollIndicator={false}
+          >
+            {commentsLoading && comments.length === 0 ? (
+              <View style={styles.commentsLoading}>
+                <ActivityIndicator size="small" color="#2E7D32" />
+                <Text style={styles.commentsLoadingText}>Loading comments...</Text>
+              </View>
+            ) : commentsError ? (
+              <Text style={styles.commentError}>{commentsError}</Text>
+            ) : comments.length === 0 ? (
+              <Text style={styles.commentEmpty}>Be the first to leave a comment.</Text>
+            ) : (
+              comments.map((comment) => renderCommentItem(comment))
+            )}
+          </ScrollView>
+
+          <View style={styles.commentsModalInputWrapper}>
+            {viewerCanComment ? (
+              <>
+                <TextInput
+                  style={styles.commentInputField}
+                  placeholder="Add a comment..."
+                  placeholderTextColor="#94A3B8"
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  editable={!commentSubmitting}
+                  multiline
+                  maxLength={280}
+                />
+                <TouchableOpacity
+                  onPress={handleSubmitComment}
+                  disabled={!canSubmitComment}
+                  style={[
+                    styles.commentSubmitButton,
+                    !canSubmitComment ? styles.commentSubmitButtonDisabled : null,
+                  ]}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.commentSubmitText}>
+                    {commentSubmitting ? 'Posting...' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.commentAuthNote}>
+                Sign in to join the discussion and ask the organizer questions.
+              </Text>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1310,9 +1406,14 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: '#cbd5f5',
     marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  organizerAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12 },
+  avatarInitials: { fontSize: 16, fontWeight: '700', color: '#1f2937' },
   organizerName: { fontWeight: '700', fontSize: 14, color: '#1f2937' },
   organizerDate: { fontSize: 12, color: '#64748b' },
+  organizerFollowers: { fontSize: 12, color: '#475569', marginTop: 2 },
   actionButtons: { flexDirection: 'row' },
   followBtn: {
     backgroundColor: '#2E7D32',
@@ -1320,7 +1421,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
   },
+  followingBtn: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#2E7D32',
+  },
+  followBtnDisabled: { opacity: 0.7 },
   followText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  followingText: { color: '#2E7D32' },
   messageBtn: {
     borderWidth: 1,
     borderColor: '#2E7D32',
@@ -1330,7 +1438,20 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   messageText: { color: '#2E7D32', fontSize: 12, fontWeight: '600' },
-  commentsTitle: { fontWeight: '700', fontSize: 16, marginBottom: 12, color: '#1F2937' },
+  messageBtnDisabled: { opacity: 0.7 },
+  commentsSection: { marginTop: 8 },
+  commentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  commentsTitle: { fontWeight: '700', fontSize: 16, color: '#1F2937' },
+  commentsCount: { fontSize: 12, fontWeight: '600', color: '#2E7D32' },
+  commentsLoading: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  commentsLoadingText: { marginLeft: 8, color: '#475569', fontSize: 13 },
+  commentError: { color: '#b91c1c', fontSize: 13, marginBottom: 8 },
+  commentEmpty: { color: '#6b7280', fontSize: 13, marginBottom: 8 },
   commentCard: {
     flexDirection: 'row',
     paddingVertical: 12,
@@ -1338,8 +1459,67 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
     alignItems: 'flex-start',
   },
+  commentAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
+  commentAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  commentAvatarInitials: { fontSize: 14, fontWeight: '700', color: '#1f2937' },
+  commentBody: { flex: 1 },
   commentAuthor: { fontWeight: '600', fontSize: 13, marginBottom: 2, color: '#1F2937' },
   commentText: { fontSize: 13, color: '#4B5563', lineHeight: 19 },
+  commentMeta: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+  commentPreviewButton: { marginTop: 12, alignSelf: 'flex-start' },
+  commentPreviewButtonDisabled: { opacity: 0.6 },
+  commentPreviewButtonText: { color: '#1d4ed8', fontSize: 13, fontWeight: '600' },
+  commentAuthNote: { marginTop: 8, fontSize: 12, color: '#94A3B8' },
+  commentInputField: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+    minHeight: 48,
+    textAlignVertical: 'top',
+  },
+  commentSubmitButton: {
+    marginTop: 12,
+    alignSelf: 'flex-end',
+    backgroundColor: '#16A34A',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  commentSubmitButtonDisabled: { backgroundColor: '#9CA3AF' },
+  commentSubmitText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  commentsModalContainer: { flex: 1, backgroundColor: '#ffffff' },
+  commentsModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  commentsModalTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  commentsModalScroll: { flex: 1 },
+  commentsModalList: { paddingHorizontal: 20, paddingVertical: 16, paddingBottom: 28 },
+  commentsModalInputWrapper: {
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F8FAFC',
+  },
   bookButton: {
     position: 'absolute',
     bottom: 0,
