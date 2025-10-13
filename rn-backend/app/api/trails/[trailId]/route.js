@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(request, { params: { trailId } }) {
+export async function GET(request, context) {
+  const trailId = context?.params?.trailId ?? null;
   try {
     const user = await getUserFromToken(request);
     if (!user) {
