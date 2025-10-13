@@ -1,12 +1,24 @@
-# React + Vite
+# Admin Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This Vite + React application provides the lightweight admin console for managing users and organizer requests. It talks to the same backend used by the mobile app (`rn-backend`), so you can switch between the Render deployment and a local server just by changing one environment variable.
 
-Currently, two official plugins are available:
+## Configure the backend URL
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Set the API base URL with `VITE_ADMIN_API_URL` in `admin-web/.env`. The dashboard now falls back to `VITE_API_BASE_URL`, then `VITE_BACKEND_URL`, and finally `http://localhost:3000` if nothing is provided.
 
-## Expanding the ESLint configuration
+```bash
+# admin-web/.env
+VITE_ADMIN_API_URL=https://backend-capstone-olpj.onrender.com
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+If you want to hit a local instance of `rn-backend`, simply change that value to `http://localhost:3000` after starting the Next.js server.
+
+## Local development
+
+```bash
+cd admin-web
+npm install
+npm run dev
+```
+
+The dev server runs on `http://localhost:5173`. Log in with an admin account and you should see the latest users and organizer requests coming straight from the configured backend.

@@ -1,7 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3000';
+const resolveApiBaseUrl = () => {
+  // Prefer explicit admin URL, then fall back to general backend URLs, then localhost.
+  const raw =
+    import.meta.env.VITE_ADMIN_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_BACKEND_URL ||
+    '';
+
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return 'http://localhost:3000';
+  }
+
+  // Ensure we never end up with a trailing slash so axios concatenation remains predictable.
+  return raw.replace(/\/+$/, '');
+};
+
+const API_URL = resolveApiBaseUrl();
 const TOKEN_KEY = 'adminToken';
 
 const adminApi = axios.create({ baseURL: API_URL });
