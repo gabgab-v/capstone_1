@@ -79,7 +79,7 @@ export async function getUserFromToken(request) {
 
     if (!user) return null;
 
-    const { password, ...safeUser } = user;
+    const { password: _password, ...safeUser } = user;
     return safeUser;
   } catch (error) {
     console.error('Token verification failed:', error.message);
@@ -106,7 +106,7 @@ export async function getAdminFromToken(request) {
     });
 
     if (user && user.role === 'ADMIN') {
-      const { password, ...safeAdmin } = user;
+      const { password: _password, ...safeAdmin } = user;
       return safeAdmin;
     }
 
