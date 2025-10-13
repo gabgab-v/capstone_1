@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -14,7 +15,7 @@ import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
-import { get, put, post, BASE_URL } from '../../lib/api';
+import { get, put, post, del as deleteRequest, BASE_URL } from '../../lib/api';
 
 const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -81,6 +82,32 @@ function getLocationLabel(event) {
     return `Lat ${point.lat.toFixed(3)}, Lon ${point.lng.toFixed(3)}`;
   }
   return 'Location to follow';
+}
+
+function getUserDisplayName(user) {
+  if (!user) {
+    return null;
+  }
+  const name = sanitizeText(user.name);
+  if (name) {
+    return name;
+  }
+  const email = sanitizeText(user.email);
+  if (email && email.includes('@')) {
+    return email.split('@')[0];
+  }
+  return null;
+}
+
+function formatCommentTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function formatPrice(value) {
@@ -348,6 +375,47 @@ export default function EventDetailsPage({ route, navigation }) {
   const [bookingActionInFlight, setBookingActionInFlight] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [messageTargetId, setMessageTargetId] = useState(null);
+  const [organizerProfile, setOrganizerProfile] = useState(null);
+  const [organizerLoading, setOrganizerLoading] = useState(false);
+  const [followUpdating, setFollowUpdating] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [commentCount, setCommentCount] = useState(null);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+  const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+
+  useEffect(() => {
+    const baseId = event?.organizer?.id ?? event?.organizerId ?? null;
+    if (!baseId) {
+      setOrganizerProfile(null);
+      return;
+    }
+
+    setOrganizerProfile((current) => {
+      if (current?.id === baseId) {
+        return {
+          ...current,
+          name: sanitizeText(event?.organizer?.name) ?? current.name ?? null,
+          email: event?.organizer?.email ?? current.email ?? null,
+          avatarUrl: event?.organizer?.avatarUrl ?? current.avatarUrl ?? null,
+        };
+      }
+
+      return {
+        id: baseId,
+        name: sanitizeText(event?.organizer?.name) ?? null,
+        email: event?.organizer?.email ?? null,
+        avatarUrl: event?.organizer?.avatarUrl ?? null,
+      };
+    });
+  }, [
+    event?.organizerId,
+    event?.organizer?.id,
+    event?.organizer?.name,
+    event?.organizer?.email,
+    event?.organizer?.avatarUrl,
+  ]);
 
   const tabs = useMemo(
     () => [...BASE_TABS, { key: 'attendees', label: 'Attendees' }],
@@ -359,6 +427,58 @@ export default function EventDetailsPage({ route, navigation }) {
       setActiveTab(tabs[0]?.key ?? 'overview');
     }
   }, [tabs, activeTab]);
+
+  useEffect(() => {
+    const organizerId = event?.organizerId ?? event?.organizer?.id;
+    if (!organizerId) {
+      setOrganizerLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setOrganizerLoading(true);
+
+    get(`/api/users/${organizerId}`)
+      .then((data) => {
+        if (isCancelled || !data) {
+          return;
+        }
+
+        setOrganizerProfile((current) => {
+          const nextProfile = {
+            id: data.id ?? current?.id ?? organizerId,
+            name: sanitizeText(data.name) ?? current?.name ?? null,
+            email: data.email ?? current?.email ?? null,
+            avatarUrl: data.avatarUrl ?? current?.avatarUrl ?? null,
+            isFollowing:
+              typeof data.isFollowing === 'boolean'
+                ? data.isFollowing
+                : current?.isFollowing ?? false,
+            followersCount:
+              typeof data.followersCount === 'number'
+                ? data.followersCount
+                : current?.followersCount ?? null,
+          };
+
+          return current ? { ...current, ...nextProfile } : nextProfile;
+        });
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+        console.error('Failed to load organizer profile:', error);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setOrganizerLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [event?.organizerId, event?.organizer?.id]);
 
   useEffect(() => {
     if (!event?.id) {
@@ -397,6 +517,52 @@ export default function EventDetailsPage({ route, navigation }) {
     };
   }, [event?.id, user?.id, isOrganizer]);
 
+  useEffect(() => {
+    if (!event?.id) {
+      setComments([]);
+      setCommentCount(0);
+      setCommentsError(null);
+      setCommentsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setCommentsLoading(true);
+    setCommentsError(null);
+
+    get(`/api/events/${event.id}/comments`)
+      .then((data) => {
+        if (isCancelled) {
+          return;
+        }
+
+        const loadedComments = Array.isArray(data?.comments) ? data.comments : [];
+        const loadedCount =
+          typeof data?.commentCount === 'number' ? data.commentCount : loadedComments.length;
+
+        setComments(loadedComments);
+        setCommentCount(loadedCount);
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+        console.error('Failed to load event comments:', error);
+        setCommentsError(error?.body?.error || error?.message || 'Failed to load comments.');
+        setComments([]);
+        setCommentCount(0);
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setCommentsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [event?.id]);
+
   const handleUpdateBookingStatus = useCallback(
     async (bookingId, nextStatus) => {
       if (!bookingId || !nextStatus) {
@@ -425,6 +591,11 @@ export default function EventDetailsPage({ route, navigation }) {
     async (targetUser) => {
       const targetId = targetUser?.id;
       if (!targetId || targetId === user?.id) {
+        return;
+      }
+
+      if (!user?.id) {
+        Alert.alert('Sign in required', 'Please sign in to start a conversation.');
         return;
       }
 
@@ -461,6 +632,107 @@ export default function EventDetailsPage({ route, navigation }) {
     },
     [navigation, user?.id],
   );
+
+  const handleOrganizerFollowToggle = useCallback(async () => {
+    const organizerId = organizerProfile?.id ?? event?.organizerId ?? event?.organizer?.id;
+    if (!organizerId || followUpdating || isOrganizer) {
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to follow organizers.');
+      return;
+    }
+
+    setFollowUpdating(true);
+    try {
+      const endpoint = `/api/users/${organizerId}/follow`;
+      const result = organizerProfile?.isFollowing
+        ? await deleteRequest(endpoint)
+        : await post(endpoint, {});
+
+      setOrganizerProfile((current) => {
+        if (!current) {
+          return current;
+        }
+        const nextFollowers =
+          typeof result?.followersCount === 'number'
+            ? result.followersCount
+            : Math.max(
+                0,
+                (current.followersCount ?? 0) + (current.isFollowing ? -1 : 1),
+              );
+
+        return {
+          ...current,
+          isFollowing:
+            typeof result?.isFollowing === 'boolean'
+              ? result.isFollowing
+              : !current.isFollowing,
+          followersCount: nextFollowers,
+        };
+      });
+    } catch (error) {
+      console.error('Failed to update follow state:', error);
+      Alert.alert(
+        'Follow failed',
+        error?.body?.error || error?.message || 'Unable to update follow status right now.',
+      );
+    } finally {
+      setFollowUpdating(false);
+    }
+  }, [
+    organizerProfile?.id,
+    organizerProfile?.isFollowing,
+    followUpdating,
+    isOrganizer,
+    user?.id,
+    event?.organizerId,
+    event?.organizer?.id,
+  ]);
+
+  const handleSubmitComment = useCallback(async () => {
+    if (!event?.id || commentSubmitting) {
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to join the discussion.');
+      return;
+    }
+
+    const trimmed = commentText.trim();
+    if (!trimmed.length) {
+      return;
+    }
+
+    setCommentSubmitting(true);
+    try {
+      const data = await post(`/api/events/${event.id}/comments`, { content: trimmed });
+      if (data?.comment) {
+        setComments((current) => [...current, data.comment]);
+      }
+      if (typeof data?.commentCount === 'number') {
+        setCommentCount(data.commentCount);
+      } else {
+        setCommentCount((current) => {
+          if (typeof current === 'number') {
+            return current + 1;
+          }
+          return 1;
+        });
+      }
+      setCommentText('');
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+      Alert.alert(
+        'Comment failed',
+        error?.body?.error || error?.message || 'Unable to add your comment right now.',
+      );
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }, [commentSubmitting, commentText, event?.id, user?.id]);
 
   const locationLabel = useMemo(() => getLocationLabel(event), [event]);
   const locationPoint = useMemo(() => getLocationPoint(event), [event]);
@@ -529,6 +801,37 @@ export default function EventDetailsPage({ route, navigation }) {
       ? 'All current bookings approved'
       : `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
   }, [attendeeStats, isOrganizer]);
+
+  const organizerId = organizerProfile?.id ?? event?.organizerId ?? event?.organizer?.id ?? null;
+  const organizerName = useMemo(
+    () =>
+      getUserDisplayName(organizerProfile) ??
+      sanitizeText(event?.organizer?.name) ??
+      getUserDisplayName(event?.organizer) ??
+      'Unknown Organizer',
+    [organizerProfile, event?.organizer],
+  );
+  const organizerAvatarUrl = organizerProfile?.avatarUrl ?? event?.organizer?.avatarUrl ?? null;
+  const organizerInitials = useMemo(
+    () =>
+      getAttendeeInitials(
+        organizerProfile?.name ?? event?.organizer?.name,
+        organizerProfile?.email ?? event?.organizer?.email,
+      ),
+    [organizerProfile?.name, organizerProfile?.email, event?.organizer?.name, event?.organizer?.email],
+  );
+  const organizerFollowersLabel = useMemo(() => {
+    if (typeof organizerProfile?.followersCount !== 'number') {
+      return null;
+    }
+    const followers = organizerProfile.followersCount;
+    const suffix = followers === 1 ? 'follower' : 'followers';
+    return `${followers} ${suffix}`;
+  }, [organizerProfile?.followersCount]);
+  const isFollowingOrganizer = Boolean(organizerProfile?.isFollowing);
+  const organizerMessageInFlight = organizerId && messageTargetId === organizerId;
+  const canSubmitComment = commentText.trim().length > 0 && !commentSubmitting;
+  const viewerCanComment = Boolean(user?.id);
 
   const overviewText = useMemo(() => sanitizeText(event?.overview), [event?.overview]);
   const itineraryText = useMemo(() => sanitizeText(event?.itinerary), [event?.itinerary]);
@@ -702,43 +1005,142 @@ export default function EventDetailsPage({ route, navigation }) {
 
           <View style={styles.organizerCard}>
             <View style={styles.organizerInfo}>
-              <View style={styles.avatarPlaceholder} />
+              {organizerAvatarUrl ? (
+                <Image source={{ uri: organizerAvatarUrl }} style={styles.organizerAvatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarInitials}>{organizerInitials}</Text>
+                </View>
+              )}
               <View>
-                <Text style={styles.organizerName}>
-                  {sanitizeText(event.organizer?.name) ?? 'Unknown Organizer'}
-                </Text>
+                <Text style={styles.organizerName}>{organizerName}</Text>
                 <Text style={styles.organizerDate}>Event Organizer</Text>
+                {organizerFollowersLabel ? (
+                  <Text style={styles.organizerFollowers}>{organizerFollowersLabel}</Text>
+                ) : null}
               </View>
             </View>
-            <View style={styles.actionButtons}>
-              <TouchableOpacity style={styles.followBtn}>
-                <Text style={styles.followText}>Follow</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.messageBtn}>
-                <Text style={styles.messageText}>Message</Text>
-              </TouchableOpacity>
-            </View>
+            {!isOrganizer ? (
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.followBtn,
+                    isFollowingOrganizer ? styles.followingBtn : null,
+                    followUpdating || organizerLoading ? styles.followBtnDisabled : null,
+                  ]}
+                  onPress={handleOrganizerFollowToggle}
+                  disabled={!organizerId || followUpdating || organizerLoading}
+                  activeOpacity={0.8}
+                >
+                  {followUpdating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.followText}>
+                      {isFollowingOrganizer ? 'Following' : 'Follow'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.messageBtn,
+                    (!organizerId || organizerMessageInFlight || organizerLoading) &&
+                      styles.messageBtnDisabled,
+                  ]}
+                  onPress={() => handleMessageUser(organizerProfile)}
+                  disabled={!organizerId || organizerMessageInFlight || organizerLoading}
+                  activeOpacity={0.8}
+                >
+                  {organizerMessageInFlight ? (
+                    <ActivityIndicator size="small" color="#2E7D32" />
+                  ) : (
+                    <Text style={styles.messageText}>Message</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
 
-          <Text style={styles.commentsTitle}>Comments</Text>
-          <View style={styles.commentCard}>
-            <View style={styles.avatarPlaceholder} />
-            <View>
-              <Text style={styles.commentAuthor}>Marvin Cruz</Text>
-              <Text style={styles.commentText}>
-                Excited for this trail! Will the meetup have parking nearby?
+          <View style={styles.commentsHeader}>
+            <Text style={styles.commentsTitle}>Comments</Text>
+            {typeof commentCount === 'number' ? (
+              <Text style={styles.commentsCount}>
+                {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
               </Text>
-            </View>
+            ) : null}
           </View>
-          <View style={styles.commentCard}>
-            <View style={styles.avatarPlaceholder} />
-            <View>
-              <Text style={styles.commentAuthor}>Rheniel Penional</Text>
-              <Text style={styles.commentText}>
-                Following for updates on the final schedule.
-              </Text>
+
+          {commentsLoading ? (
+            <View style={styles.commentsLoading}>
+              <ActivityIndicator size="small" color="#2E7D32" />
+              <Text style={styles.commentsLoadingText}>Loading comments...</Text>
             </View>
-          </View>
+          ) : commentsError ? (
+            <Text style={styles.commentError}>{commentsError}</Text>
+          ) : comments.length === 0 ? (
+            <Text style={styles.commentEmpty}>Be the first to share a thought about this event.</Text>
+          ) : (
+            comments.map((comment) => {
+              const authorName =
+                getUserDisplayName(comment?.author) ??
+                getAttendeeInitials(comment?.author?.name, comment?.author?.email);
+              const commentInitials = getAttendeeInitials(
+                comment?.author?.name,
+                comment?.author?.email,
+              );
+              const timestamp = formatCommentTimestamp(comment?.createdAt);
+              const avatarUrl = comment?.author?.avatarUrl ?? null;
+
+              return (
+                <View key={comment.id} style={styles.commentCard}>
+                  {avatarUrl ? (
+                    <Image source={{ uri: avatarUrl }} style={styles.organizerAvatar} />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <Text style={styles.avatarInitials}>{commentInitials}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.commentAuthor}>{authorName}</Text>
+                    <Text style={styles.commentText}>{comment?.content ?? ''}</Text>
+                    {timestamp ? <Text style={styles.commentMeta}>{timestamp}</Text> : null}
+                  </View>
+                </View>
+              );
+            })
+          )}
+
+          {viewerCanComment ? (
+            <View style={styles.commentInputContainer}>
+              <TextInput
+                style={styles.commentInputField}
+                placeholder="Add a comment..."
+                placeholderTextColor="#94A3B8"
+                value={commentText}
+                onChangeText={setCommentText}
+                editable={!commentSubmitting}
+                multiline
+                maxLength={280}
+              />
+              <View style={styles.commentSubmitRow}>
+                <TouchableOpacity
+                  onPress={handleSubmitComment}
+                  disabled={!canSubmitComment}
+                  style={[
+                    styles.commentSubmitButton,
+                    !canSubmitComment ? styles.commentSubmitButtonDisabled : null,
+                  ]}
+                >
+                  <Text style={styles.commentSubmitText}>
+                    {commentSubmitting ? 'Posting...' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.commentAuthNote}>
+              Sign in to join the discussion and ask the organizer questions.
+            </Text>
+          )}
         </View>
       </ScrollView>
 

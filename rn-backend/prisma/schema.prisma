@@ -33,6 +33,7 @@ model User {
   posts                   Post[]
   postLikes               PostLike[]
   postComments            PostComment[]
+  eventComments           EventComment[]
   organizerApplication    OrganizerApplication?
   reviewedOrganizerApplications OrganizerApplication[] @relation("OrganizerApplicationReviewer")
   followers               Follow[] @relation("FollowedUser")
@@ -72,6 +73,7 @@ model Event {
   gcashNumber          String?
   organizerId          String
   bookings             Booking[]
+  comments             EventComment[]
 
   createdAt            DateTime @default(now())
 
@@ -241,4 +243,18 @@ model OrganizerReview {
   @@unique([organizerId, reviewerId])
   @@index([organizerId])
   @@index([reviewerId])
+}
+
+model EventComment {
+  id        String   @id @default(uuid())
+  content   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId, createdAt])
+  @@index([userId])
 }
