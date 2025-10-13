@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
-const ATTENDEE_ALLOWED_STATUSES = new Set(["CONFIRMED", "CANCELLED"]);
+const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED"]);
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -57,7 +57,15 @@ export async function PUT(req, { params }) {
     }
 
     if (!allowedStatuses.has(normalizedStatus)) {
-      return NextResponse.json({ error: "Invalid status provided" }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            isBookingOwner && normalizedStatus !== "CANCELLED"
+              ? "Only organizers can approve bookings. You may cancel your booking instead."
+              : "Invalid status provided",
+        },
+        { status: 400 },
+      );
     }
 
     if (

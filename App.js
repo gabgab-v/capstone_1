@@ -42,26 +42,28 @@ function AppNavigator() {
     );
   }
 
+  const isAuthenticated = Boolean(user);
   const preferencesIncomplete = Boolean(user && !user.preferencesComplete);
-
-  if (user && preferencesIncomplete) {
-    return (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
-        <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
-      </Stack.Navigator>
-    );
-  }
+  const navigatorKey = !isAuthenticated ? 'auth' : preferencesIncomplete ? 'onboarding' : 'main';
+  const initialRouteName = !isAuthenticated
+    ? 'Login'
+    : preferencesIncomplete
+    ? 'PreferencesSetup'
+    : 'MainTabs';
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {user ? (
+    <Stack.Navigator
+      key={navigatorKey}
+      screenOptions={{ headerShown: false }}
+      initialRouteName={initialRouteName}
+    >
+      {isAuthenticated ? (
         <>
+          <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
           <Stack.Screen name="MainTabs" component={MainTabNavigator} />
           <Stack.Screen name="Profile" component={ProfilePage} />
           <Stack.Screen name="UserProfile" component={ProfilePage} />
           <Stack.Screen name="ProfileCreation" component={ProfileCreationPage} />
-          <Stack.Screen name="PreferencesSetup" component={PreferencesSetupPage} />
           <Stack.Screen name="BookingPage" component={BookingPage} />
           <Stack.Screen name="ReceiptPage" component={ReceiptPage} />
           <Stack.Screen name="EventDetails" component={EventDetailsPage} />

@@ -74,7 +74,7 @@ export default function BookingPage({ route, navigation }) {
     }
 
     if (requiresReceipt && !receipt) {
-      Alert.alert("Receipt Required", "Please upload your payment receipt before confirming.");
+      Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
       return;
     }
 
@@ -95,8 +95,8 @@ export default function BookingPage({ route, navigation }) {
       const booking = await postFormData("/api/bookings", formData);
 
       await scheduleNotification({
-        title: "Booking confirmed",
-        body: `Your spot for ${event?.title ?? "the event"} is secured.`,
+        title: "Booking submitted",
+        body: `Your spot for ${event?.title ?? "the event"} is awaiting organizer approval.`,
         data: {
           type: "booking",
           eventId: event?.id,
@@ -167,7 +167,7 @@ export default function BookingPage({ route, navigation }) {
         {loading ? (
           <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text style={styles.confirmText}>Confirm Booking</Text>
+          <Text style={styles.confirmText}>Submit Booking</Text>
         )}
       </TouchableOpacity>
 

@@ -12,9 +12,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const profile = await get('/api/users/me');
       setUser(profile);
+      return profile;
     } catch (error) {
-      console.error("Error fetching user profile:", error);
+      console.error('Error fetching user profile:', error);
       setUser(null); // Clear user if profile fetch fails
+      return null;
     }
   };
 
@@ -25,8 +27,8 @@ export const AuthProvider = ({ children }) => {
         // If a session exists, fetch the full user profile from your backend
         get('/api/users/me')
           .then(setUser)
-          .catch(err => {
-            console.error("Error fetching user profile:", err);
+          .catch((err) => {
+            console.error('Error fetching user profile:', err);
             // If profile fetch fails, treat as logged out
             supabase.auth.signOut(); 
             setUser(null);

@@ -6,10 +6,13 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  View,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import { CommonActions } from '@react-navigation/native';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const EXPERIENCE_OPTIONS = [
   { label: 'Select...', value: '' },
@@ -18,14 +21,72 @@ const EXPERIENCE_OPTIONS = [
   { label: 'Expert', value: 'Expert' },
 ];
 
+const EXPERIENCE_DESCRIPTIONS = {
+  Beginner: 'Ideal for hikers who are just getting started or prefer guided adventures.',
+  Intermediate: 'Comfortable handling moderate elevation, distance, and varied terrain.',
+  Expert: 'Seasoned hikers seeking challenging routes, technical climbs, or long distances.',
+};
+
+const DIFFICULTY_OPTIONS = [
+  { label: 'Select...', value: '' },
+  { label: 'Easy', value: 'Easy' },
+  { label: 'Moderate', value: 'Moderate' },
+  { label: 'Hard', value: 'Hard' },
+  { label: 'Challenging', value: 'Challenging' },
+];
+
+const TRAIL_TYPE_OPTIONS = [
+  { label: 'Select...', value: '' },
+  { label: 'Forest', value: 'Forest' },
+  { label: 'Mountain', value: 'Mountain' },
+  { label: 'Coastal', value: 'Coastal' },
+  { label: 'River', value: 'River' },
+  { label: 'Waterfall', value: 'Waterfall' },
+  { label: 'Desert', value: 'Desert' },
+  { label: 'Urban', value: 'Urban' },
+  { label: 'Other', value: 'Other' },
+];
+
 export default function PreferencesSetupPage({ navigation }) {
   const { user, refreshUser } = useAuth();
+  const { isDarkMode, colors } = useTheme();
   const [experience, setExperience] = useState('');
   const [difficulty, setDifficulty] = useState('');
   const [trailType, setTrailType] = useState('');
   const [duration, setDuration] = useState('');
   const [budget, setBudget] = useState('');
   const [saving, setSaving] = useState(false);
+  const pickerStyle = useMemo(
+    () => ({
+      color: colors.textPrimary,
+      fontSize: 16,
+    }),
+    [colors.textPrimary],
+  );
+  const pickerContainerStyle = useMemo(
+    () => ({
+      backgroundColor: isDarkMode ? colors.surfaceMuted : colors.surface,
+    }),
+    [colors.surface, colors.surfaceMuted, isDarkMode],
+  );
+  const difficultyOptions = useMemo(() => {
+    if (!difficulty || DIFFICULTY_OPTIONS.some((option) => option.value === difficulty)) {
+      return DIFFICULTY_OPTIONS;
+    }
+    return [...DIFFICULTY_OPTIONS, { label: difficulty, value: difficulty }];
+  }, [difficulty]);
+  const trailTypeOptions = useMemo(() => {
+    if (!trailType || TRAIL_TYPE_OPTIONS.some((option) => option.value === trailType)) {
+      return TRAIL_TYPE_OPTIONS;
+    }
+    return [...TRAIL_TYPE_OPTIONS, { label: trailType, value: trailType }];
+  }, [trailType]);
+  const experienceHelperText = useMemo(() => {
+    if (!experience) {
+      return 'Select the experience level that best matches how comfortable you feel on the trails.';
+    }
+    return EXPERIENCE_DESCRIPTIONS[experience] ?? '';
+  }, [experience]);
 
   const hasExistingPreferences = useMemo(
     () =>
@@ -71,6 +132,19 @@ export default function PreferencesSetupPage({ navigation }) {
 
     setSaving(true);
     try {
+      const redirectToHome = () => {
+        try {
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: 'MainTabs', params: { screen: 'Home' } }],
+            }),
+          );
+        } catch (navError) {
+          console.warn('Failed to redirect to MainTabs:', navError);
+        }
+      };
+
       await post('/api/users/preferences', {
         experience_level: experience,
         preferred_difficulty: difficulty,
@@ -79,8 +153,20 @@ export default function PreferencesSetupPage({ navigation }) {
         budget_range: budget,
       });
 
+      let updatedProfile = null;
       if (typeof refreshUser === 'function') {
-        await refreshUser();
+        updatedProfile = await refreshUser();
+      }
+
+      const routeNames = navigation?.getState?.()?.routeNames ?? [];
+      if (updatedProfile?.preferencesComplete) {
+        redirectToHome();
+        return;
+      }
+
+      if (routeNames.includes('MainTabs')) {
+        redirectToHome();
+        return;
       }
 
       if (hasExistingPreferences && navigation.canGoBack()) {
@@ -99,27 +185,61 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
-      <Picker selectedValue={experience} onValueChange={setExperience}>
-        {EXPERIENCE_OPTIONS.map((option) => (
-          <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />
-        ))}
-      </Picker>
+      <View
+        className="border border-gray-300 rounded-xl overflow-hidden mb-2 dark:border-slate-600"
+        style={pickerContainerStyle}
+      >
+        <Picker
+          mode="dropdown"
+          selectedValue={experience}
+          onValueChange={setExperience}
+          style={pickerStyle}
+          dropdownIconColor={colors.icon}
+        >
+          {EXPERIENCE_OPTIONS.map((option) => (
+            <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />
+          ))}
+        </Picker>
+      </View>
+      {!!experienceHelperText && (
+        <Text className="text-sm text-slate-500 dark:text-slate-400 mb-4">{experienceHelperText}</Text>
+      )}
 
       <Text className="font-medium mt-4 mb-2">Preferred Difficulty</Text>
-      <TextInput
-        placeholder="e.g., Easy, Moderate, Hard"
-        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
-        value={difficulty}
-        onChangeText={setDifficulty}
-      />
+      <View
+        className="border border-gray-300 rounded-xl overflow-hidden mb-4 dark:border-slate-600"
+        style={pickerContainerStyle}
+      >
+        <Picker
+          mode="dropdown"
+          selectedValue={difficulty}
+          onValueChange={setDifficulty}
+          style={pickerStyle}
+          dropdownIconColor={colors.icon}
+        >
+          {difficultyOptions.map((option) => (
+            <Picker.Item key={option.value ? `difficulty-${option.value}` : 'difficulty-placeholder'} label={option.label} value={option.value} />
+          ))}
+        </Picker>
+      </View>
 
       <Text className="font-medium mt-4 mb-2">Preferred Trail Type</Text>
-      <TextInput
-        placeholder="e.g., Forest, Summit"
-        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
-        value={trailType}
-        onChangeText={setTrailType}
-      />
+      <View
+        className="border border-gray-300 rounded-xl overflow-hidden mb-4 dark:border-slate-600"
+        style={pickerContainerStyle}
+      >
+        <Picker
+          mode="dropdown"
+          selectedValue={trailType}
+          onValueChange={setTrailType}
+          style={pickerStyle}
+          dropdownIconColor={colors.icon}
+        >
+          {trailTypeOptions.map((option) => (
+            <Picker.Item key={option.value ? `trail-${option.value}` : 'trail-placeholder'} label={option.label} value={option.value} />
+          ))}
+        </Picker>
+      </View>
 
       <Text className="font-medium mt-4 mb-2">Preferred Duration (hours)</Text>
       <TextInput

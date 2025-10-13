@@ -1,7 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
-  ActivityIndicator,
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -9,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BASE_URL, put } from "../../lib/api";
+import { BASE_URL } from "../../lib/api";
 
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== "string" || !paymentUrl.trim()) {
@@ -48,9 +46,7 @@ function getStatusMeta(status) {
 
 export default function ReceiptPage({ route, navigation }) {
   const event = route?.params?.event ?? null;
-  const initialBooking = route?.params?.booking ?? null;
-  const [booking, setBooking] = useState(initialBooking);
-  const [confirming, setConfirming] = useState(false);
+  const booking = route?.params?.booking ?? null;
 
   const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
   const amountLabel = formatAmount(booking?.totalAmount ?? event?.price);
@@ -58,30 +54,19 @@ export default function ReceiptPage({ route, navigation }) {
   const statusMeta = useMemo(() => getStatusMeta(booking?.status), [booking?.status]);
   const isConfirmed = statusMeta.normalized === "CONFIRMED" || statusMeta.normalized === "APPROVED";
   const isRejected = statusMeta.normalized === "REJECTED" || statusMeta.normalized === "DECLINED";
-  const canConfirm =
-    Boolean(booking?.id) && !isConfirmed && !isRejected && statusMeta.normalized !== "CANCELLED";
-
-  const handleConfirmAttendance = async () => {
-    if (!canConfirm || confirming || !booking?.id) {
-      return;
+  const isCancelled = statusMeta.normalized === "CANCELLED";
+  const statusMessage = useMemo(() => {
+    if (isConfirmed) {
+      return "Attendance confirmed. See you on the trail!";
     }
-
-    setConfirming(true);
-    try {
-      const updatedBooking = await put(`/api/bookings/${booking.id}`, { status: "CONFIRMED" });
-      setBooking((prev) => ({ ...prev, ...updatedBooking }));
-      Alert.alert("Attendance confirmed", "You're now listed as an attendee for this event.");
-    } catch (error) {
-      console.error("Failed to confirm booking:", error);
-      const message =
-        error?.body?.error ||
-        error?.message ||
-        "Something went wrong while confirming your attendance.";
-      Alert.alert("Confirmation failed", message);
-    } finally {
-      setConfirming(false);
+    if (isRejected) {
+      return "This booking was rejected. Contact the organizer for details.";
     }
-  };
+    if (isCancelled) {
+      return "This booking was cancelled.";
+    }
+    return "Waiting for organizer review.";
+  }, [isCancelled, isConfirmed, isRejected]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -118,30 +103,9 @@ export default function ReceiptPage({ route, navigation }) {
         </Text>
       )}
 
-      {canConfirm ? (
-        <TouchableOpacity
-          style={[styles.confirmBtn, confirming && styles.disabledBtn]}
-          onPress={handleConfirmAttendance}
-          disabled={confirming}
-          activeOpacity={0.85}
-        >
-          {confirming ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.confirmText}>Confirm Attendance</Text>
-          )}
-        </TouchableOpacity>
-      ) : (
-        <View style={[styles.statusBanner, { borderColor: statusMeta.color }]}>
-          <Text style={[styles.statusBannerText, { color: statusMeta.color }]}>
-            {isConfirmed
-              ? "Attendance confirmed. See you on the trail!"
-              : isRejected
-                ? "This booking was rejected. Contact the organizer for details."
-                : "Waiting for organizer review."}
-          </Text>
-        </View>
-      )}
+      <View style={[styles.statusBanner, { borderColor: statusMeta.color }]}>
+        <Text style={[styles.statusBannerText, { color: statusMeta.color }]}>{statusMessage}</Text>
+      </View>
 
       <TouchableOpacity
         style={styles.okBtn}
@@ -210,16 +174,6 @@ const styles = StyleSheet.create({
   receiptImage: { width: "100%", height: 260, backgroundColor: "#f3f4f6", borderRadius: 12 },
   receiptHint: { fontSize: 12, color: "#6b7280", marginTop: 12, textAlign: "center" },
   receiptPlaceholder: { fontSize: 13, color: "#6b7280", marginBottom: 24 },
-  confirmBtn: {
-    width: "100%",
-    paddingVertical: 15,
-    borderRadius: 12,
-    backgroundColor: "#2563eb",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  confirmText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
-  disabledBtn: { opacity: 0.75 },
   statusBanner: {
     width: "100%",
     padding: 14,
