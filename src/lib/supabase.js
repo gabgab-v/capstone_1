@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 // An adapter for SecureStore to make it work with Supabase's browser-based storage persistence
@@ -8,16 +9,34 @@ const ExpoSecureStoreAdapter = {
     return SecureStore.getItemAsync(key);
   },
   setItem: (key, value) => {
-    SecureStore.setItemAsync(key, value);
+    return SecureStore.setItemAsync(key, value);
   },
   removeItem: (key) => {
-    SecureStore.deleteItemAsync(key);
+    return SecureStore.deleteItemAsync(key);
   },
 };
 
-// It's recommended to store these in environment variables
-const supabaseUrl = 'https://vifynucfnarnaxilodsj.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpZnludWNmbmFybmF4aWxvZHNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MDQxNDMsImV4cCI6MjA3NDk4MDE0M30.PPQQa_mUTd15WTD88gc5hy_fH4OaL97eMDDpzdV5_TE';
+const extra = Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? {};
+const supabaseUrl =
+  (typeof extra?.supabaseUrl === 'string' && extra.supabaseUrl.trim()) ||
+  (typeof process !== 'undefined' &&
+    process.env &&
+    typeof process.env.EXPO_PUBLIC_SUPABASE_URL === 'string' &&
+    process.env.EXPO_PUBLIC_SUPABASE_URL.trim()) ||
+  '';
+const supabaseAnonKey =
+  (typeof extra?.supabaseAnonKey === 'string' && extra.supabaseAnonKey.trim()) ||
+  (typeof process !== 'undefined' &&
+    process.env &&
+    typeof process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY === 'string' &&
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY.trim()) ||
+  '';
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Supabase credentials are not configured. Define them in expo.extra or EXPO_PUBLIC_SUPABASE_* environment variables.',
+  );
+}
 
 // Create and export the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

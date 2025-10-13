@@ -1,2 +1,5 @@
-export const API_URL = "http://192.168.1.50:3000/api"; 
-// replace with your LAN IP + backend port
+import { BASE_URL } from './lib/api';
+
+const normalizedBaseUrl = BASE_URL.replace(/\/$/, '');
+
+export const API_URL = `${normalizedBaseUrl}/api`;

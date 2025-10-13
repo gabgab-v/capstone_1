@@ -1,49 +1,42 @@
 import { Platform } from 'react-native';
-import * as Device from 'expo-device';
-import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
-// --- Configuration (Ensure LOCAL_IP is correct for your network) ---
-const LOCAL_IP = '192.168.1.50'; // ⚠️ UPDATE THIS to your PC’s LAN IP
-const EMU_IP   = '10.0.2.2';       // Android emulator alias
+const extra = Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? {};
 
-const isRealAndroid = Platform.OS === 'android' && Device.isDevice;
+const configuredBaseUrl = (() => {
+  const fromExtra = typeof extra?.apiBaseUrl === 'string' ? extra.apiBaseUrl.trim() : '';
+  const fromEnv =
+    typeof process !== 'undefined' &&
+    process.env &&
+    typeof process.env.EXPO_PUBLIC_API_URL === 'string'
+      ? process.env.EXPO_PUBLIC_API_URL.trim()
+      : '';
+  const candidate = (fromExtra || fromEnv).replace(/\/$/, '');
+  return candidate.length > 0 ? candidate : null;
+})();
 
-export const BASE_URL =
-  process.env.NODE_ENV === 'production'
-    ? 'https://your-vercel-url.vercel.app' // ⚠️ UPDATE THIS for production
-    : Platform.OS === 'web'
-      ? 'http://localhost:3000'
-      : isRealAndroid
-        ? `http://${LOCAL_IP}:3000`
-        : Platform.OS === 'android'
-          ? `http://${EMU_IP}:3000`
-          : `http://${LOCAL_IP}:3000`; // iOS sim / real iOS
+const defaultDevBaseUrl = (() => {
+  if (Platform.OS === 'web') return 'http://localhost:3000';
+  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
+  return 'http://localhost:3000';
+})();
 
+export const BASE_URL = configuredBaseUrl ?? defaultDevBaseUrl;
 
-
-
-// --- Custom Error for Richer Feedback ---
-/**
- * Custom error class for API requests.
- * @param {string} message - The error message.
- * @param {number} status - The HTTP status code (0 for network errors).
- * @param {object} body - The JSON response body from the server.
- */
 export class ApiError extends Error {
-    constructor(message, status, body) {
-        super(message);
-        this.name = 'ApiError';
-        this.status = status;
-        this.body = body;
-    }
+  constructor(message, status, body) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
 }
 
-
-// --- Helper to add JWT authentication headers ---
 async function authHeaders() {
-  // Get the session token directly from the Supabase client
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
 
   return {
@@ -52,126 +45,134 @@ async function authHeaders() {
   };
 }
 
-/**
- * A generic request handler that centralizes error handling logic.
- * @param {string} path - The API endpoint path (e.g., '/api/users').
- * @param {object} options - The options for the fetch call (method, body, etc.).
- * @returns {Promise<any>} - The JSON response from the server.
- * @throws {ApiError} - Throws an ApiError on failure.
- */
 async function request(path, options = {}) {
-    const url = `${BASE_URL}${path}`;
-    console.log(`📡 ${options.method || 'GET'} →`, url, options.body ? JSON.parse(options.body) : '');
+  const url = `${BASE_URL}${path}`;
 
-    let response;
+  if (__DEV__) {
+    const methodLabel = options.method || 'GET';
+    let parsedBody;
+    if (options.body) {
+      try {
+        parsedBody = JSON.parse(options.body);
+      } catch {
+        parsedBody = '[body parse failed]';
+      }
+    }
+    console.log(`[api] ${methodLabel} ${url}`, parsedBody);
+  }
 
-    // 1. Handle Network Errors (e.g., server down, wrong IP)
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: await authHeaders(),
+      ...options,
+    });
+  } catch (error) {
+    console.error('[api] network error:', error.message);
+    throw new ApiError('Network request failed. Is the server running and accessible?', 0, {
+      cause: error.message,
+    });
+  }
+
+  if (!response.ok) {
+    let errorBody = { message: `Request failed with status: ${response.status}` };
     try {
-        response = await fetch(url, {
-            headers: await authHeaders(),
-            ...options,
-        });
-    } catch (error) {
-        console.error('🚨 Network Error:', error.message);
-        throw new ApiError('Network request failed. Is the server running and accessible?', 0, { cause: error.message });
+      errorBody = await response.json();
+    } catch (_) {
+      // ignore non-JSON responses
     }
+    console.error('[api] http error:', response.status, errorBody);
+    throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
+  }
 
-    // 2. Handle HTTP Errors (e.g., 404 Not Found, 500 Internal Server Error)
-    if (!response.ok) {
-        let errorBody = { message: `Request failed with status: ${response.status}` };
-        try {
-            errorBody = await response.json();
-        } catch (_) {
-            // Ignore if the response body isn't valid JSON.
-        }
-        console.error('🚨 HTTP Error:', response.status, errorBody);
-        throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
+  try {
+    if (response.status === 204) {
+      if (__DEV__) console.log('[api] response: 204 No Content');
+      return null;
     }
-
-    // 3. Handle JSON Parsing Errors on successful responses
-    try {
-        // Handle cases where the response is successful but has no body (e.g., 204 No Content)
-        if (response.status === 204) {
-            console.log('✅ Response: 204 No Content');
-            return null;
-        }
-        const json = await response.json();
-        console.log('✅ Response:', json);
-        return json;
-    } catch (error) {
-        console.error('🚨 JSON Parsing Error:', error.message);
-        throw new ApiError('Failed to parse a valid JSON response from the server.', response.status, { cause: error.message });
-    }
+    const json = await response.json();
+    if (__DEV__) console.log('[api] response:', json);
+    return json;
+  } catch (error) {
+    console.error('[api] json parsing error:', error.message);
+    throw new ApiError('Failed to parse a valid JSON response from the server.', response.status, {
+      cause: error.message,
+    });
+  }
 }
 
 export async function postFormData(path, formData) {
-    const url = `${BASE_URL}${path}`;
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    console.log(`📡 POST (FormData) →`, url);
+  const url = `${BASE_URL}${path}`;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (__DEV__) console.log('[api] POST (FormData)', url);
 
-    const headers = {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 
-    let response;
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+  } catch (error) {
+    console.error('[api] network error:', error.message);
+    throw new ApiError('Network request failed.', 0, { cause: error.message });
+  }
+
+  if (!response.ok) {
+    let errorBody = { message: `Request failed with status: ${response.status}` };
     try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: formData,
-        });
-    } catch (error) {
-        console.error('🚨 Network Error:', error.message);
-        throw new ApiError('Network request failed.', 0, { cause: error.message });
+      errorBody = await response.json();
+    } catch (_) {
+      // ignore non-JSON responses
     }
+    console.error('[api] http error:', response.status, errorBody);
+    throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
+  }
 
-    if (!response.ok) {
-        let errorBody = { message: `Request failed with status: ${response.status}` };
-        try {
-            errorBody = await response.json();
-        } catch (_) {}
-        console.error('🚨 HTTP Error:', response.status, errorBody);
-        throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
-    }
-
-    try {
-        const json = await response.json();
-        console.log('✅ Response:', json);
-        return json;
-    } catch (error) {
-        console.error('🚨 JSON Parsing Error:', error.message);
-        throw new ApiError('Failed to parse a valid JSON response from the server.', response.status, { cause: error.message });
-    }
+  try {
+    const json = await response.json();
+    if (__DEV__) console.log('[api] response:', json);
+    return json;
+  } catch (error) {
+    console.error('[api] json parsing error:', error.message);
+    throw new ApiError('Failed to parse a valid JSON response from the server.', response.status, {
+      cause: error.message,
+    });
+  }
 }
 
-// --- Public API Methods ---
-
 export function get(path) {
-    return request(path, { method: 'GET' });
+  return request(path, { method: 'GET' });
 }
 
 export function post(path, body) {
-    return request(path, {
-        method: 'POST',
-        body: JSON.stringify(body),
-    });
+  return request(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export function put(path, body) {
-    return request(path, {
-        method: 'PUT',
-        body: JSON.stringify(body),
-    });
+  return request(path, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
 }
 
 export function patch(path, body) {
-    return request(path, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-    });
+  return request(path, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 export function del(path) {
-    return request(path, { method: 'DELETE' });
+  return request(path, { method: 'DELETE' });
 }
