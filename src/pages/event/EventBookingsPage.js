@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { get, put, BASE_URL } from "../../lib/api";
+import ScreenHeader from "../../components/ScreenHeader";
 
 function formatAmount(value) {
   const amount = Number(value ?? 0);
@@ -167,7 +168,7 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight }) {
   );
 }
 
-export default function EventBookingsPage({ route }) {
+export default function EventBookingsPage({ route, navigation }) {
   const { eventId, title } = route.params;
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -225,39 +226,51 @@ export default function EventBookingsPage({ route }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2E7D32" />
+      <View style={styles.screen}>
+        <ScreenHeader navigation={navigation} title={title || "Event Bookings"} />
+        <View style={[styles.center, styles.loadingContainer]}>
+          <ActivityIndicator size="large" color="#2E7D32" />
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Bookings for {title}</Text>
+    <View style={styles.screen}>
+      <ScreenHeader
+        navigation={navigation}
+        title={title || "Event Bookings"}
+        subtitle="Manage attendee statuses and receipts"
+      />
+      <View style={styles.container}>
+        <Text style={styles.title}>Bookings for {title}</Text>
 
-      {bookings.length === 0 ? (
-        <Text style={styles.emptyText}>No users booked this event yet.</Text>
-      ) : (
-        <FlatList
-          data={bookings}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <BookingItem
-              booking={item}
-              onUpdateStatus={handleUpdateStatus}
-              actionInFlight={actionInFlight}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      )}
+        {bookings.length === 0 ? (
+          <Text style={styles.emptyText}>No users booked this event yet.</Text>
+        ) : (
+          <FlatList
+            data={bookings}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <BookingItem
+                booking={item}
+                onUpdateStatus={handleUpdateStatus}
+                actionInFlight={actionInFlight}
+              />
+            )}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+          />
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
+  screen: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, padding: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingContainer: { padding: 16 },
   title: { fontSize: 20, fontWeight: "700", marginBottom: 16, color: "#111827" },
   emptyText: { color: "#6b7280", fontSize: 14 },
   card: {

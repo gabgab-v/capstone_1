@@ -15,6 +15,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
+import ScreenHeader from '../../components/ScreenHeader';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
 import { get, put, post, del as deleteRequest, BASE_URL } from '../../lib/api';
@@ -888,8 +889,11 @@ export default function EventDetailsPage({ route, navigation }) {
 
   if (!event) {
     return (
-      <View style={styles.centerFallback}>
-        <Text style={styles.placeholderText}>Event details not found.</Text>
+      <View style={styles.page}>
+        <ScreenHeader navigation={navigation} title="Event Details" />
+        <View style={styles.centerFallback}>
+          <Text style={styles.placeholderText}>Event details not found.</Text>
+        </View>
       </View>
     );
   }
@@ -900,6 +904,11 @@ export default function EventDetailsPage({ route, navigation }) {
 
   return (
     <View style={styles.page}>
+      <ScreenHeader
+        navigation={navigation}
+        title={event.title ?? 'Event Details'}
+        subtitle={locationLabel}
+      />
       <ScrollView contentContainerStyle={styles.container}>
         <Image
           source={{ uri: event.imageUrl || 'https://picsum.photos/600/400' }}

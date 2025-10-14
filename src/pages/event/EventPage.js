@@ -15,6 +15,7 @@ import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { get, put, BASE_URL } from "../../lib/api";
+import ScreenHeader from "../../components/ScreenHeader";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -574,9 +575,18 @@ export default function EventsPage({ navigation }) {
     }, [fetchData])
   );
 
+  const renderHeader = () => (
+    <ScreenHeader
+      navigation={navigation}
+      title="Events"
+      subtitle="Review your bookings and hosted adventures"
+    />
+  );
+
   if (loading) {
     return (
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        {renderHeader()}
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#2E7D32" />
         </View>
@@ -584,10 +594,9 @@ export default function EventsPage({ navigation }) {
     );
   }
 
-
-
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
+      {renderHeader()}
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, contentInsets]}

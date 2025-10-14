@@ -16,6 +16,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensureAvatarUri } from '../../utils/media';
+import ScreenHeader from '../../components/ScreenHeader';
 
 function statusMeta(status) {
   switch (status) {
@@ -50,9 +51,9 @@ export default function SettingsPage({ navigation }) {
     () => ({
       paddingHorizontal: 24,
       paddingBottom: Math.max(32, insets.bottom + 24),
-      paddingTop: Math.max(32, insets.top + 16),
+      paddingTop: 24,
     }),
-    [insets.bottom, insets.top],
+    [insets.bottom],
   );
 
   const avatarUri = useMemo(() => {
@@ -489,51 +490,63 @@ export default function SettingsPage({ navigation }) {
 
   if (isLoading && !user) {
     return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-900">
-        <ActivityIndicator size="large" color="#2563eb" />
+      <View className="flex-1 bg-white dark:bg-slate-900">
+        <ScreenHeader navigation={navigation} title="Settings" />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
       </View>
     );
   }
 
+  const renderHeader = () => (
+    <ScreenHeader
+      navigation={navigation}
+      title="Settings"
+      subtitle="Manage your profile, preferences, and notifications"
+    />
+  );
+
   return (
-    <ScrollView
-      className="flex-1 bg-slate-50 dark:bg-slate-950"
-      contentContainerStyle={contentContainerStyle}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text className="text-3xl font-bold text-slate-900 dark:text-slate-100">Settings</Text>
-
-      {renderProfileCard()}
-
-      {renderOrganizerSection()}
-
-      {renderNotificationsSection()}
-
-      {renderPrivacySection()}
-
-      {renderAppearanceSection()}
-
-      {renderSupportSection()}
-
-      <TouchableOpacity
-        className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4"
-        onPress={handleSavePreferences}
+    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+      {renderHeader()}
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={contentContainerStyle}
+        showsVerticalScrollIndicator={false}
       >
-        <Text className="text-center text-base font-semibold text-slate-900 dark:text-slate-100">
-          Save preferences
-        </Text>
-        <Text className="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">
-          Changes apply across all of your devices.
-        </Text>
-      </TouchableOpacity>
+        {renderProfileCard()}
 
-      <TouchableOpacity
-        className="mt-6 rounded-xl bg-red-600 px-6 py-3"
-        onPress={confirmLogout}
-        activeOpacity={0.85}
-      >
-        <Text className="text-center text-base font-semibold text-white">Sign out</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {renderOrganizerSection()}
+
+        {renderNotificationsSection()}
+
+        {renderPrivacySection()}
+
+        {renderAppearanceSection()}
+
+        {renderSupportSection()}
+
+        <TouchableOpacity
+          className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4"
+          onPress={handleSavePreferences}
+        >
+          <Text className="text-center text-base font-semibold text-slate-900 dark:text-slate-100">
+            Save preferences
+          </Text>
+          <Text className="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">
+            Changes apply across all of your devices.
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          className="mt-6 rounded-xl bg-red-600 px-6 py-3"
+          onPress={confirmLogout}
+          activeOpacity={0.85}
+        >
+          <Text className="text-center text-base font-semibold text-white">Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }

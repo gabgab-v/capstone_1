@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { useNotifications } from '../context/NotificationContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
+import ScreenHeader from '../components/ScreenHeader';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
 
 const TABS = [
@@ -477,16 +478,26 @@ export default function CreateEventPage({ route, navigation }) {
     selectedLocation &&
     `Lat ${selectedLocation.lat.toFixed(5)}, Lng ${selectedLocation.lng.toFixed(5)}`;
 
+  const headerTitle = isEditMode ? 'Edit Event' : 'Create Event';
+  const headerSubtitle = isEditMode
+    ? activeEvent?.title ?? 'Update your event details'
+    : 'Plan a new adventure for hikers';
+
   if (isEditMode && loadingExisting && !activeEvent) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2E7D32" />
+      <View style={styles.screen}>
+        <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2E7D32" />
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.screen}>
+      <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
+      <ScrollView style={styles.container}>
       <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
         {selectedImage ? (
           <Image source={{ uri: selectedImage.uri }} style={styles.selectedImage} />
@@ -736,10 +747,12 @@ export default function CreateEventPage({ route, navigation }) {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#FFFFFF' },
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   loadingContainer: {
     flex: 1,
