@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ensureAvatarUri } from '../../utils/media';
 
 function statusMeta(status) {
   switch (status) {
@@ -55,11 +56,8 @@ export default function SettingsPage({ navigation }) {
   );
 
   const avatarUri = useMemo(() => {
-    if (user?.avatarUrl) {
-      return user.avatarUrl;
-    }
     const seed = user?.id ?? user?.email ?? 'settings';
-    return `https://i.pravatar.cc/150?u=${encodeURIComponent(seed)}`;
+    return ensureAvatarUri(user?.avatarUrl, seed);
   }, [user?.avatarUrl, user?.email, user?.id]);
 
   const appVersion = useMemo(() => {

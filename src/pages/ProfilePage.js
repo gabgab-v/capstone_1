@@ -17,19 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
-import { BASE_URL, get, post, patch, postFormData, del as deleteRequest } from '../lib/api';
+import { get, post, patch, postFormData, del as deleteRequest } from '../lib/api';
+import { ensureAvatarUri } from '../utils/media';
 
 function getAvatarUri(profile) {
-  if (!profile) {
-    return 'https://via.placeholder.com/100';
-  }
-
-  if (profile.avatarUrl) {
-    return profile.avatarUrl;
-  }
-
-  const seed = profile.id ?? profile.email ?? 'profile';
-  return `https://i.pravatar.cc/150?u=${encodeURIComponent(seed)}`;
+  const seed = profile?.id ?? profile?.email ?? 'profile';
+  return ensureAvatarUri(profile?.avatarUrl, seed);
 }
 
 function StatTile({ label, value, onPress }) {
@@ -457,16 +450,14 @@ export default function ProfilePage({ navigation, route }) {
         throw new Error('Upload did not return a file URL.');
       }
 
-      const absoluteUrl = uploadedUrl.startsWith('http')
-        ? uploadedUrl
-        : `${BASE_URL}${uploadedUrl}`;
+      const storedAvatarUrl = uploadedUrl;
 
-      await patch('/api/users/me', { avatarUrl: absoluteUrl });
+      await patch('/api/users/me', { avatarUrl: storedAvatarUrl });
 
       profileRef.current = profileRef.current
-        ? { ...profileRef.current, avatarUrl: absoluteUrl }
+        ? { ...profileRef.current, avatarUrl: storedAvatarUrl }
         : profileRef.current;
-      setProfile((current) => (current ? { ...current, avatarUrl: absoluteUrl } : current));
+      setProfile((current) => (current ? { ...current, avatarUrl: storedAvatarUrl } : current));
 
       if (refreshUser) {
         await refreshUser();

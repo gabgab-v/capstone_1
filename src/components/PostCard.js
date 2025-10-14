@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { del, get, post as apiPost } from '../lib/api';
 import { useTheme } from '../context/ThemeContext';
+import { ensureAvatarUri, resolveImageUrl } from '../utils/media';
 
 const ActionButton = ({
   iconName,
@@ -48,15 +49,21 @@ const ActionButton = ({
   );
 };
 
+const getPhotoUri = (value) => resolveImageUrl(value) ?? value ?? null;
+
 const PhotoGrid = ({ photos }) => {
   if (!photos || photos.length === 0) {
     return null;
   }
 
   if (photos.length === 1) {
+    const uri = getPhotoUri(photos[0]);
+    if (!uri) {
+      return null;
+    }
     return (
       <Image
-        source={{ uri: photos[0] }}
+        source={{ uri }}
         className="mt-2 h-64 w-full rounded-lg"
         resizeMode="cover"
       />
@@ -64,15 +71,20 @@ const PhotoGrid = ({ photos }) => {
   }
 
   if (photos.length === 2) {
+    const first = getPhotoUri(photos[0]);
+    const second = getPhotoUri(photos[1]);
+    if (!first || !second) {
+      return null;
+    }
     return (
       <View className="mt-2 h-48 flex-row space-x-1">
         <Image
-          source={{ uri: photos[0] }}
+          source={{ uri: first }}
           className="h-full flex-1 rounded-l-lg"
           resizeMode="cover"
         />
         <Image
-          source={{ uri: photos[1] }}
+          source={{ uri: second }}
           className="h-full flex-1 rounded-r-lg"
           resizeMode="cover"
         />
@@ -80,21 +92,27 @@ const PhotoGrid = ({ photos }) => {
     );
   }
 
+  const first = getPhotoUri(photos[0]);
+  const second = getPhotoUri(photos[1]);
+  const third = getPhotoUri(photos[2]);
+  if (!first || !second || !third) {
+    return null;
+  }
   return (
     <View className="mt-2 h-64 flex-row space-x-1">
       <Image
-        source={{ uri: photos[0] }}
+        source={{ uri: first }}
         className="h-full flex-2 rounded-l-lg"
         resizeMode="cover"
       />
       <View className="h-full flex-1 space-y-1">
         <Image
-          source={{ uri: photos[1] }}
+          source={{ uri: second }}
           className="flex-1 rounded-tr-lg"
           resizeMode="cover"
         />
         <Image
-          source={{ uri: photos[2] }}
+          source={{ uri: third }}
           className="flex-1 rounded-br-lg"
           resizeMode="cover"
         />
@@ -116,15 +134,8 @@ function getAuthorName(post) {
 }
 
 function getAvatarUri(post) {
-  const explicitAvatar = post?.author?.avatarUrl;
-  if (typeof explicitAvatar === 'string') {
-    const trimmed = explicitAvatar.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
-    }
-  }
   const sourceId = post?.author?.id ?? post?.id ?? Math.random().toString(36).slice(2);
-  return `https://i.pravatar.cc/150?u=${encodeURIComponent(sourceId)}`;
+  return ensureAvatarUri(post?.author?.avatarUrl, sourceId);
 }
 
 function formatPostDate(value) {

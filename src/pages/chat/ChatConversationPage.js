@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -16,6 +17,7 @@ import Icon from 'react-native-vector-icons/Feather';
 
 import { get, post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { ensureAvatarUri } from '../../utils/media';
 
 function formatTimestamp(value) {
   if (!value) {
@@ -34,18 +36,48 @@ function formatTimestamp(value) {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+function getSenderInitials(sender) {
+  const name = sender?.name ?? sender?.email ?? '';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0 || !parts[0]) {
+    return '?';
+  }
+  if (parts.length === 1) {
+    return parts[0].charAt(0).toUpperCase();
+  }
+  return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+}
+
 function MessageBubble({ message, isSelf }) {
   const bubbleStyles = [
     styles.messageBubble,
     isSelf ? styles.messageBubbleSelf : styles.messageBubblePeer,
   ];
+  if (!isSelf) {
+    bubbleStyles.push(styles.messageBubblePeerWithAvatar);
+  }
+
   const textStyles = [
     styles.messageText,
     isSelf ? styles.messageTextSelf : styles.messageTextPeer,
   ];
 
+  const senderSeed =
+    message?.sender?.id ?? message?.sender?.email ?? message?.sender?.name ?? 'chat';
+  const avatarUri = ensureAvatarUri(message?.sender?.avatarUrl, senderSeed);
+  const showAvatar = !isSelf;
+
   return (
     <View style={[styles.messageRow, isSelf ? styles.messageRowSelf : styles.messageRowPeer]}>
+      {showAvatar ? (
+        <View style={[styles.messageAvatar, avatarUri ? styles.messageAvatarHasImage : null]}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.messageAvatarImage} />
+          ) : (
+            <Text style={styles.messageAvatarText}>{getSenderInitials(message?.sender)}</Text>
+          )}
+        </View>
+      ) : null}
       <View style={bubbleStyles}>
         <Text style={textStyles}>{message.body}</Text>
         <Text style={[styles.messageMeta, isSelf ? styles.messageMetaSelf : styles.messageMetaPeer]}>
@@ -396,12 +428,36 @@ const styles = StyleSheet.create({
   messageRow: {
     marginBottom: 12,
     flexDirection: 'row',
+    alignItems: 'flex-end',
   },
   messageRowSelf: {
     justifyContent: 'flex-end',
   },
   messageRowPeer: {
     justifyContent: 'flex-start',
+  },
+  messageAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  messageAvatarHasImage: {
+    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  messageAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+  },
+  messageAvatarText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#166534',
   },
   messageBubble: {
     maxWidth: '80%',
@@ -418,6 +474,9 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  messageBubblePeerWithAvatar: {
+    marginLeft: 4,
   },
   messageText: {
     fontSize: 15,

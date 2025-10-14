@@ -3,13 +3,11 @@ import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { useTheme } from '../context/ThemeContext';
+import { ensureAvatarUri } from '../utils/media';
 
 function getAvatarUri(user) {
-  if (user?.avatarUrl) {
-    return user.avatarUrl;
-  }
-  const identifier = user?.id ?? 'guest';
-  return `https://i.pravatar.cc/150?u=${encodeURIComponent(identifier)}`;
+  const identifier = user?.id ?? user?.email ?? 'guest';
+  return ensureAvatarUri(user?.avatarUrl, identifier);
 }
 
 export default function CreatePost({ onPostPress, user }) {

@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext";
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const STRONG_MATCH_THRESHOLD = 0.65;
 const MODERATE_MATCH_THRESHOLD = 0.35;
+const MIN_BREAKDOWN_SHARE = 0.01;
 
 function truncate(text, limit = 140) {
   if (typeof text !== "string") {
@@ -135,14 +136,17 @@ function inferDifficultyFromMetrics(event) {
   return "Beginner";
 }
 
-function deriveEventDifficultyScore(event) {
+function getEventDifficultyLabel(event) {
   const directLabel =
     event?.difficulty ||
     event?.difficultyLevel ||
     event?.trailDifficulty;
 
-  const normalized = normalizeDifficultyValue(directLabel) ?? inferDifficultyFromMetrics(event);
-  return levelToScore(normalized);
+  return normalizeDifficultyValue(directLabel) ?? inferDifficultyFromMetrics(event);
+}
+
+function deriveEventDifficultyScore(event) {
+  return levelToScore(getEventDifficultyLabel(event));
 }
 
 function parseBudgetRange(value) {
@@ -191,6 +195,14 @@ function normalizePrice(amount) {
     return 0;
   }
   return clamp(amount / MAX_PRICE_PHP);
+}
+
+function formatPhp(amount) {
+  if (!Number.isFinite(amount)) {
+    return null;
+  }
+  const normalized = Math.round(amount * 100) / 100;
+  return `PHP ${normalized.toLocaleString()}`;
 }
 
 function textContains(haystack, needle) {
@@ -280,6 +292,213 @@ function cosineSimilarity(vectorA, vectorB) {
   return clamp(dotProduct(vectorA, vectorB) / (magA * magB), 0, 1);
 }
 
+function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
+  if (!Array.isArray(preferenceVector) || !Array.isArray(eventVector)) {
+    return [];
+  }
+
+  const prefMagnitude = magnitude(preferenceVector);
+  const eventMagnitude = magnitude(eventVector);
+  const denominator = prefMagnitude * eventMagnitude;
+  if (denominator <= 0) {
+    return [];
+  }
+
+  const eventDifficultyLabel = getEventDifficultyLabel(event);
+  const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
+  const userExperienceLevel = normalizeDifficultyValue(user?.experienceLevel);
+  const preferredDuration = Number(user?.preferredDurationHrs);
+  const eventDuration = Number(event?.durationHrs);
+  const budgetRange = parseBudgetRange(user?.budgetRange);
+  const priceNumber = Number(event?.price);
+  const preferredTrailRaw = typeof user?.preferredTrailType === "string" ? user.preferredTrailType.trim() : "";
+  const preferredTrail = preferredTrailRaw || "";
+  const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
+  const matchesTrail = Boolean(preferredTrail && descriptor && textContains(descriptor, preferredTrail));
+
+  const context = {
+    eventDifficultyLabel,
+    userPreferredDifficulty,
+    userExperienceLevel,
+    preferredDuration,
+    eventDuration,
+    budgetRange,
+    priceNumber,
+    preferredTrail,
+    matchesTrail,
+  };
+
+  const formatRange = (min, max) => {
+    const minText = formatPhp(min);
+    const maxText = formatPhp(max);
+    if (minText && maxText) {
+      return `${minText}–${maxText}`;
+    }
+    return minText || maxText || null;
+  };
+
+  const groups = [
+    {
+      key: "difficulty",
+      label: "Difficulty alignment",
+      indices: [0, 1],
+      detail: ({
+        eventDifficultyLabel: difficulty,
+        userPreferredDifficulty: preferred,
+        userExperienceLevel: experience,
+      }) => {
+        const normalizedDifficulty = difficulty ? difficulty.toLowerCase() : null;
+        if (!normalizedDifficulty) {
+          return "We estimated the route difficulty from its metrics.";
+        }
+
+        const parts = [];
+        if (preferred) {
+          const normalizedPreferred = preferred.toLowerCase();
+          if (preferred === difficulty) {
+            parts.push(`Matches your preferred ${normalizedPreferred} hikes.`);
+          } else {
+            parts.push(
+              `You prefer ${normalizedPreferred} hikes, while this one is ${normalizedDifficulty}.`
+            );
+          }
+        }
+
+        if (experience) {
+          const normalizedExperience = experience.toLowerCase();
+          if (!preferred || preferred !== experience) {
+            if (experience === difficulty) {
+              parts.push(`Fits your ${normalizedExperience} experience level.`);
+            } else {
+              parts.push(
+                `Designed for ${normalizedDifficulty} hikers; you rate your experience as ${normalizedExperience}.`
+              );
+            }
+          }
+        }
+
+        if (!parts.length) {
+          parts.push(`Rated ${normalizedDifficulty} difficulty.`);
+        }
+
+        return parts.join(" ");
+      },
+    },
+    {
+      key: "duration",
+      label: "Duration fit",
+      indices: [2],
+      detail: ({ preferredDuration: preferred, eventDuration: duration }) => {
+        if (!Number.isFinite(duration)) {
+          return "Organizer has not shared the expected duration yet.";
+        }
+        const durationText = `${duration.toFixed(1)} hrs`;
+        if (!Number.isFinite(preferred) || preferred <= 0) {
+          return `Runs for ${durationText}.`;
+        }
+        const diff = Math.abs(duration - preferred);
+        const preferredText = `${preferred.toFixed(1)} hrs`;
+        if (diff < 0.5) {
+          return `Runs for ${durationText}, almost exactly your preferred ${preferredText}.`;
+        }
+        if (diff <= 2) {
+          return `Runs for ${durationText}, close to your preferred ${preferredText}.`;
+        }
+        if (duration > preferred) {
+          return `Runs for ${durationText}, a bit longer than your preferred ${preferredText}.`;
+        }
+        return `Runs for ${durationText}, a bit shorter than your preferred ${preferredText}.`;
+      },
+    },
+    {
+      key: "budget",
+      label: "Budget fit",
+      indices: [3],
+      detail: ({ budgetRange: range, priceNumber: price }) => {
+        const priceText = formatPhp(price);
+        if (!priceText) {
+          return "Pricing has not been announced yet.";
+        }
+
+        const withinMin =
+          typeof range.min === "number" && Number.isFinite(range.min) ? price >= range.min : true;
+        const withinMax =
+          typeof range.max === "number" && Number.isFinite(range.max) ? price <= range.max : true;
+
+        if (withinMin && withinMax && (range.min !== undefined || range.max !== undefined)) {
+          const rangeText = formatRange(range.min, range.max);
+          if (rangeText) {
+            return `${priceText} sits inside your ${rangeText} target range.`;
+          }
+        }
+
+        if (withinMax && typeof range.max === "number" && Number.isFinite(range.max)) {
+          return `${priceText} stays below your ${formatPhp(range.max)} spending limit.`;
+        }
+
+        if (withinMin && typeof range.min === "number" && Number.isFinite(range.min)) {
+          return `${priceText} meets your minimum spend of ${formatPhp(range.min)}.`;
+        }
+
+        if (Number.isFinite(range.midpoint)) {
+          if (price > range.midpoint) {
+            return `${priceText} is above your usual spend of ${formatPhp(range.midpoint)}.`;
+          }
+          if (price < range.midpoint) {
+            return `${priceText} comes in under your usual spend of ${formatPhp(range.midpoint)}.`;
+          }
+        }
+
+        return `${priceText} is the listed price for this event.`;
+      },
+    },
+    {
+      key: "trailType",
+      label: "Trail style",
+      indices: [4],
+      detail: ({ preferredTrail, matchesTrail }) => {
+        if (!preferredTrail) {
+          return null;
+        }
+        if (matchesTrail) {
+          return `Highlights ${preferredTrail} trails, matching what you look for.`;
+        }
+        return `Trail description has not mentioned ${preferredTrail} yet.`;
+      },
+    },
+  ];
+
+  return groups
+    .map((group) => {
+      const raw = group.indices.reduce((sum, index) => {
+        const pref = preferenceVector[index] ?? 0;
+        const ev = eventVector[index] ?? 0;
+        return sum + pref * ev;
+      }, 0);
+
+      const contribution = raw / denominator;
+      if (contribution <= 0 || contribution < MIN_BREAKDOWN_SHARE) {
+        return null;
+      }
+
+      const detail = group.detail(context);
+      if (!detail) {
+        return null;
+      }
+
+      return {
+        key: group.key,
+        label: group.label,
+        detail,
+        contribution,
+        percent: Math.max(1, Math.round(contribution * 100)),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.contribution - a.contribution)
+    .slice(0, 3);
+}
+
 export default function DiscoverPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -329,7 +548,13 @@ export default function DiscoverPage() {
       .map(({ event, index }) => {
         const eventVector = computeEventVector(event, user);
         const score = cosineSimilarity(preferenceVector, eventVector);
-        return { event, score, index };
+        const breakdown = buildMatchBreakdown({
+          user,
+          event,
+          preferenceVector,
+          eventVector,
+        });
+        return { event, score, index, breakdown };
       })
       .sort((a, b) => {
         if (a.score === null && b.score === null) {
@@ -452,7 +677,8 @@ export default function DiscoverPage() {
           />
         }
         renderItem={({ item }) => {
-        const { event, score } = item;
+        const { event, score, breakdown } = item;
+        const breakdownEntries = Array.isArray(breakdown) ? breakdown : [];
 
         const metrics = [
           Number.isFinite(Number(event.distanceKm))
@@ -537,6 +763,25 @@ export default function DiscoverPage() {
               {matchChipConfig && (
                 <View style={[styles.matchChip, matchChipConfig.container]}>
                   <Text style={matchChipConfig.text}>{matchChipConfig.label}</Text>
+                </View>
+              )}
+              {breakdownEntries.length > 0 && (
+                <View style={styles.matchBreakdownContainer}>
+                  {breakdownEntries.map((entry, index) => (
+                    <View
+                      key={entry.key}
+                      style={[
+                        styles.matchBreakdownItem,
+                        index === breakdownEntries.length - 1 && styles.matchBreakdownItemLast,
+                      ]}
+                    >
+                      <View style={styles.matchBreakdownRow}>
+                        <Text style={styles.matchBreakdownLabel}>{entry.label}</Text>
+                        <Text style={styles.matchBreakdownPercent}>{`${entry.percent}%`}</Text>
+                      </View>
+                      <Text style={styles.matchBreakdownDetail}>{entry.detail}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
               <Text style={styles.location}>{getLocationLabel(event)}</Text>
@@ -685,6 +930,36 @@ const styles = StyleSheet.create({
     color: "#B91C1C",
     fontSize: 11,
     fontWeight: "700",
+  },
+  matchBreakdownContainer: {
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  matchBreakdownItem: { marginBottom: 10 },
+  matchBreakdownItemLast: { marginBottom: 0 },
+  matchBreakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  matchBreakdownLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#166534",
+    letterSpacing: 0.5,
+  },
+  matchBreakdownPercent: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  matchBreakdownDetail: {
+    fontSize: 13,
+    color: "#1F2937",
+    lineHeight: 18,
+    marginTop: 4,
   },
   metricRow: {
     flexDirection: "row",

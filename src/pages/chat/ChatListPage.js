@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import Icon from 'react-native-vector-icons/Feather';
 
 import { get } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { ensureAvatarUri } from '../../utils/media';
 
 function getPeerInitials(peer) {
   if (!peer) {
@@ -28,6 +30,14 @@ function getPeerInitials(peer) {
     .map((part) => part.charAt(0).toUpperCase())
     .join('')
     .slice(0, 2);
+}
+
+function getPeerAvatarUri(peer) {
+  if (!peer) {
+    return null;
+  }
+  const seed = peer.id ?? peer.email ?? 'chat';
+  return ensureAvatarUri(peer.avatarUrl, seed);
 }
 
 function formatTimestamp(value) {
@@ -56,11 +66,16 @@ function ConversationItem({ conversation, currentUserId, onPress }) {
   const preview = `${previewPrefix}${previewBody}`.trim();
   const timestamp = formatTimestamp(lastMessage?.createdAt || conversation?.updatedAt);
   const unreadCount = conversation?.unreadCount ?? 0;
+  const avatarUri = getPeerAvatarUri(primaryPeer);
 
   return (
     <TouchableOpacity style={styles.itemContainer} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{getPeerInitials(primaryPeer)}</Text>
+      <View style={[styles.avatar, avatarUri ? styles.avatarWithImage : null]}>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarText}>{getPeerInitials(primaryPeer)}</Text>
+        )}
       </View>
       <View style={styles.itemContent}>
         <View style={styles.itemHeader}>
@@ -259,6 +274,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  avatarWithImage: {
+    backgroundColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
   },
   avatarText: {
     fontSize: 18,
