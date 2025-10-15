@@ -11,7 +11,7 @@ export default function AppHeader() {
     <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
       <View className="flex-row items-center">
         <Image
-          source={require('../../assets/icon.png')}
+          source={require('../../assets/Pabukid-Logo.png')}
           className="mr-2 h-8 w-8"
         />
         <Text className="text-2xl font-bold text-green-600">Pabukid</Text>

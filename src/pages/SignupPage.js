@@ -55,7 +55,7 @@ export default function SignupPage({ navigation }) {
     <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       <View className="flex-row items-center justify-center mb-10">
         <Image
-          source={require('../../assets/favicon.png')}
+          source={require('../../assets/Pabukid-Logo.png')}
           className="w-8 h-8 mr-2"
         />
         <Text className="text-green-700 text-2xl font-bold">Pabukid</Text>

@@ -4,11 +4,11 @@
     "slug": "prototype",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/pabukid-icon.png",
+    "icon": "./assets/Pabukid-Logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/pabukid-splash.png",
+      "image": "./assets/Pabukid-Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/pabukid-adaptive-icon.png",
+        "foregroundImage": "./assets/Pabukid-Logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -37,7 +37,7 @@
       "package": "com.pabukid.capstone"
     },
     "web": {
-      "favicon": "./assets/pabukid-favicon.png"
+      "favicon": "./assets/Pabukid-Logo.png"
     },
     "plugins": [
       "expo-secure-store",
@@ -63,7 +63,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/pabukid-icon.png",
+          "icon": "./assets/Pabukid-Logo.png",
           "color": "#ffffff"
         }
       ]
