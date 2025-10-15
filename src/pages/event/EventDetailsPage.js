@@ -19,6 +19,13 @@ import ScreenHeader from '../../components/ScreenHeader';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
 import { get, put, post, del as deleteRequest, BASE_URL } from '../../lib/api';
+import {
+  computeUserVector,
+  computeEventVector,
+  cosineSimilarity,
+  buildMatchBreakdown,
+  magnitude,
+} from '../../utils/matchScoring';
 
 const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -29,6 +36,29 @@ const BASE_TABS = [
 
 const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
+const INACTIVE_BOOKING_STATUSES = new Set(['CANCELLED', 'DECLINED', 'REJECTED']);
+const STRONG_MATCH_THRESHOLD = 0.65;
+const MODERATE_MATCH_THRESHOLD = 0.35;
+const MATCH_THEMES = {
+  strong: {
+    background: '#ECFDF5',
+    border: '#16A34A',
+    accent: '#166534',
+    text: '#14532D',
+  },
+  moderate: {
+    background: '#FEF3C7',
+    border: '#D97706',
+    accent: '#92400E',
+    text: '#78350F',
+  },
+  low: {
+    background: '#FEE2E2',
+    border: '#DC2626',
+    accent: '#B91C1C',
+    text: '#7F1D1D',
+  },
+};
 
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== 'string' || !paymentUrl.trim()) {
@@ -367,7 +397,7 @@ function AttendeeRow({
 }
 
 export default function EventDetailsPage({ route, navigation }) {
-  const { event } = route.params ?? {};
+  const { event, viewerBooking: viewerBookingParam = null } = route.params ?? {};
 
   const { user, refreshUser } = useAuth();
   const isOrganizer = Boolean(user?.id && event?.organizerId && user.id === event.organizerId);
@@ -393,6 +423,100 @@ export default function EventDetailsPage({ route, navigation }) {
     () => event?.organizer?.id ?? event?.organizerId ?? null,
     [event?.organizer?.id, event?.organizerId],
   );
+
+  const viewerBookingFromRoute = useMemo(() => {
+    if (viewerBookingParam && typeof viewerBookingParam === 'object') {
+      return viewerBookingParam;
+    }
+    return null;
+  }, [viewerBookingParam]);
+
+  const viewerBookingFromAttendees = useMemo(() => {
+    if (!Array.isArray(attendees) || !user?.id) {
+      return null;
+    }
+    const match = attendees.find((booking) => {
+      const bookingUserId = booking?.userId ?? booking?.user?.id ?? null;
+      return bookingUserId && bookingUserId === user.id;
+    });
+    return match ?? null;
+  }, [attendees, user?.id]);
+
+  const viewerBooking = viewerBookingFromAttendees ?? viewerBookingFromRoute;
+
+  const viewerHasActiveBooking = useMemo(() => {
+    if (!viewerBooking || !viewerBooking.status) {
+      return false;
+    }
+    const normalizedStatus =
+      typeof viewerBooking.status === 'string'
+        ? viewerBooking.status.trim().toUpperCase()
+        : String(viewerBooking.status ?? '').trim().toUpperCase();
+    if (!normalizedStatus) {
+      return false;
+    }
+    return !INACTIVE_BOOKING_STATUSES.has(normalizedStatus);
+  }, [viewerBooking]);
+
+  const viewerCanBook = Boolean(event?.id && user?.id && !isOrganizer && !viewerHasActiveBooking);
+
+  const preferenceVector = useMemo(() => {
+    if (!user?.preferencesComplete) {
+      return null;
+    }
+    const vector = computeUserVector(user);
+    if (!vector || magnitude(vector) === 0) {
+      return null;
+    }
+    return vector;
+  }, [user]);
+
+  const matchInsight = useMemo(() => {
+    if (!preferenceVector || !event) {
+      return null;
+    }
+    const eventVector = computeEventVector(event, user);
+    if (!eventVector || magnitude(eventVector) === 0) {
+      return null;
+    }
+    const score = cosineSimilarity(preferenceVector, eventVector);
+    if (!Number.isFinite(score) || score <= 0) {
+      return null;
+    }
+    const breakdown = buildMatchBreakdown({ user, event, preferenceVector, eventVector });
+    if ((!breakdown || breakdown.length === 0) && score <= MODERATE_MATCH_THRESHOLD / 2) {
+      return null;
+    }
+    const percent = Math.round(score * 100);
+    const severity =
+      score >= STRONG_MATCH_THRESHOLD
+        ? 'strong'
+        : score >= MODERATE_MATCH_THRESHOLD
+        ? 'moderate'
+        : 'low';
+    const theme = MATCH_THEMES[severity] ?? MATCH_THEMES.low;
+    const headline =
+      severity === 'strong'
+        ? `Strong match · ${percent}%`
+        : severity === 'moderate'
+        ? `Close match · ${percent}%`
+        : `Low match · ${percent}%`;
+    const summary =
+      severity === 'strong'
+        ? 'This event aligns closely with your hiking preferences.'
+        : severity === 'moderate'
+        ? 'Several of your saved preferences line up with this event.'
+        : 'Some details differ from what you usually look for.';
+    return {
+      score,
+      percent,
+      severity,
+      theme,
+      headline,
+      summary,
+      breakdown: Array.isArray(breakdown) ? breakdown : [],
+    };
+  }, [preferenceVector, event, user]);
 
   useEffect(() => {
     if (!organizerId) {
@@ -928,6 +1052,45 @@ export default function EventDetailsPage({ route, navigation }) {
             </View>
           </View>
 
+          {matchInsight && (
+            <View
+              style={[
+                styles.matchCard,
+                {
+                  backgroundColor: matchInsight.theme.background,
+                  borderColor: matchInsight.theme.border,
+                },
+              ]}
+            >
+              <View style={styles.matchCardHeader}>
+                <Text style={[styles.matchCardTitle, { color: matchInsight.theme.accent }]}>
+                  Personalized match
+                </Text>
+                <Text style={[styles.matchCardPercent, { color: matchInsight.theme.accent }]}>
+                  {matchInsight.percent}%
+                </Text>
+              </View>
+              <Text style={[styles.matchCardHeadline, { color: matchInsight.theme.accent }]}>
+                {matchInsight.headline}
+              </Text>
+              <Text style={[styles.matchCardSummary, { color: matchInsight.theme.text }]}>
+                {matchInsight.summary}
+              </Text>
+              {matchInsight.breakdown.length > 0 && (
+                <View style={styles.matchBreakdownList}>
+                  {matchInsight.breakdown.map((entry) => (
+                    <View key={entry.key} style={styles.matchBreakdownItem}>
+                      <Text style={[styles.matchBreakdownLabel, { color: matchInsight.theme.accent }]}>
+                        {entry.label} · {entry.percent}%
+                      </Text>
+                      <Text style={styles.matchBreakdownDetail}>{entry.detail}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
           {!!metrics.length && (
             <View style={styles.metricRow}>
               {metrics.map((metric) => (
@@ -1177,12 +1340,14 @@ export default function EventDetailsPage({ route, navigation }) {
         </View>
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.bookButton}
-        onPress={() => navigation.navigate('BookingPage', { event })}
-      >
-        <Text style={styles.bookText}>Book Now</Text>
-      </TouchableOpacity>
+      {viewerCanBook ? (
+        <TouchableOpacity
+          style={styles.bookButton}
+          onPress={() => navigation.navigate('BookingPage', { event })}
+        >
+          <Text style={styles.bookText}>Book Now</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <Modal
         visible={commentsVisible}
@@ -1283,6 +1448,53 @@ const styles = StyleSheet.create({
   },
   locationChipText: { color: '#166534', fontSize: 13, fontWeight: '600', flexShrink: 1 },
   locationIcon: { marginRight: 6 },
+  matchCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  matchCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  matchCardTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  matchCardPercent: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  matchCardHeadline: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  matchCardSummary: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  matchBreakdownList: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15, 23, 42, 0.08)',
+    paddingTop: 12,
+  },
+  matchBreakdownItem: { marginBottom: 12 },
+  matchBreakdownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  matchBreakdownDetail: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
   metricRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

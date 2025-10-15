@@ -74,6 +74,7 @@ model Event {
   organizerId          String
   bookings             Booking[]
   comments             EventComment[]
+  conversations        Conversation[]
 
   createdAt            DateTime @default(now())
 
@@ -196,6 +197,8 @@ model PostComment {
 
 model Conversation {
   id           String                    @id @default(uuid())
+  event        Event?                    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId      String?                   @unique
   createdAt    DateTime                  @default(now())
   updatedAt    DateTime                  @updatedAt
   participants ConversationParticipant[]

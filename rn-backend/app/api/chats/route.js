@@ -15,6 +15,12 @@ const messageInclude = {
   },
 };
 
+const eventSelect = {
+  id: true,
+  title: true,
+  organizerId: true,
+};
+
 function buildConversationPayload(conversation, currentUserId) {
   const participants = conversation.participants.map((participant) => ({
     id: participant.id,
@@ -53,6 +59,13 @@ function buildConversationPayload(conversation, currentUserId) {
 
   return {
     id: conversation.id,
+    event: conversation.event
+      ? {
+          id: conversation.event.id,
+          title: conversation.event.title,
+          organizerId: conversation.event.organizerId,
+        }
+      : null,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     participants,
@@ -112,6 +125,9 @@ export async function GET(request) {
               select: participantUserSelect,
             },
           },
+        },
+        event: {
+          select: eventSelect,
         },
         messages: {
           take: 1,
@@ -192,6 +208,9 @@ export async function POST(request) {
             },
           },
         },
+        event: {
+          select: eventSelect,
+        },
         messages: {
           take: 1,
           orderBy: {
@@ -228,6 +247,9 @@ export async function POST(request) {
               select: participantUserSelect,
             },
           },
+        },
+        event: {
+          select: eventSelect,
         },
         messages: {
           take: 1,

@@ -4,6 +4,140 @@ import { getUserFromToken } from "@/lib/auth";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED"]);
+const CHAT_ELIGIBLE_STATUSES = new Set(["APPROVED", "CONFIRMED"]);
+
+function isChatEligibleStatus(status) {
+  if (!status || typeof status !== "string") {
+    return false;
+  }
+  return CHAT_ELIGIBLE_STATUSES.has(status.toUpperCase());
+}
+
+async function syncEventGroupConversation(eventId) {
+  if (!eventId) {
+    return;
+  }
+
+  const eventWithBookings = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      organizerId: true,
+      bookings: {
+        select: {
+          userId: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  if (!eventWithBookings) {
+    return;
+  }
+
+  const desiredUserIds = new Set([eventWithBookings.organizerId]);
+  for (const booking of eventWithBookings.bookings) {
+    if (isChatEligibleStatus(booking.status)) {
+      desiredUserIds.add(booking.userId);
+    }
+  }
+
+  if (desiredUserIds.size < 2) {
+    // No approved attendees yet; defer creating the conversation until the first approval.
+    const existingConversation = await prisma.conversation.findUnique({
+      where: { eventId },
+      select: { id: true },
+    });
+
+    if (existingConversation) {
+      // Keep the conversation but ensure only the organizer remains as a participant.
+      await prisma.conversationParticipant.deleteMany({
+        where: {
+          conversationId: existingConversation.id,
+          userId: {
+            not: eventWithBookings.organizerId,
+          },
+        },
+      });
+    }
+    return;
+  }
+
+  const conversation = await prisma.conversation.findUnique({
+    where: { eventId },
+    include: {
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  const targetUserIds = Array.from(desiredUserIds);
+  const now = new Date();
+
+  if (!conversation) {
+    await prisma.conversation.create({
+      data: {
+        event: {
+          connect: {
+            id: eventId,
+          },
+        },
+        participants: {
+          create: targetUserIds.map((userId) => ({
+            userId,
+            lastReadAt: now,
+          })),
+        },
+      },
+    });
+    return;
+  }
+
+  const existingUserIds = new Set(conversation.participants.map((participant) => participant.userId));
+  const toAdd = targetUserIds.filter((userId) => !existingUserIds.has(userId));
+  const toRemove = conversation.participants
+    .map((participant) => participant.userId)
+    .filter((userId) => !desiredUserIds.has(userId));
+
+  if (toAdd.length === 0 && toRemove.length === 0) {
+    return;
+  }
+
+  const operations = [];
+
+  if (toAdd.length > 0) {
+    operations.push(
+      prisma.conversationParticipant.createMany({
+        data: toAdd.map((userId) => ({
+          conversationId: conversation.id,
+          userId,
+          lastReadAt: now,
+        })),
+        skipDuplicates: true,
+      }),
+    );
+  }
+
+  if (toRemove.length > 0) {
+    operations.push(
+      prisma.conversationParticipant.deleteMany({
+        where: {
+          conversationId: conversation.id,
+          userId: {
+            in: toRemove,
+          },
+        },
+      }),
+    );
+  }
+
+  if (operations.length > 0) {
+    await prisma.$transaction(operations);
+  }
+}
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -88,6 +222,17 @@ export async function PUT(req, { params }) {
         event: { select: { id: true, title: true, organizerId: true } },
       },
     });
+
+    const shouldSyncConversation =
+      isChatEligibleStatus(normalizedStatus) || isChatEligibleStatus(currentStatus);
+
+    if (shouldSyncConversation) {
+      try {
+        await syncEventGroupConversation(updatedBooking.event.id);
+      } catch (syncError) {
+        console.error("Failed to sync event group conversation:", syncError);
+      }
+    }
 
     return NextResponse.json(updatedBooking, { status: 200 });
   } catch (err) {

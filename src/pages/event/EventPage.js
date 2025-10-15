@@ -225,7 +225,7 @@ function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
         <TouchableOpacity
           style={styles.primaryButton}
           activeOpacity={0.9}
-          onPress={() => onOpenEvent(event)}
+          onPress={() => onOpenEvent(event, booking)}
           disabled={!event}
         >
           <Text style={styles.primaryButtonText}>View Event Details</Text>
@@ -465,11 +465,14 @@ export default function EventsPage({ navigation }) {
   }, [fetchData]);
 
   const handleOpenEvent = useCallback(
-    (event) => {
+    (event, viewerBooking = null) => {
       if (!event) {
         return;
       }
-      navigation.navigate("EventDetails", { event });
+      navigation.navigate("EventDetails", {
+        event,
+        viewerBooking: viewerBooking ?? null,
+      });
     },
     [navigation]
   );
