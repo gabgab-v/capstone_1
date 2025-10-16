@@ -2,6 +2,40 @@ import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
 
 const ATTENDEE_STATUSES = ['APPROVED', 'CONFIRMED'];
+const DIFFICULTY_CANONICAL = {
+  beginner: 'BEGINNER',
+  easy: 'BEGINNER',
+  intermediate: 'INTERMEDIATE',
+  moderate: 'INTERMEDIATE',
+  medium: 'INTERMEDIATE',
+  expert: 'EXPERT',
+  advanced: 'EXPERT',
+  hard: 'EXPERT',
+  difficult: 'EXPERT',
+};
+
+function sanitizeDifficulty(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (DIFFICULTY_CANONICAL[normalized]) {
+    return DIFFICULTY_CANONICAL[normalized];
+  }
+
+  for (const [keyword, canonical] of Object.entries(DIFFICULTY_CANONICAL)) {
+    if (normalized.includes(keyword)) {
+      return canonical;
+    }
+  }
+
+  return null;
+}
 
 function sanitizeString(value) {
   if (typeof value !== 'string') {
@@ -73,6 +107,16 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: 'Title is required.' }), { status: 400 });
     }
 
+    const difficulty = sanitizeDifficulty(body?.difficulty);
+    if (!difficulty) {
+      return new Response(
+        JSON.stringify({
+          error: 'Difficulty must be Beginner, Intermediate, or Expert.',
+        }),
+        { status: 400 },
+      );
+    }
+
     let selectedTrail = null;
     const requestedTrailId = sanitizeString(body?.trailId) ?? body?.trailId;
     if (requestedTrailId) {
@@ -113,6 +157,7 @@ export async function POST(req) {
       imageUrl: sanitizeString(body?.imageUrl),
       gcashNumber: sanitizeString(body?.gcashNumber),
       locationName: sanitizeString(body?.locationName),
+      difficulty,
       locationLatitude: Number.isFinite(locationLatitude) ? locationLatitude : null,
       locationLongitude: Number.isFinite(locationLongitude) ? locationLongitude : null,
       locationZoomLevel: toFloat(body?.locationZoomLevel),

@@ -194,6 +194,8 @@ const Dashboard = ({ setToken }) => {
 
       <OrganizerRequests onUnauthorized={handleLogout} />
 
+      <ExpertRequests onUnauthorized={handleLogout} />
+
       <div style={{ marginTop: '40px' }}>
         <h2>Application Users</h2>
         {isLoading ? (
@@ -522,6 +524,313 @@ const OrganizerRequests = ({ onUnauthorized }) => {
                                 </button>
                               ))}
                             </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+const ExpertRequests = ({ onUnauthorized }) => {
+  const [requests, setRequests] = useState([]);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+
+  const fetchRequests = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const response = await adminApi.get('/api/admin/expert-requests');
+      setRequests(response.data?.requests ?? response.data ?? []);
+    } catch (err) {
+      console.error('Fetch expert requests error:', err);
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        onUnauthorized?.();
+      } else if (err.response) {
+        setError(`Failed to fetch expert requests: ${err.response.data?.message || err.response.statusText}`);
+      } else if (err.request) {
+        setError('Network Error: No response from server.');
+      } else {
+        setError('An unexpected error occurred.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const formatDateTime = (value) => {
+    if (!value) {
+      return 'Unknown';
+    }
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return String(value);
+    }
+  };
+
+  const toggleExpanded = (id) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
+
+  const handleApprove = async (userId) => {
+    setError('');
+    setMessage('');
+    setProcessingId(userId);
+    try {
+      const response = await adminApi.post(`/api/admin/approve-expert/${userId}`);
+      setMessage(response.data?.message || 'Expert verification approved.');
+      await fetchRequests();
+    } catch (err) {
+      console.error('Approve expert error:', err);
+      if (err.response) {
+        setError(`Failed to approve expert: ${err.response.data?.message || err.response.statusText}`);
+        if (err.response.status === 401 || err.response.status === 403) {
+          onUnauthorized?.();
+        }
+      } else if (err.request) {
+        setError('Network Error: Could not reach the server.');
+      } else {
+        setError('An unexpected error occurred while approving.');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (userId) => {
+    const reviewNotes = window.prompt(
+      'Optional: include notes for the applicant (leave blank for none).',
+      '',
+    );
+    if (reviewNotes === null) {
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    setProcessingId(userId);
+    try {
+      const response = await adminApi.post(`/api/admin/reject-expert/${userId}`, {
+        reviewNotes: reviewNotes.trim() || undefined,
+      });
+      setMessage(response.data?.message || 'Expert verification rejected.');
+      await fetchRequests();
+    } catch (err) {
+      console.error('Reject expert error:', err);
+      if (err.response) {
+        setError(`Failed to reject expert: ${err.response.data?.message || err.response.statusText}`);
+        if (err.response.status === 401 || err.response.status === 403) {
+          onUnauthorized?.();
+        }
+      } else if (err.request) {
+        setError('Network Error: Could not reach the server.');
+      } else {
+        setError('An unexpected error occurred while rejecting.');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const cardStyle = {
+    border: '1px solid #e2e8f0',
+    borderRadius: '16px',
+    padding: '16px',
+    background: '#ffffff',
+    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.06)',
+  };
+
+  const headerStyle = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '16px',
+  };
+
+  const buttonGroupStyle = {
+    display: 'flex',
+    gap: '10px',
+  };
+
+  const toggleButtonStyle = {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    background: '#e2e8f0',
+    border: 'none',
+    cursor: 'pointer',
+  };
+
+  const approveButtonStyle = (isProcessing) => ({
+    padding: '8px 12px',
+    borderRadius: '8px',
+    background: isProcessing ? '#134e4a' : '#047857',
+    color: '#ffffff',
+    border: 'none',
+    cursor: isProcessing ? 'default' : 'pointer',
+  });
+
+  const rejectButtonStyle = (isProcessing) => ({
+    padding: '8px 12px',
+    borderRadius: '8px',
+    background: isProcessing ? '#7f1d1d' : '#dc2626',
+    color: '#ffffff',
+    border: 'none',
+    cursor: isProcessing ? 'default' : 'pointer',
+  });
+
+  const detailGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '16px',
+  };
+
+  const labelStyle = { fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: '#64748b' };
+
+  const valueStyle = { marginTop: '4px', color: '#0f172a', fontWeight: '600' };
+
+  const imageGridStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: '12px',
+    marginTop: '12px',
+  };
+
+  const imageButtonStyle = {
+    border: '1px solid #cbd5f5',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    cursor: 'pointer',
+    background: '#f8fafc',
+    padding: 0,
+  };
+
+  const imageStyle = {
+    width: '100%',
+    height: '140px',
+    objectFit: 'cover',
+    display: 'block',
+  };
+
+  return (
+    <div style={{ marginTop: '40px' }}>
+      <h2>Expert Verifications</h2>
+      {isLoading ? (
+        <p>Loading expert requests...</p>
+      ) : (
+        <>
+          {error && (
+            <p style={{ color: 'red', border: '1px solid red', padding: '10px', borderRadius: '4px' }}>{error}</p>
+          )}
+          {message && (
+            <p style={{ color: 'green', border: '1px solid green', padding: '10px', borderRadius: '4px' }}>{message}</p>
+          )}
+          {requests.length === 0 ? (
+            <p>No pending expert verification requests.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+              {requests.map((request) => {
+                const isExpanded = expandedId === request.id;
+                const isProcessing = processingId === request.userId;
+                const applicant = request.user || {};
+                return (
+                  <div key={request.id} style={cardStyle}>
+                    <div style={headerStyle}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '18px', color: '#0f172a' }}>
+                          {request.summitName || 'Expert applicant'}
+                        </h3>
+                        <p style={{ margin: '4px 0', color: '#334155' }}>
+                          {applicant.name || 'Unknown user'} · {applicant.email || 'No email'}
+                        </p>
+                        <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>
+                          Submitted {formatDateTime(request.submittedAt)}
+                        </p>
+                      </div>
+                      <div style={buttonGroupStyle}>
+                        <button
+                          type="button"
+                          style={toggleButtonStyle}
+                          onClick={() => toggleExpanded(request.id)}
+                        >
+                          {isExpanded ? 'Hide details' : 'View details'}
+                        </button>
+                        <button
+                          type="button"
+                          style={approveButtonStyle(isProcessing)}
+                          onClick={() => handleApprove(request.userId)}
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? 'Processing...' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          style={rejectButtonStyle(isProcessing)}
+                          onClick={() => handleReject(request.userId)}
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? 'Processing...' : 'Reject'}
+                        </button>
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <div style={{ marginTop: '16px' }}>
+                        <div style={detailGridStyle}>
+                          <div>
+                            <span style={labelStyle}>Summit</span>
+                            <p style={valueStyle}>{request.summitName || 'Not provided'}</p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Summit date</span>
+                            <p style={valueStyle}>
+                              {request.summitDate ? formatDateTime(request.summitDate) : 'Not provided'}
+                            </p>
+                          </div>
+                          <div>
+                            <span style={labelStyle}>Current experience</span>
+                            <p style={valueStyle}>{applicant.experienceLevel || 'Not set'}</p>
+                          </div>
+                        </div>
+                        <div style={imageGridStyle}>
+                          {request.peakPhotoUrl ? (
+                            <button
+                              type="button"
+                              style={imageButtonStyle}
+                              onClick={() => window.open(request.peakPhotoUrl, '_blank', 'noopener')}
+                            >
+                              <img src={request.peakPhotoUrl} alt="Summit proof" style={imageStyle} />
+                            </button>
+                          ) : null}
+                          {request.certificateUrl ? (
+                            <button
+                              type="button"
+                              style={imageButtonStyle}
+                              onClick={() => window.open(request.certificateUrl, '_blank', 'noopener')}
+                            >
+                              <img src={request.certificateUrl} alt="Certificate" style={imageStyle} />
+                            </button>
+                          ) : null}
+                        </div>
+                        {request.additionalNotes ? (
+                          <div style={{ marginTop: '16px' }}>
+                            <span style={labelStyle}>Applicant notes</span>
+                            <p style={{ marginTop: '4px', color: '#0f172a' }}>{request.additionalNotes}</p>
                           </div>
                         ) : null}
                       </div>

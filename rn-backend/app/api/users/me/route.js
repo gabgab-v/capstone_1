@@ -11,6 +11,9 @@ const userSelect = {
   bio: true,
   birthdate: true,
   experienceLevel: true,
+  experienceLevelLocked: true,
+  expertBadgeAwarded: true,
+  expertVerifiedAt: true,
   preferredDifficulty: true,
   preferredTrailType: true,
   preferredDurationHrs: true,
@@ -29,6 +32,21 @@ const userSelect = {
       bio: true,
       additionalNotes: true,
       documentUrls: true,
+      reviewNotes: true,
+      reviewedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  expertApplication: {
+    select: {
+      id: true,
+      status: true,
+      summitName: true,
+      summitDate: true,
+      peakPhotoUrl: true,
+      certificateUrl: true,
+      additionalNotes: true,
       reviewNotes: true,
       reviewedAt: true,
       createdAt: true,
@@ -57,6 +75,9 @@ export async function GET(request) {
         bio: authUser.bio,
         birthdate: authUser.birthdate,
         experienceLevel: authUser.experienceLevel,
+        experienceLevelLocked: authUser.experienceLevelLocked ?? false,
+        expertBadgeAwarded: authUser.expertBadgeAwarded ?? false,
+        expertVerifiedAt: authUser.expertVerifiedAt ?? null,
         preferredDifficulty: authUser.preferredDifficulty,
         preferredTrailType: authUser.preferredTrailType,
         preferredDurationHrs: authUser.preferredDurationHrs,
@@ -64,6 +85,7 @@ export async function GET(request) {
         role: authUser.role,
         organizerRequestPending: authUser.organizerRequestPending ?? false,
         organizerApplication: null,
+        expertApplication: null,
       };
 
     if (!dbUser?.email) {
@@ -105,6 +127,12 @@ export async function GET(request) {
       ? {
           ...dbUser.organizerApplication,
           documentUrls: dbUser.organizerApplication.documentUrls ?? [],
+        }
+      : null;
+
+    const expertApplication = dbUser.expertApplication
+      ? {
+          ...dbUser.expertApplication,
         }
       : null;
 
@@ -160,6 +188,7 @@ export async function GET(request) {
     return NextResponse.json({
       ...dbUser,
       organizerApplication,
+      expertApplication,
       profileComplete,
       preferencesComplete,
       followersCount,

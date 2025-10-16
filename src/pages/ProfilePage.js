@@ -609,6 +609,14 @@ export default function ProfilePage({ navigation, route }) {
         <Text className="mt-3 text-xl font-bold text-gray-900 dark:text-slate-100">
           {profile.name ?? profile.email ?? 'Explorer'}
         </Text>
+        {(profile.expertBadgeAwarded || profile.experienceLevelLocked) ? (
+          <View className="mt-2 flex-row items-center rounded-full bg-amber-100 px-3 py-1 dark:bg-amber-500/20">
+            <Ionicons name="ribbon" size={16} color="#b45309" />
+            <Text className="ml-2 text-xs font-semibold text-amber-800 dark:text-amber-200">
+              Expert Verified
+            </Text>
+          </View>
+        ) : null}
         {profile.bio ? (
           <Text className="mt-1 text-center text-sm text-gray-500 dark:text-slate-400">{profile.bio}</Text>
         ) : null}

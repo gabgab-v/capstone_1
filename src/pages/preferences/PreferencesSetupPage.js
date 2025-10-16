@@ -81,12 +81,16 @@ export default function PreferencesSetupPage({ navigation }) {
     }
     return [...TRAIL_TYPE_OPTIONS, { label: trailType, value: trailType }];
   }, [trailType]);
+  const isExperienceLocked = Boolean(user?.experienceLevelLocked);
   const experienceHelperText = useMemo(() => {
+    if (isExperienceLocked) {
+      return 'Your experience level is locked because admins verified your expert badge.';
+    }
     if (!experience) {
       return 'Select the experience level that best matches how comfortable you feel on the trails.';
     }
     return EXPERIENCE_DESCRIPTIONS[experience] ?? '';
-  }, [experience]);
+  }, [experience, isExperienceLocked]);
 
   const hasExistingPreferences = useMemo(
     () =>
@@ -119,7 +123,7 @@ export default function PreferencesSetupPage({ navigation }) {
   }, [user]);
 
   async function handleSave() {
-    if (!experience || !difficulty || !trailType || !duration || !budget) {
+    if ((!isExperienceLocked && !experience) || !difficulty || !trailType || !duration || !budget) {
       Alert.alert('Missing information', 'Please fill out all preferences before continuing.');
       return;
     }
@@ -146,7 +150,7 @@ export default function PreferencesSetupPage({ navigation }) {
       };
 
       await post('/api/users/preferences', {
-        experience_level: experience,
+        experience_level: isExperienceLocked ? user?.experienceLevel ?? 'Expert' : experience,
         preferred_difficulty: difficulty,
         preferred_trail_type: trailType,
         preferred_duration_hours: durationValue,
@@ -195,6 +199,7 @@ export default function PreferencesSetupPage({ navigation }) {
           onValueChange={setExperience}
           style={pickerStyle}
           dropdownIconColor={colors.icon}
+          enabled={!isExperienceLocked}
         >
           {EXPERIENCE_OPTIONS.map((option) => (
             <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />

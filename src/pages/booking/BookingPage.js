@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import { useNotifications } from "../../context/NotificationContext";
 import { postFormData } from "../../lib/api";
+import { getEventDifficultyLabel } from "../../utils/matchScoring";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -20,8 +21,16 @@ export default function BookingPage({ route, navigation }) {
   const [receipt, setReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
   const { scheduleNotification } = useNotifications();
+  const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
 
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
+  const eventDifficulty = useMemo(() => getEventDifficultyLabel(event), [event]);
+  const isExpertDifficulty = eventDifficulty === "Expert";
+  const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
+
+  useEffect(() => {
+    setExpertWaiverAccepted(false);
+  }, [event?.id, isExpertDifficulty]);
 
   const priceLabel = useMemo(() => {
     const amount = Number(event?.price ?? 0);
@@ -68,7 +77,7 @@ export default function BookingPage({ route, navigation }) {
     setReceipt(null);
   };
 
-  const confirmBooking = async () => {
+  const submitBooking = async () => {
     if (loading) {
       return;
     }
@@ -114,6 +123,27 @@ export default function BookingPage({ route, navigation }) {
     }
   };
 
+  const handleConfirmPress = () => {
+    if (loading) {
+      return;
+    }
+
+    if (requiresReceipt && !receipt) {
+      Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
+      return;
+    }
+
+    if (isExpertGatePending) {
+      Alert.alert(
+        "Acknowledgement Needed",
+        "This event is rated Expert difficulty. Please acknowledge that you understand the risks before booking.",
+      );
+      return;
+    }
+
+    submitBooking();
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Image source={{ uri: event.imageUrl }} style={styles.image} />
@@ -140,6 +170,29 @@ export default function BookingPage({ route, navigation }) {
         </Text>
       </View>
 
+      {isExpertDifficulty ? (
+        <View style={styles.expertCard}>
+          <Text style={styles.expertCardTitle}>Expert Difficulty Waiver</Text>
+          <Text style={styles.expertCardBody}>
+            This event is rated Expert difficulty. It involves advanced terrain and elevated risk.
+            Confirm that you understand these risks before submitting your booking.
+          </Text>
+          <TouchableOpacity
+            style={styles.waiverToggle}
+            onPress={() => setExpertWaiverAccepted((prev) => !prev)}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <View style={styles.checkbox}>
+              {expertWaiverAccepted ? <View style={styles.checkboxInner} /> : null}
+            </View>
+            <Text style={styles.waiverText}>
+              I understand the risks of this expert event and wish to proceed with my booking.
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <TouchableOpacity style={styles.uploadBtn} onPress={pickReceipt} disabled={loading}>
         <Text style={styles.uploadBtnText}>{receipt ? "Change Receipt" : "Upload Receipt"}</Text>
       </TouchableOpacity>
@@ -159,8 +212,8 @@ export default function BookingPage({ route, navigation }) {
       ) : null}
 
       <TouchableOpacity
-        style={[styles.confirmBtn, loading && styles.disabledBtn]}
-        onPress={confirmBooking}
+        style={[styles.confirmBtn, (loading || isExpertGatePending) && styles.disabledBtn]}
+        onPress={handleConfirmPress}
         disabled={loading}
         activeOpacity={0.9}
       >
@@ -253,6 +306,48 @@ const styles = StyleSheet.create({
   confirmText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
   disabledBtn: {
     opacity: 0.7,
+  },
+  expertCard: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: "#fef2f2",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fca5a5",
+  },
+  expertCardTitle: { fontSize: 16, fontWeight: "700", color: "#b91c1c", marginBottom: 8 },
+  expertCardBody: {
+    fontSize: 13,
+    color: "#7f1d1d",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  waiverToggle: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: "#b91c1c",
+    borderRadius: 4,
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+  },
+  checkboxInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: "#b91c1c",
+  },
+  waiverText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#7f1d1d",
+    lineHeight: 20,
   },
   cancelBtn: {
     padding: 14,

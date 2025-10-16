@@ -20,6 +20,7 @@ import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
+import { normalizeDifficultyValue } from '../utils/matchScoring';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -27,6 +28,33 @@ const TABS = [
   { key: 'itinerary', label: 'Itinerary' },
   { key: 'trail', label: 'Trail & Location' },
 ];
+
+const DEFAULT_DIFFICULTY = 'BEGINNER';
+const DIFFICULTY_LEVELS = [
+  {
+    value: 'BEGINNER',
+    label: 'Beginner',
+    description: 'Ideal for newcomers with gentle terrain and low elevation gain.',
+  },
+  {
+    value: 'INTERMEDIATE',
+    label: 'Intermediate',
+    description: 'Balanced challenge for hikers with some experience and stamina.',
+  },
+  {
+    value: 'EXPERT',
+    label: 'Expert',
+    description: 'Demanding routes suited for seasoned hikers ready for steep ascents.',
+  },
+];
+
+function resolveDifficultyValue(rawValue) {
+  const normalized = normalizeDifficultyValue(typeof rawValue === 'string' ? rawValue : null);
+  if (!normalized) {
+    return DEFAULT_DIFFICULTY;
+  }
+  return normalized.toUpperCase();
+}
 
 function trimOrNull(value) {
   if (typeof value !== 'string') {
@@ -76,6 +104,9 @@ export default function CreateEventPage({ route, navigation }) {
   );
   const [price, setPrice] = useState(() =>
     Number.isFinite(Number(eventFromParams?.price)) ? String(eventFromParams.price) : '',
+  );
+  const [difficulty, setDifficulty] = useState(() =>
+    resolveDifficultyValue(eventFromParams?.difficulty),
   );
   const [gcashNumber, setGcashNumber] = useState(() => eventFromParams?.gcashNumber ?? '');
   const { scheduleNotification } = useNotifications();
@@ -156,6 +187,7 @@ export default function CreateEventPage({ route, navigation }) {
       Number.isFinite(Number(activeEvent.elevationM)) ? String(activeEvent.elevationM) : '',
     );
     setPrice(Number.isFinite(Number(activeEvent.price)) ? String(activeEvent.price) : '');
+    setDifficulty(resolveDifficultyValue(activeEvent.difficulty));
     setGcashNumber(activeEvent.gcashNumber ?? '');
 
     setSelectedImage(activeEvent.imageUrl ? { uri: activeEvent.imageUrl } : null);
@@ -411,6 +443,7 @@ export default function CreateEventPage({ route, navigation }) {
         steps: toIntOrNull(steps),
         elevationM: toFloatOrNull(elevationM),
         price: priceValue,
+        difficulty,
         gcashNumber: trimmedGcash,
         imageUrl,
         trailId: effectiveTrail.id,
@@ -552,6 +585,42 @@ export default function CreateEventPage({ route, navigation }) {
 
         {activeTab === 'details' && (
           <View style={styles.detailsGrid}>
+            <View style={styles.infoFieldFull}>
+              <Text style={styles.infoLabel}>Difficulty</Text>
+              <View>
+                {DIFFICULTY_LEVELS.map((option) => {
+                  const isSelected = difficulty === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.difficultyOption,
+                        isSelected && styles.difficultyOptionActive,
+                      ]}
+                      onPress={() => setDifficulty(option.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.difficultyOptionLabel,
+                          isSelected && styles.difficultyOptionLabelActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.difficultyOptionDescription,
+                          isSelected && styles.difficultyOptionDescriptionActive,
+                        ]}
+                      >
+                        {option.description}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={styles.infoField}>
               <Text style={styles.infoLabel}>Distance (km)</Text>
               <TextInput
@@ -824,6 +893,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
+  infoFieldFull: { width: '100%', marginBottom: 16 },
   infoField: { width: '48%', marginBottom: 16 },
   infoLabel: { fontSize: 14, color: '#555555', marginBottom: 6, fontWeight: '600' },
   input: {
@@ -841,6 +911,36 @@ const styles = StyleSheet.create({
   largeMultilineInput: {
     height: 150,
     textAlignVertical: 'top',
+  },
+  difficultyOption: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#F9FAFB',
+  },
+  difficultyOptionActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#EFF6FF',
+  },
+  difficultyOptionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  difficultyOptionLabelActive: {
+    color: '#1d4ed8',
+  },
+  difficultyOptionDescription: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#4b5563',
+    lineHeight: 18,
+  },
+  difficultyOptionDescriptionActive: {
+    color: '#1e3a8a',
   },
   sectionHeader: {
     flexDirection: 'row',

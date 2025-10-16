@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
+const DIFFICULTY_CANONICAL = {
+  beginner: "BEGINNER",
+  easy: "BEGINNER",
+  intermediate: "INTERMEDIATE",
+  moderate: "INTERMEDIATE",
+  medium: "INTERMEDIATE",
+  expert: "EXPERT",
+  advanced: "EXPERT",
+  hard: "EXPERT",
+  difficult: "EXPERT",
+};
+
 function sanitizeString(value) {
   if (typeof value !== "string") {
     return null;
@@ -55,6 +67,29 @@ function sanitizeGeoJson(value) {
   if (value.type === "LineString" && Array.isArray(value.coordinates)) {
     return value;
   }
+  return null;
+}
+
+function sanitizeDifficulty(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (DIFFICULTY_CANONICAL[normalized]) {
+    return DIFFICULTY_CANONICAL[normalized];
+  }
+
+  for (const [keyword, canonical] of Object.entries(DIFFICULTY_CANONICAL)) {
+    if (normalized.includes(keyword)) {
+      return canonical;
+    }
+  }
+
   return null;
 }
 
@@ -182,6 +217,18 @@ export async function PATCH(request, { params }) {
     const locationLatitude = toFloat(body?.locationLatitude);
     const locationLongitude = toFloat(body?.locationLongitude);
 
+    let difficultyValue = existingEvent.difficulty ?? "BEGINNER";
+    if (Object.prototype.hasOwnProperty.call(body, "difficulty")) {
+      const sanitizedDifficulty = sanitizeDifficulty(body?.difficulty);
+      if (!sanitizedDifficulty) {
+        return NextResponse.json(
+          { error: "Difficulty must be Beginner, Intermediate, or Expert." },
+          { status: 400 },
+        );
+      }
+      difficultyValue = sanitizedDifficulty;
+    }
+
     const updateData = {
       title,
       overview: sanitizeString(body?.overview),
@@ -199,6 +246,7 @@ export async function PATCH(request, { params }) {
       locationLongitude: Number.isFinite(locationLongitude) ? locationLongitude : null,
       locationZoomLevel: toFloat(body?.locationZoomLevel),
       locationBounds: sanitizeBounds(body?.locationBounds),
+      difficulty: difficultyValue,
       trailId: selectedTrail.id,
       trailGeoJson: selectedTrail.geoJson ?? sanitizeGeoJson(body?.trailGeoJson) ?? existingEvent.trailGeoJson,
       trailDistanceMeters:

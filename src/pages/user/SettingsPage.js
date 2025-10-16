@@ -308,6 +308,76 @@ export default function SettingsPage({ navigation }) {
     return null;
   };
 
+  const renderExpertSection = () => {
+    if (isLoading && !user) {
+      return null;
+    }
+
+    if (!user) {
+      return null;
+    }
+
+    const application = user.expertApplication ?? null;
+
+    if (user.expertBadgeAwarded || user.experienceLevelLocked) {
+      return (
+        <View className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-400/30 dark:bg-amber-900/20">
+          <Text className="text-lg font-semibold text-amber-700 dark:text-amber-200">Expert badge unlocked</Text>
+          <Text className="mt-2 text-sm text-amber-700 dark:text-amber-200">
+            Admins verified your summit experience. Your profile now permanently shows the expert badge.
+          </Text>
+          <TouchableOpacity
+            className="mt-4 rounded-xl border border-amber-500 px-4 py-2"
+            onPress={() => navigation.navigate('Profile', { userId: user?.id ?? 'me' })}
+          >
+            <Text className="text-center text-sm font-semibold text-amber-700 dark:text-amber-200">
+              View profile badge
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (application) {
+      const status = statusMeta(application.status);
+      return (
+        <View className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950">
+          <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Expert verification</Text>
+          <Text className={`mt-1 text-sm font-semibold ${status.textClass}`}>{status.label}</Text>
+          <Text className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Summit: {application.summitName || 'Not provided'}
+          </Text>
+          {application.reviewNotes ? (
+            <Text className="mt-2 text-sm text-amber-700 dark:text-amber-400">Notes: {application.reviewNotes}</Text>
+          ) : null}
+          <TouchableOpacity
+            className="mt-4 rounded-xl bg-blue-600 px-5 py-3"
+            onPress={() => navigation.navigate('ApplyExpert')}
+          >
+            <Text className="text-center font-semibold text-white">
+              {application.status === 'REJECTED' ? 'Resubmit verification' : 'View submission'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950">
+        <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Verify as an expert</Text>
+        <Text className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Upload a summit photo and certificate to request the expert badge. Admins review every submission.
+        </Text>
+        <TouchableOpacity
+          className="mt-4 rounded-xl bg-blue-600 px-5 py-3"
+          onPress={() => navigation.navigate('ApplyExpert')}
+        >
+          <Text className="text-center font-semibold text-white">Apply for expert badge</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderNotificationsSection = () => (
     <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
       <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Notifications</Text>
@@ -518,6 +588,8 @@ export default function SettingsPage({ navigation }) {
         {renderProfileCard()}
 
         {renderOrganizerSection()}
+
+        {renderExpertSection()}
 
         {renderNotificationsSection()}
 

@@ -26,6 +26,7 @@ import EventBookingsPage from './src/pages/event/EventBookingsPage';
 import CreateEventPage from './src/pages/CreateEventPage';
 import SettingsPage from './src/pages/user/SettingsPage';
 import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
+import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 
 const Stack = createNativeStackNavigator();
@@ -71,6 +72,7 @@ function AppNavigator() {
           <Stack.Screen name="EditEvent" component={CreateEventPage} />
           <Stack.Screen name="Settings" component={SettingsPage} />
           <Stack.Screen name="ApplyOrganizer" component={ApplyOrganizerPage} />
+          <Stack.Screen name="ApplyExpert" component={ApplyExpertPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />
         </>
       ) : (
