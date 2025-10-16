@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+﻿import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -175,7 +175,7 @@ function parseBudgetRange(value) {
     if (/over|above|more|greater/i.test(value)) {
       return { min: amount, midpoint: amount * 1.25 };
     }
-    return { min: 0, max: amount, midpoint: amount };
+    return { min: amount, max: amount, midpoint: amount };
   }
 
   const min = Math.min(...amounts);
@@ -595,7 +595,7 @@ export default function DiscoverPage() {
       ? `Personalized matches (top score ${topPercent}%)`
       : "No strong matches yet";
     const description = hasPreferenceMatch
-      ? "Events are ranked by cosine similarity between your hiking profile and each event."
+      ? "Events are ranked by your hiking profile and each event."
       : "We ranked all hikes, but none strongly align with your saved preferences yet.";
 
     return (

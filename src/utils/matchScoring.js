@@ -135,7 +135,7 @@ function parseBudgetRange(value) {
     if (/over|above|more|greater/i.test(value)) {
       return { min: amount, midpoint: amount * 1.25 };
     }
-    return { min: 0, max: amount, midpoint: amount };
+    return { min: amount, max: amount, midpoint: amount };
   }
 
   const min = Math.min(...amounts);
@@ -487,4 +487,3 @@ export {
   buildMatchBreakdown,
   formatPhp,
 };
-

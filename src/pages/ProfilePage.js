@@ -14,11 +14,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { decode } from 'base64-arraybuffer';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
-import { get, post, patch, postFormData, del as deleteRequest } from '../lib/api';
+import { get, post, patch, del as deleteRequest } from '../lib/api';
 import { ensureAvatarUri } from '../utils/media';
+import { supabase } from '../lib/supabase';
 
 function getAvatarUri(profile) {
   const seed = profile?.id ?? profile?.email ?? 'profile';
@@ -418,6 +420,7 @@ export default function ProfilePage({ navigation, route }) {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
+        base64: true,
       });
 
       if (pickerResult.canceled) {
@@ -430,24 +433,34 @@ export default function ProfilePage({ navigation, route }) {
         return;
       }
 
+      if (!asset.base64) {
+        Alert.alert('Upload failed', 'Could not read the selected image. Please try again.');
+        return;
+      }
+
       setAvatarUploading(true);
 
-      const fileName =
-        asset.fileName ?? asset.uri.split('/').pop() ?? `avatar-${Date.now()}.jpg`;
-      const mimeType =
-        asset.mimeType ?? (asset.type?.startsWith('image/') ? asset.type : 'image/jpeg');
+      const extensionParts = (asset.mimeType ?? 'image/jpeg').split('/');
+      const rawExtension = extensionParts[extensionParts.length - 1] ?? 'jpeg';
+      const normalizedExtension = rawExtension.split('+').pop() || 'jpeg';
+      const userId = profileRef.current?.id ?? authUser?.id ?? 'user';
+      const filePath = `avatars/${userId}-${Date.now()}.${normalizedExtension}`;
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri: asset.uri,
-        name: fileName,
-        type: mimeType,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('Capstone')
+        .upload(filePath, decode(asset.base64), {
+          contentType: asset.mimeType ?? 'image/jpeg',
+        });
 
-      const uploadResponse = await postFormData('/api/upload', formData);
-      const uploadedUrl = uploadResponse?.url;
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicData } = supabase.storage.from('Capstone').getPublicUrl(filePath);
+      const uploadedUrl = publicData?.publicUrl;
+
       if (!uploadedUrl) {
-        throw new Error('Upload did not return a file URL.');
+        throw new Error('Upload did not return a public URL.');
       }
 
       const storedAvatarUrl = uploadedUrl;
@@ -474,7 +487,7 @@ export default function ProfilePage({ navigation, route }) {
     } finally {
       setAvatarUploading(false);
     }
-  }, [avatarUploading, isOwnProfile, refreshUser]);
+  }, [authUser?.id, avatarUploading, isOwnProfile, refreshUser]);
 
   if (authLoading) {
     return (
