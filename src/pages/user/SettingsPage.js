@@ -516,7 +516,7 @@ export default function SettingsPage({ navigation }) {
         <TouchableOpacity className="py-3" onPress={() => navigation.navigate('PreferencesSetup')}>
           <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Trail preferences</Text>
           <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Update preferred difficulty, duration, and terrain types.
+            Update preferred difficulty, duration, distance, elevation, and terrain types.
           </Text>
         </TouchableOpacity>
       </View>

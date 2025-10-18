@@ -28,6 +28,8 @@ model User {
   preferredDifficulty     String?
   preferredTrailType      String?
   preferredDurationHrs    Float?
+  preferredDistanceKm     Float?
+  preferredElevationM     Float?
   budgetRange             String?
 
   bookings                Booking[]

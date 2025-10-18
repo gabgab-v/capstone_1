@@ -10,6 +10,14 @@ function parseDuration(value) {
   return parsed;
 }
 
+function parsePositiveNumber(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
 export async function POST(request) {
   try {
     const user = await getUserFromToken(request);
@@ -33,6 +41,8 @@ export async function POST(request) {
       preferred_difficulty,
       preferred_trail_type,
       preferred_duration_hours,
+      preferred_distance_km,
+      preferred_elevation_m,
       budget_range,
     } = body;
 
@@ -41,6 +51,8 @@ export async function POST(request) {
     if (!preferred_trail_type) missingFields.push('preferred_trail_type');
     if (!preferred_duration_hours && preferred_duration_hours !== 0)
       missingFields.push('preferred_duration_hours');
+    if (!preferred_distance_km && preferred_distance_km !== 0) missingFields.push('preferred_distance_km');
+    if (!preferred_elevation_m && preferred_elevation_m !== 0) missingFields.push('preferred_elevation_m');
     if (!budget_range) missingFields.push('budget_range');
 
     if (missingFields.length > 0) {
@@ -56,6 +68,22 @@ export async function POST(request) {
     if (durationValue === null || durationValue <= 0) {
       return NextResponse.json(
         { error: 'preferred_duration_hours must be a positive number.' },
+        { status: 400 },
+      );
+    }
+
+    const distanceValue = parsePositiveNumber(preferred_distance_km);
+    if (distanceValue === null || distanceValue <= 0) {
+      return NextResponse.json(
+        { error: 'preferred_distance_km must be a positive number.' },
+        { status: 400 },
+      );
+    }
+
+    const elevationValue = parsePositiveNumber(preferred_elevation_m);
+    if (elevationValue === null || elevationValue <= 0) {
+      return NextResponse.json(
+        { error: 'preferred_elevation_m must be a positive number.' },
         { status: 400 },
       );
     }
@@ -78,6 +106,8 @@ export async function POST(request) {
       preferredDifficulty: preferred_difficulty,
       preferredTrailType: preferred_trail_type,
       preferredDurationHrs: durationValue,
+      preferredDistanceKm: distanceValue,
+      preferredElevationM: elevationValue,
       budgetRange: budget_range,
     };
 
@@ -99,6 +129,8 @@ export async function POST(request) {
         preferredDifficulty: true,
         preferredTrailType: true,
         preferredDurationHrs: true,
+        preferredDistanceKm: true,
+        preferredElevationM: true,
         budgetRange: true,
       },
     });

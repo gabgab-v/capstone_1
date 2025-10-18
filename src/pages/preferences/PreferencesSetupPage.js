@@ -54,6 +54,8 @@ export default function PreferencesSetupPage({ navigation }) {
   const [difficulty, setDifficulty] = useState('');
   const [trailType, setTrailType] = useState('');
   const [duration, setDuration] = useState('');
+  const [distance, setDistance] = useState('');
+  const [elevation, setElevation] = useState('');
   const [budget, setBudget] = useState('');
   const [saving, setSaving] = useState(false);
   const pickerStyle = useMemo(
@@ -96,10 +98,12 @@ export default function PreferencesSetupPage({ navigation }) {
     () =>
       Boolean(
         user?.experienceLevel ||
-          user?.preferredDifficulty ||
-          user?.preferredTrailType ||
-          user?.preferredDurationHrs ||
-          user?.budgetRange
+        user?.preferredDifficulty ||
+        user?.preferredTrailType ||
+        user?.preferredDurationHrs ||
+        user?.preferredDistanceKm ||
+        user?.preferredElevationM ||
+        user?.budgetRange
       ),
     [user]
   );
@@ -119,11 +123,33 @@ export default function PreferencesSetupPage({ navigation }) {
         ? String(user.preferredDurationHrs)
         : ''
     );
+    setDistance(
+      typeof user.preferredDistanceKm === 'number' && Number.isFinite(user.preferredDistanceKm)
+        ? String(user.preferredDistanceKm)
+        : user.preferredDistanceKm
+        ? String(user.preferredDistanceKm)
+        : ''
+    );
+    setElevation(
+      typeof user.preferredElevationM === 'number' && Number.isFinite(user.preferredElevationM)
+        ? String(user.preferredElevationM)
+        : user.preferredElevationM
+        ? String(user.preferredElevationM)
+        : ''
+    );
     setBudget(user.budgetRange ?? '');
   }, [user]);
 
   async function handleSave() {
-    if ((!isExperienceLocked && !experience) || !difficulty || !trailType || !duration || !budget) {
+    if (
+      (!isExperienceLocked && !experience) ||
+      !difficulty ||
+      !trailType ||
+      !duration ||
+      !distance ||
+      !elevation ||
+      !budget
+    ) {
       Alert.alert('Missing information', 'Please fill out all preferences before continuing.');
       return;
     }
@@ -131,6 +157,18 @@ export default function PreferencesSetupPage({ navigation }) {
     const durationValue = Number(duration);
     if (!Number.isFinite(durationValue) || durationValue <= 0) {
       Alert.alert('Invalid duration', 'Please enter a valid preferred duration in hours.');
+      return;
+    }
+
+    const distanceValue = Number(distance);
+    if (!Number.isFinite(distanceValue) || distanceValue <= 0) {
+      Alert.alert('Invalid distance', 'Please enter a valid preferred distance in kilometers.');
+      return;
+    }
+
+    const elevationValue = Number(elevation);
+    if (!Number.isFinite(elevationValue) || elevationValue <= 0) {
+      Alert.alert('Invalid elevation', 'Please enter a valid preferred elevation gain in meters.');
       return;
     }
 
@@ -149,13 +187,15 @@ export default function PreferencesSetupPage({ navigation }) {
         }
       };
 
-      await post('/api/users/preferences', {
-        experience_level: isExperienceLocked ? user?.experienceLevel ?? 'Expert' : experience,
-        preferred_difficulty: difficulty,
-        preferred_trail_type: trailType,
-        preferred_duration_hours: durationValue,
-        budget_range: budget,
-      });
+        await post('/api/users/preferences', {
+          experience_level: isExperienceLocked ? user?.experienceLevel ?? 'Expert' : experience,
+          preferred_difficulty: difficulty,
+          preferred_trail_type: trailType,
+          preferred_duration_hours: durationValue,
+          preferred_distance_km: distanceValue,
+          preferred_elevation_m: elevationValue,
+          budget_range: budget,
+        });
 
       let updatedProfile = null;
       if (typeof refreshUser === 'function') {
@@ -252,6 +292,24 @@ export default function PreferencesSetupPage({ navigation }) {
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
         value={duration}
         onChangeText={setDuration}
+        keyboardType="numeric"
+      />
+
+      <Text className="font-medium mt-4 mb-2">Preferred Distance (kilometers)</Text>
+      <TextInput
+        placeholder="e.g., 10"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        value={distance}
+        onChangeText={setDistance}
+        keyboardType="numeric"
+      />
+
+      <Text className="font-medium mt-4 mb-2">Preferred Elevation Gain (meters)</Text>
+      <TextInput
+        placeholder="e.g., 800"
+        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        value={elevation}
+        onChangeText={setElevation}
         keyboardType="numeric"
       />
 

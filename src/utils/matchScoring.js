@@ -6,6 +6,8 @@ const LEVEL_SCORE_MAP = {
 
 const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
+const MAX_DISTANCE_KM = 40;
+const MAX_ELEVATION_M = 2000;
 const MIN_BREAKDOWN_SHARE = 0.01;
 
 function clamp(value, min = 0, max = 1) {
@@ -150,6 +152,20 @@ function normalizeDuration(hours) {
   return clamp(hours / MAX_DURATION_HOURS);
 }
 
+function normalizeDistance(kilometers) {
+  if (!Number.isFinite(kilometers) || kilometers <= 0) {
+    return 0;
+  }
+  return clamp(kilometers / MAX_DISTANCE_KM);
+}
+
+function normalizeElevation(meters) {
+  if (!Number.isFinite(meters) || meters <= 0) {
+    return 0;
+  }
+  return clamp(meters / MAX_ELEVATION_M);
+}
+
 function normalizePrice(amount) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return 0;
@@ -185,6 +201,8 @@ function computeUserVector(user) {
   }
 
   const durationScore = normalizeDuration(Number(user.preferredDurationHrs));
+  const distanceScore = normalizeDistance(Number(user.preferredDistanceKm));
+  const elevationScore = normalizeElevation(Number(user.preferredElevationM));
   const budgetRange = parseBudgetRange(user.budgetRange);
   const budgetScore = normalizePrice(
     typeof budgetRange.midpoint === 'number'
@@ -202,6 +220,8 @@ function computeUserVector(user) {
     durationScore,
     budgetScore,
     user?.preferredTrailType ? 1 : 0,
+    distanceScore,
+    elevationScore,
   ];
 }
 
@@ -212,8 +232,10 @@ function computeEventVector(event, user) {
   const trailPreference = user?.preferredTrailType;
   const descriptor = trailPreference ? extractTrailDescriptor(event) : null;
   const trailScore = trailPreference && descriptor && textContains(descriptor, trailPreference) ? 1 : 0;
+  const distanceScore = normalizeDistance(Number(event?.distanceKm));
+  const elevationScore = normalizeElevation(Number(event?.elevationM));
 
-  return [difficultyScore, difficultyScore, durationScore, priceScore, trailScore];
+  return [difficultyScore, difficultyScore, durationScore, priceScore, trailScore, distanceScore, elevationScore];
 }
 
 function dotProduct(vectorA, vectorB) {
@@ -277,6 +299,10 @@ function buildMatchBreakdown({
   const preferredDuration = Number(user?.preferredDurationHrs);
   const eventDuration = Number(event?.durationHrs);
   const priceNumber = Number(event?.price);
+  const preferredDistance = Number(user?.preferredDistanceKm);
+  const eventDistance = Number(event?.distanceKm);
+  const preferredElevation = Number(user?.preferredElevationM);
+  const eventElevation = Number(event?.elevationM);
   const preferredTrailRaw = typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
   const preferredTrail = preferredTrailRaw || '';
   const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
@@ -290,6 +316,10 @@ function buildMatchBreakdown({
     eventDuration,
     budgetRange,
     priceNumber,
+    preferredDistance,
+    eventDistance,
+    preferredElevation,
+    eventElevation,
     preferredTrail,
     matchesTrail,
   };
@@ -298,7 +328,7 @@ function buildMatchBreakdown({
     const minText = formatPhp(min);
     const maxText = formatPhp(max);
     if (minText && maxText) {
-      return `${minText}–${maxText}`;
+      return `${minText}-${maxText}`;
     }
     return minText || maxText || null;
   };
@@ -374,6 +404,62 @@ function buildMatchBreakdown({
           return `Runs for ${durationText}, a bit longer than your preferred ${preferredText}.`;
         }
         return `Runs for ${durationText}, a bit shorter than your preferred ${preferredText}.`;
+      },
+    },
+    {
+      key: 'distance',
+      label: 'Distance fit',
+      indices: [5],
+      detail: ({ preferredDistance: preferred, eventDistance: distance }) => {
+        if (!Number.isFinite(distance)) {
+          return 'Organizer has not shared the total distance yet.';
+        }
+        if (!Number.isFinite(preferred) || preferred <= 0) {
+          return `Covers ${distance.toFixed(1)} km.`;
+        }
+        const diff = distance - preferred;
+        const diffAbs = Math.abs(diff);
+        const distanceText = `${distance.toFixed(1)} km`;
+        const preferredText = `${preferred.toFixed(1)} km`;
+        const diffText = `${diffAbs.toFixed(1)} km`;
+        if (diffAbs < 0.5) {
+          return `${distanceText}, right on your ${preferredText} target.`;
+        }
+        if (diffAbs <= 2) {
+          return `${distanceText}, within ${diffText} of your ${preferredText} goal.`;
+        }
+        if (diff > 0) {
+          return `${distanceText}, about ${diffText} longer than your ${preferredText} preference.`;
+        }
+        return `${distanceText}, about ${diffText} shorter than your ${preferredText} preference.`;
+      },
+    },
+    {
+      key: 'elevation',
+      label: 'Elevation fit',
+      indices: [6],
+      detail: ({ preferredElevation: preferred, eventElevation: elevation }) => {
+        if (!Number.isFinite(elevation)) {
+          return 'Organizer has not shared the elevation gain yet.';
+        }
+        if (!Number.isFinite(preferred) || preferred <= 0) {
+          return `Climbs ${Math.round(elevation)} m in total.`;
+        }
+        const diff = elevation - preferred;
+        const diffAbs = Math.abs(diff);
+        const elevationText = `${Math.round(elevation)} m gain`;
+        const preferredText = `${Math.round(preferred)} m gain`;
+        const diffText = `${Math.round(diffAbs)} m`;
+        if (diffAbs < 50) {
+          return `${elevationText}, essentially matching your ${preferredText} target.`;
+        }
+        if (diffAbs <= 200) {
+          return `${elevationText}, within ${diffText} of your ${preferredText} target.`;
+        }
+        if (diff > 0) {
+          return `${elevationText}, about ${diffText} more climbing than you usually prefer.`;
+        }
+        return `${elevationText}, about ${diffText} less climbing than you usually look for.`;
       },
     },
     {
@@ -461,14 +547,15 @@ function buildMatchBreakdown({
       };
     })
     .filter(Boolean)
-    .sort((a, b) => b.contribution - a.contribution)
-    .slice(0, 3);
+    .sort((a, b) => b.contribution - a.contribution);
 }
 
 export {
   LEVEL_SCORE_MAP,
   MAX_DURATION_HOURS,
   MAX_PRICE_PHP,
+  MAX_DISTANCE_KM,
+  MAX_ELEVATION_M,
   MIN_BREAKDOWN_SHARE,
   normalizeDifficultyValue,
   levelToScore,
@@ -477,6 +564,8 @@ export {
   deriveEventDifficultyScore,
   parseBudgetRange,
   normalizeDuration,
+  normalizeDistance,
+  normalizeElevation,
   normalizePrice,
   textContains,
   extractTrailDescriptor,

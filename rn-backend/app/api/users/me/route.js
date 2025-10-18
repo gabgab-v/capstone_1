@@ -17,6 +17,8 @@ const userSelect = {
   preferredDifficulty: true,
   preferredTrailType: true,
   preferredDurationHrs: true,
+  preferredDistanceKm: true,
+  preferredElevationM: true,
   budgetRange: true,
   role: true,
   organizerRequestPending: true,
@@ -81,6 +83,8 @@ export async function GET(request) {
         preferredDifficulty: authUser.preferredDifficulty,
         preferredTrailType: authUser.preferredTrailType,
         preferredDurationHrs: authUser.preferredDurationHrs,
+        preferredDistanceKm: authUser.preferredDistanceKm,
+        preferredElevationM: authUser.preferredElevationM,
         budgetRange: authUser.budgetRange,
         role: authUser.role,
         organizerRequestPending: authUser.organizerRequestPending ?? false,
@@ -120,6 +124,8 @@ export async function GET(request) {
         dbUser.preferredDifficulty &&
         dbUser.preferredTrailType &&
         dbUser.preferredDurationHrs &&
+        dbUser.preferredDistanceKm &&
+        dbUser.preferredElevationM &&
         dbUser.budgetRange,
     );
 
@@ -231,6 +237,8 @@ export async function PUT(request) {
         updatedUser.preferredDifficulty &&
         updatedUser.preferredTrailType &&
         updatedUser.preferredDurationHrs &&
+        updatedUser.preferredDistanceKm &&
+        updatedUser.preferredElevationM &&
         updatedUser.budgetRange,
     );
 
@@ -286,6 +294,8 @@ export async function PATCH(request) {
         updatedUser.preferredDifficulty &&
         updatedUser.preferredTrailType &&
         updatedUser.preferredDurationHrs &&
+        updatedUser.preferredDistanceKm &&
+        updatedUser.preferredElevationM &&
         updatedUser.budgetRange,
     );
 
