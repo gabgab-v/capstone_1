@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Modal,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useTrailRecorder } from '../hooks/useTrailRecorder';
+import RecordedTrailSummary from '../components/RecordedTrailSummary';
 
 function formatDistance(meters) {
   if (!Number.isFinite(meters)) {
@@ -36,6 +38,7 @@ function formatDuration(ms) {
 export default function TrailRecorderPage() {
   const [label, setLabel] = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [savedTrail, setSavedTrail] = useState(null);
   const {
     status,
     start,
@@ -88,15 +91,21 @@ export default function TrailRecorderPage() {
   };
 
   const handleFinish = async () => {
-    const success = await finish({ label: label.trim() });
-    if (success) {
+    const trimmedLabel = label.trim();
+    const saved = await finish({ label: trimmedLabel });
+    if (saved) {
       setLabel('');
+      setSavedTrail(saved);
     }
   };
 
   const handleReset = () => {
     reset();
     setLabel('');
+  };
+
+  const handleCloseSummary = () => {
+    setSavedTrail(null);
   };
 
   return (
@@ -118,7 +127,7 @@ export default function TrailRecorderPage() {
         <View style={styles.statusRow}>
           <Text style={styles.statusLabel}>Status:</Text>
           <Text style={[styles.statusValue, styles[status] || styles.statusidle]}>
-            {isSaving ? 'saving�' : status}
+            {isSaving ? 'saving...' : status}
           </Text>
         </View>
 
@@ -174,7 +183,7 @@ export default function TrailRecorderPage() {
                 onPress={handleFinish}
                 disabled={!canFinish}
               >
-                <Text style={styles.buttonText}>{isSaving ? 'Saving�' : 'Finish'}</Text>
+                <Text style={styles.buttonText}>{isSaving ? 'Saving...' : 'Finish'}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -197,7 +206,7 @@ export default function TrailRecorderPage() {
                 onPress={handleFinish}
                 disabled={!canFinish}
               >
-                <Text style={styles.buttonText}>{isSaving ? 'Saving�' : 'Finish'}</Text>
+                <Text style={styles.buttonText}>{isSaving ? 'Saving...' : 'Finish'}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -209,6 +218,20 @@ export default function TrailRecorderPage() {
           )}
         </View>
       </View>
+      <Modal
+        visible={!!savedTrail}
+        animationType="slide"
+        transparent
+        onRequestClose={handleCloseSummary}
+      >
+        <View style={styles.summaryModalOverlay}>
+          <View style={styles.summaryCardWrapper}>
+            {savedTrail && (
+              <RecordedTrailSummary trail={savedTrail} onClose={handleCloseSummary} />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -343,5 +366,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#f9fafb',
+  },
+  summaryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  summaryCardWrapper: {
+    width: '100%',
+    maxWidth: 420,
   },
 });

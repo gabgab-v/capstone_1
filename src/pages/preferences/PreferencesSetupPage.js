@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { CommonActions } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -50,6 +51,7 @@ const TRAIL_TYPE_OPTIONS = [
 export default function PreferencesSetupPage({ navigation }) {
   const { user, refreshUser } = useAuth();
   const { isDarkMode, colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [experience, setExperience] = useState('');
   const [difficulty, setDifficulty] = useState('');
   const [trailType, setTrailType] = useState('');
@@ -84,15 +86,35 @@ export default function PreferencesSetupPage({ navigation }) {
     return [...TRAIL_TYPE_OPTIONS, { label: trailType, value: trailType }];
   }, [trailType]);
   const isExperienceLocked = Boolean(user?.experienceLevelLocked);
+  const hasExpertBadge = Boolean(user?.expertBadgeAwarded);
+  const experienceOptions = useMemo(() => {
+    const optionsWithoutExpert = EXPERIENCE_OPTIONS.filter((option) => option.value !== 'Expert');
+    if (hasExpertBadge || experience === 'Expert') {
+      const expertOption = EXPERIENCE_OPTIONS.find((option) => option.value === 'Expert');
+      if (expertOption) {
+        return [...optionsWithoutExpert, expertOption];
+      }
+    }
+    return optionsWithoutExpert;
+  }, [experience, hasExpertBadge]);
   const experienceHelperText = useMemo(() => {
     if (isExperienceLocked) {
       return 'Your experience level is locked because admins verified your expert badge.';
+    }
+    if (!hasExpertBadge) {
+      if (!experience) {
+        return 'Select the experience level that best matches how comfortable you feel on the trails. Apply for the Expert badge from Settings to unlock that option.';
+      }
+      const description = EXPERIENCE_DESCRIPTIONS[experience] ?? '';
+      return description
+        ? `${description} Apply for the Expert badge from Settings to unlock the Expert level.`
+        : 'Apply for the Expert badge from Settings to unlock the Expert level.';
     }
     if (!experience) {
       return 'Select the experience level that best matches how comfortable you feel on the trails.';
     }
     return EXPERIENCE_DESCRIPTIONS[experience] ?? '';
-  }, [experience, isExperienceLocked]);
+  }, [experience, hasExpertBadge, isExperienceLocked]);
 
   const hasExistingPreferences = useMemo(
     () =>
@@ -106,6 +128,13 @@ export default function PreferencesSetupPage({ navigation }) {
         user?.budgetRange
       ),
     [user]
+  );
+  const contentContainerStyle = useMemo(
+    () => ({
+      paddingTop: 64,
+      paddingBottom: Math.max(48, insets.bottom + 48),
+    }),
+    [insets.bottom]
   );
 
   useEffect(() => {
@@ -141,6 +170,13 @@ export default function PreferencesSetupPage({ navigation }) {
   }, [user]);
 
   async function handleSave() {
+    if (!isExperienceLocked && !hasExpertBadge && experience === 'Expert') {
+      Alert.alert(
+        'Expert level locked',
+        'Apply for the Expert badge from Settings before selecting the Expert experience level.'
+      );
+      return;
+    }
     if (
       (!isExperienceLocked && !experience) ||
       !difficulty ||
@@ -225,7 +261,12 @@ export default function PreferencesSetupPage({ navigation }) {
   }
 
   return (
-    <ScrollView className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
+    <ScrollView
+      className="flex-1 bg-white px-6 dark:bg-slate-900"
+      contentContainerStyle={contentContainerStyle}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
       <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
@@ -241,7 +282,7 @@ export default function PreferencesSetupPage({ navigation }) {
           dropdownIconColor={colors.icon}
           enabled={!isExperienceLocked}
         >
-          {EXPERIENCE_OPTIONS.map((option) => (
+          {experienceOptions.map((option) => (
             <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />
           ))}
         </Picker>

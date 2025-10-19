@@ -194,20 +194,21 @@ export function useTrailRecorder() {
     setIsSaving(true);
 
     try {
-      await post('/api/trails', {
+      const endedAtIso = new Date().toISOString();
+      const savedTrail = await post('/api/trails', {
         label: label || null,
         startedAt: startedIso,
-        endedAt: new Date().toISOString(),
+        endedAt: endedAtIso,
         points: recordedPoints,
         totalDistanceMeters: Math.round(distanceRef.current * 100) / 100,
       });
       reset();
-      return true;
+      return savedTrail;
     } catch (saveError) {
       console.error('Failed to save trail:', saveError);
       setError('Failed to save the recorded trail.');
       setStatus('paused');
-      return false;
+      return null;
     } finally {
       setIsSaving(false);
     }
