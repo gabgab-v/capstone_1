@@ -61,11 +61,21 @@ model Event {
   directions           String?
   distanceKm           Float?
   durationHrs          Float?
+  startsAt             DateTime?
+  endsAt               DateTime?
+  registrationOpensAt  DateTime?
+  registrationClosesAt DateTime?
   steps                Int?
   elevationM           Float?
   price                Int      @default(0)
   imageUrl             String?
   difficulty           EventDifficulty @default(BEGINNER)
+  minParticipants      Int      @default(0)
+  maxParticipants      Int?
+  status               EventStatus     @default(PUBLISHED)
+  completedAt          DateTime?
+
+  announceAt           DateTime?
 
   locationName         String?
   locationLatitude     Float?
@@ -87,6 +97,14 @@ model Event {
   createdAt            DateTime @default(now())
 
   @@index([trailId])
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  COMPLETED
+  CANCELLED
 }
 
 model Booking {

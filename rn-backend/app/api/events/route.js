@@ -55,6 +55,26 @@ function toInt(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+function toDate(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.valueOf())) {
+      return null;
+    }
+    return parsed;
+  }
+  return null;
+}
+
+const EVENT_STATUSES = new Set(['DRAFT', 'PUBLISHED', 'CLOSED', 'COMPLETED', 'CANCELLED']);
+const CLOSING_SOON_THRESHOLD_HOURS = 72;
+
 function sanitizeBounds(bounds) {
   if (!bounds || typeof bounds !== 'object') {
     return null;
@@ -141,8 +161,76 @@ export async function POST(req) {
     const elevationM = toFloat(body?.elevationM);
     const price = toInt(body?.price) ?? 0;
 
+    const startsAt = toDate(body?.startsAt);
+    if (!startsAt) {
+      return new Response(JSON.stringify({ error: 'Event start date/time is required.' }), {
+        status: 400,
+      });
+    }
+
+    const endsAt = toDate(body?.endsAt);
+    if (endsAt && endsAt <= startsAt) {
+      return new Response(
+        JSON.stringify({ error: 'End time must be later than the start time.' }),
+        { status: 400 },
+      );
+    }
+
+    const registrationOpensAt = toDate(body?.registrationOpensAt);
+    const registrationClosesAt = toDate(body?.registrationClosesAt);
+
+    if (registrationOpensAt && registrationClosesAt && registrationClosesAt <= registrationOpensAt) {
+      return new Response(
+        JSON.stringify({
+          error: 'Registration closing time must be after the opening time.',
+        }),
+        { status: 400 },
+      );
+    }
+
+    if (registrationClosesAt && registrationClosesAt >= startsAt) {
+      return new Response(
+        JSON.stringify({
+          error: 'Registration must close before the event starts.',
+        }),
+        { status: 400 },
+      );
+    }
+
     const locationLatitude = toFloat(body?.locationLatitude);
     const locationLongitude = toFloat(body?.locationLongitude);
+
+    const minParticipants = Math.max(0, toInt(body?.minParticipants) ?? 0);
+    const maxParticipantsRaw = toInt(body?.maxParticipants);
+    const maxParticipants =
+      Number.isFinite(maxParticipantsRaw) && maxParticipantsRaw > 0 ? maxParticipantsRaw : null;
+
+    if (maxParticipants !== null && minParticipants > maxParticipants) {
+      return new Response(
+        JSON.stringify({
+          error: 'Maximum hikers must be greater than or equal to the minimum hikers required.',
+        }),
+        { status: 400 },
+      );
+    }
+
+    let status = 'PUBLISHED';
+    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+      const incomingStatus =
+        typeof body.status === 'string' ? body.status.trim().toUpperCase() : null;
+      if (!incomingStatus || !EVENT_STATUSES.has(incomingStatus)) {
+        return new Response(JSON.stringify({ error: 'Invalid event status.' }), { status: 400 });
+      }
+      status = incomingStatus;
+    }
+
+    const announceAt = toDate(body?.announceAt);
+    if (announceAt && announceAt >= startsAt) {
+      return new Response(
+        JSON.stringify({ error: 'Announcement time must be before the event starts.' }),
+        { status: 400 },
+      );
+    }
 
     const data = {
       title,
@@ -151,6 +239,10 @@ export async function POST(req) {
       directions: sanitizeString(body?.directions),
       distanceKm,
       durationHrs,
+      startsAt,
+      endsAt,
+      registrationOpensAt,
+      registrationClosesAt,
       steps,
       elevationM,
       price,
@@ -167,7 +259,15 @@ export async function POST(req) {
       trailDistanceMeters:
         selectedTrail?.totalDistanceMeters ?? toFloat(body?.trailDistanceMeters),
       organizerId: user.id,
+      minParticipants,
+      maxParticipants,
+      status,
+      announceAt,
     };
+
+    if (status === 'COMPLETED') {
+      data.completedAt = new Date();
+    }
 
     const event = await prisma.event.create({
       data,
@@ -227,7 +327,52 @@ export async function GET() {
     ...event,
     approvedAttendeeCount: approvedCountMap.get(event.id) ?? 0,
     totalBookingCount: totalCountMap.get(event.id) ?? 0,
+    isClosingSoon: computeIsClosingSoon(event),
+    registrationClosed: computeIsRegistrationClosed(event),
+    isFull: computeIsFull(event, approvedCountMap.get(event.id)),
   }));
 
   return new Response(JSON.stringify(enrichedEvents));
+}
+
+function computeIsClosingSoon(event) {
+  if (!event?.registrationClosesAt || event.status !== 'PUBLISHED') {
+    return false;
+  }
+  const closesAt = new Date(event.registrationClosesAt);
+  if (Number.isNaN(closesAt.valueOf())) {
+    return false;
+  }
+  const now = new Date();
+  if (closesAt <= now) {
+    return false;
+  }
+  const diffHours = (closesAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+  return diffHours <= CLOSING_SOON_THRESHOLD_HOURS;
+}
+
+function computeIsRegistrationClosed(event) {
+  if (!event) {
+    return false;
+  }
+  if (event.status !== 'PUBLISHED') {
+    return true;
+  }
+  if (!event.registrationClosesAt) {
+    return false;
+  }
+  const closesAt = new Date(event.registrationClosesAt);
+  if (Number.isNaN(closesAt.valueOf())) {
+    return false;
+  }
+  const now = new Date();
+  return closesAt <= now;
+}
+
+function computeIsFull(event, approvedCount = 0) {
+  if (!event?.maxParticipants) {
+    return false;
+  }
+  const normalizedApproved = Number.isFinite(approvedCount) ? approvedCount : 0;
+  return normalizedApproved >= event.maxParticipants;
 }

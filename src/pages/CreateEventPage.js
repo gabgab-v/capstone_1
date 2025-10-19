@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { get, post, patch } from '../lib/api';
@@ -74,6 +78,211 @@ function toIntOrNull(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+const EVENT_STATUS_OPTIONS = [
+  { value: 'PUBLISHED', label: 'Published (visible)' },
+  { value: 'DRAFT', label: 'Draft (hidden)' },
+  { value: 'CLOSED', label: 'Closed (no new bookings)' },
+  { value: 'COMPLETED', label: 'Completed (archived)' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+];
+
+const EVENT_STATUS_SET = new Set(EVENT_STATUS_OPTIONS.map((option) => option.value));
+const DEFAULT_EVENT_STATUS = 'PUBLISHED';
+
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function clampDateToRange(value, minimumDate, maximumDate) {
+  const date = parseDate(value);
+  if (!date) {
+    return null;
+  }
+  const min = parseDate(minimumDate);
+  const max = parseDate(maximumDate);
+  let timestamp = date.getTime();
+  if (min && min instanceof Date && !Number.isNaN(min.valueOf())) {
+    timestamp = Math.max(timestamp, min.getTime());
+  }
+  if (max && max instanceof Date && !Number.isNaN(max.valueOf())) {
+    timestamp = Math.min(timestamp, max.getTime());
+  }
+  return new Date(timestamp);
+}
+
+function formatDateTimeLabel(value) {
+  const date = parseDate(value);
+  if (!date) {
+    return null;
+  }
+  const dateLabel = date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `${dateLabel} at ${timeLabel}`;
+}
+
+function DateTimeInputField({
+  label,
+  value,
+  onChange,
+  placeholder = 'Select date & time',
+  helperText,
+  minimumDate,
+  maximumDate,
+  allowClear = false,
+}) {
+  const [iosVisible, setIosVisible] = useState(false);
+  const [iosDraftDate, setIosDraftDate] = useState(
+    () => clampDateToRange(value, minimumDate, maximumDate) ?? new Date(),
+  );
+
+  useEffect(() => {
+    if (!iosVisible) {
+      return;
+    }
+    setIosDraftDate(clampDateToRange(value, minimumDate, maximumDate) ?? new Date());
+  }, [iosVisible, value, minimumDate, maximumDate]);
+
+  const handleAndroidPickers = useCallback(() => {
+    const initialDate = clampDateToRange(value, minimumDate, maximumDate) ?? new Date();
+    const minDate = parseDate(minimumDate);
+    const maxDate = parseDate(maximumDate);
+
+    const openTimePicker = (baseDate) => {
+      DateTimePickerAndroid.open({
+        value: baseDate,
+        mode: 'time',
+        is24Hour: false,
+        onChange: (event, selectedTime) => {
+          if (event.type !== 'set' || !selectedTime) {
+            return;
+          }
+          const combined = new Date(baseDate);
+          combined.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+          onChange(combined);
+        },
+      });
+    };
+
+    DateTimePickerAndroid.open({
+      value: initialDate,
+      mode: 'date',
+      minimumDate: minDate ?? undefined,
+      maximumDate: maxDate ?? undefined,
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) {
+          return;
+        }
+        openTimePicker(new Date(selectedDate));
+      },
+    });
+  }, [value, minimumDate, maximumDate, onChange]);
+
+  const handleOpenPicker = useCallback(() => {
+    if (Platform.OS === 'android') {
+      handleAndroidPickers();
+    } else {
+      setIosVisible(true);
+    }
+  }, [handleAndroidPickers]);
+
+  const handleIosCancel = useCallback(() => {
+    setIosVisible(false);
+  }, []);
+
+  const handleIosSave = useCallback(() => {
+    setIosVisible(false);
+    onChange(iosDraftDate);
+  }, [iosDraftDate, onChange]);
+
+  const handleIosChange = useCallback((_, selectedDate) => {
+    if (selectedDate) {
+      setIosDraftDate(selectedDate);
+    }
+  }, []);
+
+  const formattedValue = formatDateTimeLabel(value);
+  const displayValue = formattedValue ?? placeholder;
+
+  return (
+    <View style={styles.datetimeField}>
+      <View style={styles.datetimeHeader}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        {allowClear && value ? (
+          <TouchableOpacity onPress={() => onChange(null)}>
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <TouchableOpacity
+        style={styles.datetimeValue}
+        onPress={handleOpenPicker}
+        activeOpacity={0.85}
+      >
+        <Icon name="calendar" size={18} color="#1d4ed8" style={styles.datetimeIcon} />
+        <Text
+          style={[
+            styles.datetimeValueText,
+            !formattedValue && styles.datetimeValuePlaceholder,
+          ]}
+        >
+          {displayValue}
+        </Text>
+      </TouchableOpacity>
+      {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
+
+      {Platform.OS === 'ios' && iosVisible ? (
+        <Modal
+          transparent
+          animationType="slide"
+          visible={iosVisible}
+          onRequestClose={handleIosCancel}
+        >
+          <View style={styles.iosModalBackdrop}>
+            <View style={styles.iosModalContainer}>
+              <View style={styles.iosModalToolbar}>
+                <TouchableOpacity onPress={handleIosCancel}>
+                  <Text style={styles.iosModalToolbarButton}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleIosSave}>
+                  <Text
+                    style={[
+                      styles.iosModalToolbarButton,
+                      styles.iosModalToolbarButtonPrimary,
+                    ]}
+                  >
+                    Save
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={iosDraftDate}
+                mode="datetime"
+                display="spinner"
+                minimumDate={parseDate(minimumDate) ?? undefined}
+                maximumDate={parseDate(maximumDate) ?? undefined}
+                onChange={handleIosChange}
+                style={styles.iosPicker}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+    </View>
+  );
+}
+
 export default function CreateEventPage({ route, navigation }) {
   const isEditMode = route?.params?.mode === 'edit';
   const eventFromParams = route?.params?.event ?? null;
@@ -125,6 +334,33 @@ export default function CreateEventPage({ route, navigation }) {
       ? { lat: initialLatitude, lng: initialLongitude }
       : null,
   );
+  const [startsAt, setStartsAt] = useState(() => parseDate(eventFromParams?.startsAt));
+  const [endsAt, setEndsAt] = useState(() => parseDate(eventFromParams?.endsAt));
+  const [registrationOpensAt, setRegistrationOpensAt] = useState(() =>
+    parseDate(eventFromParams?.registrationOpensAt),
+  );
+  const [registrationClosesAt, setRegistrationClosesAt] = useState(() =>
+    parseDate(eventFromParams?.registrationClosesAt),
+  );
+  const [announceAt, setAnnounceAt] = useState(() => parseDate(eventFromParams?.announceAt));
+  const [minParticipants, setMinParticipants] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.minParticipants))
+      ? String(eventFromParams.minParticipants)
+      : '0',
+  );
+  const [maxParticipants, setMaxParticipants] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.maxParticipants)) &&
+    Number(eventFromParams?.maxParticipants) > 0
+      ? String(eventFromParams.maxParticipants)
+      : '',
+  );
+  const [status, setStatus] = useState(() => {
+    const raw =
+      typeof eventFromParams?.status === 'string'
+        ? eventFromParams.status.toUpperCase()
+        : null;
+    return raw && EVENT_STATUS_SET.has(raw) ? raw : DEFAULT_EVENT_STATUS;
+  });
 
   const initialZoom = Number(eventFromParams?.locationZoomLevel);
   const [locationZoomLevel, setLocationZoomLevel] = useState(() =>
@@ -217,6 +453,29 @@ export default function CreateEventPage({ route, navigation }) {
     } else {
       setLocationBounds(null);
     }
+
+    setStartsAt(parseDate(activeEvent.startsAt));
+    setEndsAt(parseDate(activeEvent.endsAt));
+    setRegistrationOpensAt(parseDate(activeEvent.registrationOpensAt));
+    setRegistrationClosesAt(parseDate(activeEvent.registrationClosesAt));
+    setAnnounceAt(parseDate(activeEvent.announceAt));
+    setMinParticipants(
+      Number.isFinite(Number(activeEvent.minParticipants))
+        ? String(activeEvent.minParticipants)
+        : '0',
+    );
+    setMaxParticipants(
+      Number.isFinite(Number(activeEvent.maxParticipants)) &&
+      Number(activeEvent.maxParticipants) > 0
+        ? String(activeEvent.maxParticipants)
+        : '',
+    );
+    setStatus(
+      typeof activeEvent.status === 'string' &&
+        EVENT_STATUS_SET.has(activeEvent.status.toUpperCase())
+        ? activeEvent.status.toUpperCase()
+        : DEFAULT_EVENT_STATUS,
+    );
 
     hasPrefilledRef.current = true;
   }, [isEditMode, activeEvent]);
@@ -378,6 +637,96 @@ export default function CreateEventPage({ route, navigation }) {
       return;
     }
 
+    const normalizedStartsAt = parseDate(startsAt);
+    if (!normalizedStartsAt) {
+      Alert.alert('Missing Information', 'Set when the event starts.');
+      setActiveTab('details');
+      return;
+    }
+
+    const normalizedRegistrationClosesAt = parseDate(registrationClosesAt);
+    if (!normalizedRegistrationClosesAt) {
+      Alert.alert('Missing Information', 'Set when registration will close.');
+      setActiveTab('details');
+      return;
+    }
+
+    const normalizedEndsAt = parseDate(endsAt);
+    if (normalizedEndsAt && normalizedEndsAt <= normalizedStartsAt) {
+      Alert.alert('Check Schedule', 'The end time must be later than the start time.');
+      setActiveTab('details');
+      return;
+    }
+
+    const normalizedRegistrationOpensAt = parseDate(registrationOpensAt);
+    if (
+      normalizedRegistrationOpensAt &&
+      normalizedRegistrationClosesAt &&
+      normalizedRegistrationClosesAt <= normalizedRegistrationOpensAt
+    ) {
+      Alert.alert(
+        'Check Schedule',
+        'Registration closing must be scheduled after it opens.',
+      );
+      setActiveTab('details');
+      return;
+    }
+
+    if (normalizedRegistrationClosesAt >= normalizedStartsAt) {
+      Alert.alert(
+        'Check Schedule',
+        'Registration must close before the event starts.',
+      );
+      setActiveTab('details');
+      return;
+    }
+
+    const normalizedAnnounceAt = parseDate(announceAt);
+    if (normalizedAnnounceAt && normalizedAnnounceAt >= normalizedStartsAt) {
+      Alert.alert(
+        'Check Schedule',
+        'Announcement time must be scheduled before the event starts.',
+      );
+      setActiveTab('details');
+      return;
+    }
+
+    const minParticipantsTrimmed = (minParticipants ?? '').trim();
+    const minParticipantsValueRaw =
+      minParticipantsTrimmed.length > 0 ? toIntOrNull(minParticipantsTrimmed) : 0;
+    if (minParticipantsTrimmed.length > 0 && minParticipantsValueRaw === null) {
+      Alert.alert('Invalid Capacity', 'Enter a valid number for minimum hikers.');
+      setActiveTab('details');
+      return;
+    }
+    const minParticipantsValue = Math.max(0, minParticipantsValueRaw ?? 0);
+
+    const maxParticipantsTrimmed = (maxParticipants ?? '').trim();
+    let normalizedMaxParticipants = null;
+    if (maxParticipantsTrimmed.length > 0) {
+      const maxCandidate = toIntOrNull(maxParticipantsTrimmed);
+      if (maxCandidate === null || maxCandidate <= 0) {
+        Alert.alert('Invalid Capacity', 'Maximum hikers must be a positive whole number.');
+        setActiveTab('details');
+        return;
+      }
+      normalizedMaxParticipants = maxCandidate;
+    }
+
+    if (
+      normalizedMaxParticipants !== null &&
+      minParticipantsValue > normalizedMaxParticipants
+    ) {
+      Alert.alert(
+        'Invalid Capacity',
+        'Maximum hikers must be greater than or equal to the minimum required.',
+      );
+      setActiveTab('details');
+      return;
+    }
+
+    const normalizedStatus = EVENT_STATUS_SET.has(status) ? status : DEFAULT_EVENT_STATUS;
+
     const targetEventId = activeEvent?.id ?? eventIdFromParams ?? null;
     if (isEditMode && !targetEventId) {
       Alert.alert('Missing Event', 'We could not determine which event to update. Please reopen the editor.');
@@ -454,6 +803,16 @@ export default function CreateEventPage({ route, navigation }) {
         locationLongitude: selectedLocation.lng,
         locationZoomLevel,
         locationBounds,
+        startsAt: normalizedStartsAt.toISOString(),
+        endsAt: normalizedEndsAt ? normalizedEndsAt.toISOString() : null,
+        registrationOpensAt: normalizedRegistrationOpensAt
+          ? normalizedRegistrationOpensAt.toISOString()
+          : null,
+        registrationClosesAt: normalizedRegistrationClosesAt.toISOString(),
+        announceAt: normalizedAnnounceAt ? normalizedAnnounceAt.toISOString() : null,
+        minParticipants: minParticipantsValue,
+        maxParticipants: normalizedMaxParticipants,
+        status: normalizedStatus,
       };
 
       let savedEvent;
@@ -464,14 +823,31 @@ export default function CreateEventPage({ route, navigation }) {
         navigation?.goBack?.();
       } else {
         savedEvent = await post('/api/events', eventPayload);
-        await scheduleNotification({
-          title: 'Event published',
-          body: `${trimmedTitle} is now live and ready for bookings.`,
-          data: {
-            type: 'event',
-            eventId: savedEvent?.id ?? null,
-          },
-        });
+        if (normalizedStatus === 'PUBLISHED') {
+          await scheduleNotification({
+            title: 'Event published',
+            body: `${trimmedTitle} is now live and ready for bookings.`,
+            data: {
+              type: 'event',
+              eventId: savedEvent?.id ?? null,
+            },
+          });
+        }
+        if (
+          normalizedStatus === 'PUBLISHED' &&
+          normalizedAnnounceAt &&
+          normalizedAnnounceAt > new Date()
+        ) {
+          await scheduleNotification({
+            title: 'Event starting soon',
+            body: `${trimmedTitle} starts ${formatDateTimeLabel(normalizedStartsAt)}.`,
+            data: {
+              type: 'event-start',
+              eventId: savedEvent?.id ?? null,
+            },
+            trigger: normalizedAnnounceAt,
+          });
+        }
         Alert.alert('Success', 'Event created successfully!');
         console.log('Event created:', savedEvent);
       }
@@ -499,6 +875,14 @@ export default function CreateEventPage({ route, navigation }) {
     locationName,
     locationBounds,
     locationZoomLevel,
+    startsAt,
+    endsAt,
+    registrationOpensAt,
+    registrationClosesAt,
+    announceAt,
+    minParticipants,
+    maxParticipants,
+    status,
     scheduleNotification,
     isEditMode,
     activeEvent,
@@ -584,106 +968,198 @@ export default function CreateEventPage({ route, navigation }) {
         )}
 
         {activeTab === 'details' && (
-          <View style={styles.detailsGrid}>
-            <View style={styles.infoFieldFull}>
-              <Text style={styles.infoLabel}>Difficulty</Text>
-              <View>
-                {DIFFICULTY_LEVELS.map((option) => {
-                  const isSelected = difficulty === option.value;
-                  return (
-                    <TouchableOpacity
-                      key={option.value}
-                      style={[
-                        styles.difficultyOption,
-                        isSelected && styles.difficultyOptionActive,
-                      ]}
-                      onPress={() => setDifficulty(option.value)}
-                    >
-                      <Text
+          <View>
+            <View style={styles.detailsGrid}>
+              <View style={styles.infoFieldFull}>
+                <Text style={styles.infoLabel}>Difficulty</Text>
+                <View>
+                  {DIFFICULTY_LEVELS.map((option) => {
+                    const isSelected = difficulty === option.value;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
                         style={[
-                          styles.difficultyOptionLabel,
-                          isSelected && styles.difficultyOptionLabelActive,
+                          styles.difficultyOption,
+                          isSelected && styles.difficultyOptionActive,
                         ]}
+                        onPress={() => setDifficulty(option.value)}
                       >
-                        {option.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.difficultyOptionDescription,
-                          isSelected && styles.difficultyOptionDescriptionActive,
-                        ]}
-                      >
-                        {option.description}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <Text
+                          style={[
+                            styles.difficultyOptionLabel,
+                            isSelected && styles.difficultyOptionLabelActive,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.difficultyOptionDescription,
+                            isSelected && styles.difficultyOptionDescriptionActive,
+                          ]}
+                        >
+                          {option.description}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Distance (km)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={distanceKm}
+                  onChangeText={setDistanceKm}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Estimated Time (hrs)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={durationHrs}
+                  onChangeText={setDurationHrs}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Steps</Text>
+                <TextInput
+                  style={styles.input}
+                  value={steps}
+                  onChangeText={setSteps}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Elevation Gain (m)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={elevationM}
+                  onChangeText={setElevationM}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Price</Text>
+                <TextInput
+                  style={styles.input}
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>GCash Number</Text>
+                <TextInput
+                  style={styles.input}
+                  value={gcashNumber}
+                  onChangeText={setGcashNumber}
+                  placeholder="09XXXXXXXXX"
+                />
               </View>
             </View>
 
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>Distance (km)</Text>
-              <TextInput
-                style={styles.input}
-                value={distanceKm}
-                onChangeText={setDistanceKm}
-                keyboardType="numeric"
-                placeholder="0"
+            <View style={styles.subSection}>
+              <Text style={styles.subSectionTitle}>Schedule</Text>
+              <DateTimeInputField
+                label="Event starts"
+                value={startsAt}
+                onChange={setStartsAt}
+                helperText="Attendees will see this as the official start time."
+              />
+              <DateTimeInputField
+                label="Event ends"
+                value={endsAt}
+                onChange={setEndsAt}
+                allowClear
+                minimumDate={startsAt}
+                helperText="Optional. Helps hikers plan the total time commitment."
+              />
+              <DateTimeInputField
+                label="Registration opens"
+                value={registrationOpensAt}
+                onChange={setRegistrationOpensAt}
+                allowClear
+                maximumDate={registrationClosesAt}
+                helperText="Optional. Leave blank to accept bookings immediately."
+              />
+              <DateTimeInputField
+                label="Registration closes"
+                value={registrationClosesAt}
+                onChange={setRegistrationClosesAt}
+                minimumDate={registrationOpensAt}
+                maximumDate={startsAt}
+                helperText="Bookings close at this time. We flag the event as “closing soon” within 72 hours."
+              />
+              <DateTimeInputField
+                label="Send start reminder"
+                value={announceAt}
+                onChange={setAnnounceAt}
+                allowClear
+                maximumDate={startsAt}
+                helperText="Optional notification to remind confirmed hikers before the event."
               />
             </View>
 
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>Estimated Time (hrs)</Text>
-              <TextInput
-                style={styles.input}
-                value={durationHrs}
-                onChangeText={setDurationHrs}
-                keyboardType="numeric"
-                placeholder="0"
-              />
-            </View>
-
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>Steps</Text>
-              <TextInput
-                style={styles.input}
-                value={steps}
-                onChangeText={setSteps}
-                keyboardType="numeric"
-                placeholder="0"
-              />
-            </View>
-
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>Elevation Gain (m)</Text>
-              <TextInput
-                style={styles.input}
-                value={elevationM}
-                onChangeText={setElevationM}
-                keyboardType="numeric"
-                placeholder="0"
-              />
-            </View>
-
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>Price</Text>
-              <TextInput
-                style={styles.input}
-                value={price}
-                onChangeText={setPrice}
-                keyboardType="numeric"
-                placeholder="0"
-              />
-            </View>
-
-            <View style={styles.infoField}>
-              <Text style={styles.infoLabel}>GCash Number</Text>
-              <TextInput
-                style={styles.input}
-                value={gcashNumber}
-                onChangeText={setGcashNumber}
-                placeholder="09XXXXXXXXX"
-              />
+            <View style={styles.subSection}>
+              <Text style={styles.subSectionTitle}>Capacity & Visibility</Text>
+              <View style={styles.capacityRow}>
+                <View style={styles.capacityField}>
+                  <Text style={styles.infoLabel}>Minimum hikers</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={minParticipants}
+                    onChangeText={setMinParticipants}
+                    keyboardType="numeric"
+                    placeholder="0"
+                  />
+                </View>
+                <View style={styles.capacityField}>
+                  <Text style={styles.infoLabel}>Maximum hikers</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={maxParticipants}
+                    onChangeText={setMaxParticipants}
+                    keyboardType="numeric"
+                    placeholder="Unlimited"
+                  />
+                </View>
+              </View>
+              <View style={styles.pickerGroup}>
+                <Text style={styles.infoLabel}>Event status</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={status}
+                    onValueChange={(value) => setStatus(value)}
+                    style={styles.picker}
+                    dropdownIconColor="#1d4ed8"
+                  >
+                    {EVENT_STATUS_OPTIONS.map((option) => (
+                      <Picker.Item
+                        key={option.value}
+                        label={option.label}
+                        value={option.value}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+                <Text style={styles.helperText}>
+                  Completed or cancelled events stay hidden from the Discover page.
+                </Text>
+              </View>
             </View>
           </View>
         )}
@@ -967,6 +1443,107 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 13,
     marginBottom: 12,
+  },
+  subSection: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  subSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 14,
+  },
+  datetimeField: {
+    marginBottom: 16,
+  },
+  datetimeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  clearButtonText: {
+    color: '#1d4ed8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  datetimeValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  datetimeIcon: {
+    marginRight: 12,
+  },
+  datetimeValueText: {
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
+  datetimeValuePlaceholder: {
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  iosModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  iosModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 12,
+  },
+  iosModalToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  iosModalToolbarButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  iosModalToolbarButtonPrimary: {
+    color: '#2563EB',
+  },
+  iosPicker: {
+    backgroundColor: '#fff',
+  },
+  capacityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  capacityField: {
+    width: '48%',
+  },
+  pickerGroup: {
+    marginTop: 18,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
+  },
+  picker: {
+    width: '100%',
+    height: 44,
+    color: '#1F2937',
   },
   trailLoading: { marginVertical: 12 },
   trailList: {

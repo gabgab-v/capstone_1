@@ -1023,7 +1023,24 @@ export default function EventDetailsPage({ route, navigation }) {
   }
 
   const priceLabel = formatPrice(event.price);
-  const eventDate = sanitizeText(event.date) ?? 'Date to be announced';
+  const eventDate = (() => {
+    if (event?.startsAt) {
+      const label = formatDateTime(event.startsAt);
+      return label === 'Booked date pending' ? 'Start time to be announced' : label;
+    }
+    return 'Start time to be announced';
+  })();
+  const registrationCloseDate = (() => {
+    if (event?.registrationClosesAt) {
+      const label = formatDateTime(event.registrationClosesAt);
+      return label === 'Booked date pending' ? null : label;
+    }
+    return null;
+  })();
+  const eventStatus =
+    typeof event?.status === 'string' ? event.status.trim().toUpperCase() : 'PUBLISHED';
+  const eventStatusLabel =
+    eventStatus.charAt(0) + eventStatus.slice(1).toLowerCase();
   const hasMapContent = Boolean(locationPoint || event.trailGeoJson || event.trail?.geoJson);
 
   return (
@@ -1043,6 +1060,12 @@ export default function EventDetailsPage({ route, navigation }) {
           <View style={styles.header}>
             <Text style={styles.title}>{event.title}</Text>
             <Text style={styles.date}>{eventDate}</Text>
+            <Text style={styles.statusLabel}>{`Status: ${eventStatusLabel}`}</Text>
+            {registrationCloseDate ? (
+              <Text style={styles.registrationLabel}>
+                {`Registration closes ${registrationCloseDate}`}
+              </Text>
+            ) : null}
             {priceLabel && <Text style={styles.price}>{priceLabel}</Text>}
             <View style={styles.locationChip}>
               <Icon name="map-pin" size={16} color="#166534" style={styles.locationIcon} />
@@ -1435,6 +1458,8 @@ const styles = StyleSheet.create({
   header: { marginBottom: 16 },
   title: { fontSize: 24, fontWeight: '700', color: '#1A3620', marginBottom: 6 },
   date: { fontSize: 14, color: '#64748b', marginBottom: 4 },
+  statusLabel: { fontSize: 13, color: '#1F2937', fontWeight: '600', marginBottom: 4 },
+  registrationLabel: { fontSize: 12, color: '#475569', marginBottom: 12 },
   price: { fontSize: 18, fontWeight: '700', color: '#2E7D32', marginBottom: 12 },
   locationChip: {
     flexDirection: 'row',

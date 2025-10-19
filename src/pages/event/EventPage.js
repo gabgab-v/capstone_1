@@ -14,8 +14,9 @@ import {
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { get, put, BASE_URL } from "../../lib/api";
+import { get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
+import { Picker } from "@react-native-picker/picker";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -100,6 +101,177 @@ function getEventMetrics(event) {
     metrics.push({ key: "steps", label: `${steps.toLocaleString()} steps` });
   }
   return metrics;
+}
+
+const EVENT_STATUS_OPTIONS = [
+  { value: "PUBLISHED", label: "Published (visible)" },
+  { value: "DRAFT", label: "Draft" },
+  { value: "CLOSED", label: "Closed (stop new bookings)" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
+
+const EVENT_STATUS_BADGES = {
+  PUBLISHED: { label: "Published", background: "#DCFCE7", color: "#166534" },
+  DRAFT: { label: "Draft", background: "#E0F2FE", color: "#1D4ED8" },
+  CLOSED: { label: "Closed", background: "#FEF3C7", color: "#92400E" },
+  COMPLETED: { label: "Completed", background: "#E5E7EB", color: "#374151" },
+  CANCELLED: { label: "Cancelled", background: "#FEE2E2", color: "#B91C1C" },
+};
+
+const CLOSING_SOON_THRESHOLD_HOURS = 72;
+
+function parseDateValue(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function formatEventDateTime(value) {
+  const date = parseDateValue(value);
+  if (!date) {
+    return null;
+  }
+  const dateLabel = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timeLabel = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${dateLabel} at ${timeLabel}`;
+}
+
+function formatRelativeToNow(value) {
+  const date = parseDateValue(value);
+  if (!date) {
+    return null;
+  }
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return null;
+  }
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 60) {
+    if (diffMinutes <= 1) {
+      return "in about a minute";
+    }
+    return `in ${diffMinutes} minutes`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) {
+    if (diffHours === 1) {
+      return "in 1 hour";
+    }
+    return `in ${diffHours} hours`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays === 1) {
+    return "in 1 day";
+  }
+  return `in ${diffDays} days`;
+}
+
+function computeEventScheduleFlags(event) {
+  const startsAt = parseDateValue(event?.startsAt);
+  const closesAt = parseDateValue(event?.registrationClosesAt);
+  const endsAt = parseDateValue(event?.endsAt);
+  const now = new Date();
+  const status =
+    typeof event?.status === "string" ? event.status.trim().toUpperCase() : "PUBLISHED";
+  const registrationClosed =
+    status !== "PUBLISHED" ||
+    (closesAt && closesAt <= now) ||
+    (startsAt && startsAt <= now);
+  const closingSoon =
+    status === "PUBLISHED" &&
+    !registrationClosed &&
+    closesAt &&
+    (closesAt.getTime() - now.getTime()) / (1000 * 60 * 60) <= CLOSING_SOON_THRESHOLD_HOURS;
+  const capacityLimit =
+    Number.isFinite(Number(event?.maxParticipants)) && Number(event.maxParticipants) > 0
+      ? Number(event.maxParticipants)
+      : null;
+  const approvedCount = Number.isFinite(Number(event?.approvedAttendeeCount))
+    ? Number(event.approvedAttendeeCount)
+    : 0;
+  const isFull =
+    event?.isFull ??
+    (capacityLimit !== null ? approvedCount >= capacityLimit : false);
+
+  return {
+    status,
+    startsAt,
+    closesAt,
+    endsAt,
+    registrationClosed,
+    closingSoon,
+    isFull,
+  };
+}
+
+function getEventStatusBadge(status) {
+  const normalized = typeof status === "string" ? status.trim().toUpperCase() : "PUBLISHED";
+  return EVENT_STATUS_BADGES[normalized] ?? EVENT_STATUS_BADGES.PUBLISHED;
+}
+
+function buildEventUpdatePayload(event, overrides = {}) {
+  const toFloat = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
+  const toInt = (value) => (Number.isFinite(Number(value)) ? Math.round(Number(value)) : null);
+  const toIso = (value) => {
+    const date = parseDateValue(value);
+    return date ? date.toISOString() : null;
+  };
+
+  const base = {
+    title: event?.title ?? "",
+    overview: event?.overview ?? null,
+    itinerary: event?.itinerary ?? null,
+    directions: event?.directions ?? null,
+    distanceKm: toFloat(event?.distanceKm),
+    durationHrs: toFloat(event?.durationHrs),
+    steps: toInt(event?.steps),
+    elevationM: toFloat(event?.elevationM),
+    price: toInt(event?.price) ?? 0,
+    difficulty: event?.difficulty ?? "BEGINNER",
+    gcashNumber: event?.gcashNumber ?? "",
+    imageUrl: event?.imageUrl ?? null,
+    trailId: event?.trailId ?? event?.trail?.id ?? null,
+    trailGeoJson: event?.trailGeoJson ?? event?.trail?.geoJson ?? null,
+    trailDistanceMeters:
+      toFloat(event?.trailDistanceMeters) ??
+      toFloat(event?.trail?.totalDistanceMeters) ??
+      0,
+    locationName: event?.locationName ?? null,
+    locationLatitude: toFloat(event?.locationLatitude),
+    locationLongitude: toFloat(event?.locationLongitude),
+    locationZoomLevel: toFloat(event?.locationZoomLevel),
+    locationBounds: event?.locationBounds ?? null,
+    startsAt: toIso(event?.startsAt),
+    endsAt: toIso(event?.endsAt),
+    registrationOpensAt: toIso(event?.registrationOpensAt),
+    registrationClosesAt: toIso(event?.registrationClosesAt),
+    announceAt: toIso(event?.announceAt),
+    minParticipants: Math.max(0, toInt(event?.minParticipants) ?? 0),
+    maxParticipants: toInt(event?.maxParticipants),
+    status: typeof event?.status === "string" ? event.status.toUpperCase() : "PUBLISHED",
+  };
+
+  const payload = {
+    ...base,
+    ...overrides,
+  };
+
+  if (typeof payload.status === "string") {
+    payload.status = payload.status.toUpperCase();
+  }
+
+  return payload;
 }
 
 function getStatusStyles(status) {
@@ -249,7 +421,15 @@ function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
   );
 }
 
-function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings, onEditEvent }) {
+function OrganizerEventCard({
+  event,
+  attendees,
+  onViewDetails,
+  onViewBookings,
+  onEditEvent,
+  onUpdateStatus,
+  isUpdatingStatus,
+}) {
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
   const priceLabel = formatPrice(event?.price);
   const locationLabel = getLocationLabel(event);
@@ -260,6 +440,33 @@ function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings, o
     ? attendees.reduce((sum, booking) => sum + (Number(booking?.totalAmount) || 0), 0)
     : 0;
   const revenueLabel = formatPrice(totalRevenue);
+  const approvedAttendees = Array.isArray(attendees)
+    ? attendees.filter((booking) =>
+        ["APPROVED", "CONFIRMED"].includes((booking?.status || "").toUpperCase())
+      )
+    : [];
+  const approvedCount = approvedAttendees.length;
+  const scheduleMeta = computeEventScheduleFlags(event);
+  const statusBadge = getEventStatusBadge(scheduleMeta.status);
+  const startLabel = formatEventDateTime(scheduleMeta.startsAt);
+  const closeRelative = scheduleMeta.closesAt ? formatRelativeToNow(scheduleMeta.closesAt) : null;
+  const closeAbsolute = scheduleMeta.closesAt ? formatEventDateTime(scheduleMeta.closesAt) : null;
+  const closingDescription = scheduleMeta.registrationClosed
+    ? "Registration closed"
+    : closeRelative
+    ? `Registration closes ${closeRelative}`
+    : closeAbsolute
+    ? `Registration closes on ${closeAbsolute}`
+    : "Registration closing time not set";
+  const minParticipantsCount =
+    Number.isFinite(Number(event?.minParticipants)) && Number(event.minParticipants) > 0
+      ? Number(event.minParticipants)
+      : 0;
+  const capacityLimit =
+    Number.isFinite(Number(event?.maxParticipants)) && Number(event.maxParticipants) > 0
+      ? Number(event.maxParticipants)
+      : null;
+  const minShortfall = Math.max(0, minParticipantsCount - approvedCount);
 
   return (
     <View style={styles.card}>
@@ -270,11 +477,109 @@ function OrganizerEventCard({ event, attendees, onViewDetails, onViewBookings, o
           <Text style={styles.priceTag}>{priceLabel}</Text>
         </View>
 
+        <View style={styles.statusRow}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusBadge.background },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: statusBadge.color }]}>
+              {statusBadge.label}
+            </Text>
+          </View>
+          {scheduleMeta.closingSoon ? (
+            <View style={styles.badgeWarning}>
+              <Text style={styles.badgeWarningText}>Closing soon</Text>
+            </View>
+          ) : null}
+          {scheduleMeta.isFull ? (
+            <View style={styles.badgeDanger}>
+              <Text style={styles.badgeDangerText}>Fully booked</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.scheduleSection}>
+          <Icon name="clock" size={16} color="#1D4ED8" style={styles.scheduleIcon} />
+          <View style={styles.scheduleTextGroup}>
+            <Text style={styles.schedulePrimary}>
+              {startLabel ?? "Start time not set"}
+            </Text>
+            <Text style={styles.scheduleSecondary}>{closingDescription}</Text>
+          </View>
+        </View>
+
+        {minParticipantsCount > 0 ? (
+          <View
+            style={[
+              styles.minimumState,
+              minShortfall > 0 ? styles.minimumStateWarning : styles.minimumStateSuccess,
+            ]}
+          >
+            <Text
+              style={[
+                styles.minimumStateText,
+                minShortfall > 0 ? null : styles.minimumStateTextSuccess,
+              ]}
+            >
+              {minShortfall > 0
+                ? `Needs ${minShortfall} more approved hiker${minShortfall === 1 ? "" : "s"} to reach the minimum of ${minParticipantsCount}.`
+                : `Minimum requirement reached (${minParticipantsCount} hikers).`}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.capacitySummary}>
+          <View style={styles.capacityCard}>
+            <Text style={styles.capacityLabel}>Minimum hikers</Text>
+            <Text style={styles.capacityValue}>
+              {minParticipantsCount > 0 ? minParticipantsCount : "Not set"}
+            </Text>
+          </View>
+          <View style={[styles.capacityCard, styles.capacityCardLast]}>
+            <Text style={styles.capacityLabel}>Capacity</Text>
+            <Text style={styles.capacityValue}>
+              {capacityLimit ? capacityLimit : "Unlimited"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.statusControl}>
+          <Text style={styles.statusControlLabel}>Update status</Text>
+          <View style={styles.statusPickerWrapper}>
+            <Picker
+              selectedValue={scheduleMeta.status}
+              onValueChange={(value) => {
+                if (value !== scheduleMeta.status) {
+                  onUpdateStatus?.(event, value);
+                }
+              }}
+              enabled={Boolean(onUpdateStatus) && !isUpdatingStatus}
+              style={styles.statusPicker}
+              dropdownIconColor="#1D4ED8"
+            >
+              {EVENT_STATUS_OPTIONS.map((option) => (
+                <Picker.Item key={option.value} label={option.label} value={option.value} />
+              ))}
+            </Picker>
+            {isUpdatingStatus ? (
+              <ActivityIndicator
+                size="small"
+                color="#1D4ED8"
+                style={styles.statusPickerSpinner}
+              />
+            ) : null}
+          </View>
+        </View>
+
         <View style={styles.metricSummary}>
           <View style={styles.summaryItem}>
             <Icon name="users" size={16} color="#2E7D32" style={styles.summaryIcon} />
             <Text style={styles.summaryLabel}>
-              {attendeeCount} {attendeeCount === 1 ? "booking" : "bookings"}
+              {attendeeCount
+                ? `${approvedCount} approved / ${attendeeCount} total`
+                : "No bookings yet"}
             </Text>
           </View>
           <View style={styles.summaryItem}>
@@ -363,6 +668,7 @@ export default function EventsPage({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
 
   const hasLoadedRef = useRef(false);
   const insets = useSafeAreaInsets();
@@ -528,6 +834,46 @@ export default function EventsPage({ navigation }) {
     [cancelBooking],
   );
 
+  const handleChangeStatus = useCallback(
+    async (targetEvent, nextStatusRaw) => {
+      if (!targetEvent?.id) {
+        return;
+      }
+
+      const normalizedStatus =
+        typeof nextStatusRaw === "string" ? nextStatusRaw.toUpperCase() : null;
+      if (!normalizedStatus || normalizedStatus === (targetEvent?.status || "").toUpperCase()) {
+        return;
+      }
+
+      try {
+        setStatusUpdatingId(targetEvent.id);
+        const latest = await get(`/api/events/${targetEvent.id}`);
+        if (!latest) {
+          throw new Error("Unable to load event details.");
+        }
+
+        const payload = buildEventUpdatePayload(latest, { status: normalizedStatus });
+        if (!payload.registrationClosesAt) {
+          payload.registrationClosesAt = latest?.registrationClosesAt ?? null;
+        }
+
+        await patch(`/api/events/${targetEvent.id}`, payload);
+        await fetchData();
+      } catch (error) {
+        console.error(`Failed to update status for event ${targetEvent?.id}:`, error);
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          "We couldn't update the event status right now. Please try again.";
+        Alert.alert("Update failed", message);
+      } finally {
+        setStatusUpdatingId(null);
+      }
+    },
+    [fetchData]
+  );
+
   const handleViewBookings = useCallback(
     (event) => {
       if (!event?.id) {
@@ -655,6 +1001,8 @@ export default function EventsPage({ navigation }) {
                 onViewDetails={handleOpenEvent}
                 onViewBookings={handleViewBookings}
                 onEditEvent={handleEditEvent}
+                onUpdateStatus={handleChangeStatus}
+                isUpdatingStatus={statusUpdatingId === event.id}
               />
             ))
           ) : (
@@ -720,6 +1068,153 @@ const styles = StyleSheet.create({
     color: "#166534",
     fontSize: 12,
     fontWeight: "600",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  statusBadge: {
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  badgeWarning: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  badgeWarningText: {
+    color: "#92400E",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  badgeDanger: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  badgeDangerText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  scheduleSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  scheduleIcon: {
+    marginRight: 12,
+  },
+  scheduleTextGroup: {
+    flex: 1,
+  },
+  schedulePrimary: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  scheduleSecondary: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#475569",
+  },
+  minimumState: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  minimumStateWarning: {
+    backgroundColor: "#FEF3C7",
+  },
+  minimumStateSuccess: {
+    backgroundColor: "#DCFCE7",
+  },
+  minimumStateText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#92400E",
+  },
+  minimumStateTextSuccess: {
+    color: "#166534",
+  },
+  capacitySummary: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  capacityCard: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginRight: 12,
+  },
+  capacityCardLast: {
+    marginRight: 0,
+  },
+  capacityLabel: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  capacityValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  statusControl: {
+    marginBottom: 14,
+  },
+  statusControlLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  statusPickerWrapper: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    position: "relative",
+  },
+  statusPicker: {
+    width: "100%",
+    height: 44,
+    color: "#1F2937",
+  },
+  statusPickerSpinner: {
+    position: "absolute",
+    right: 12,
+    top: 10,
   },
   chipRow: { flexDirection: "row", alignItems: "center", marginTop: 12, marginBottom: 12 },
   statusChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },

@@ -42,6 +42,102 @@ function getLocationLabel(event) {
   return "Location to follow";
 }
 
+const CLOSING_SOON_THRESHOLD_HOURS = 72;
+
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function formatEventDateTime(value) {
+  const date = parseDate(value);
+  if (!date) {
+    return null;
+  }
+  const dateLabel = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timeLabel = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${dateLabel} at ${timeLabel}`;
+}
+
+function formatRelativeToNow(value) {
+  const date = parseDate(value);
+  if (!date) {
+    return null;
+  }
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return null;
+  }
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 60) {
+    if (diffMinutes <= 1) {
+      return "in about a minute";
+    }
+    return `in ${diffMinutes} minutes`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 48) {
+    if (diffHours === 1) {
+      return "in 1 hour";
+    }
+    return `in ${diffHours} hours`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays === 1) {
+    return "in 1 day";
+  }
+  return `in ${diffDays} days`;
+}
+
+function computeClosingFlags(event) {
+  const closesAt = parseDate(event?.registrationClosesAt);
+  const startsAt = parseDate(event?.startsAt);
+  const status =
+    typeof event?.status === "string" ? event.status.trim().toUpperCase() : "PUBLISHED";
+  const now = new Date();
+  const registrationClosed =
+    status !== "PUBLISHED" ||
+    (closesAt && closesAt <= now) ||
+    (startsAt && startsAt <= now);
+  let closingSoon = false;
+  if (!registrationClosed && closesAt) {
+    const diffHours = (closesAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+    closingSoon = diffHours <= CLOSING_SOON_THRESHOLD_HOURS;
+  }
+  return {
+    status,
+    registrationClosed,
+    closingSoon,
+    closesAt,
+    startsAt,
+  };
+}
+
+function isEventDiscoverable(event) {
+  const { status, registrationClosed, startsAt } = computeClosingFlags(event);
+  if (status !== "PUBLISHED") {
+    return false;
+  }
+  if (registrationClosed) {
+    return false;
+  }
+  if (startsAt && startsAt <= new Date()) {
+    return false;
+  }
+  return true;
+}
+
 const LEVEL_SCORE_MAP = {
   beginner: 0.2,
   intermediate: 0.6,
@@ -706,7 +802,23 @@ export default function DiscoverPage() {
 
       try {
         const data = await get("/api/events");
-        setEvents(Array.isArray(data) ? data : []);
+        const processed = Array.isArray(data)
+          ? data
+              .map((event) => {
+                const flags = computeClosingFlags(event);
+                return {
+                  ...event,
+                  ...(Object.prototype.hasOwnProperty.call(event, "registrationClosed")
+                    ? {}
+                    : { registrationClosed: flags.registrationClosed }),
+                  ...(Object.prototype.hasOwnProperty.call(event, "isClosingSoon")
+                    ? {}
+                    : { isClosingSoon: flags.closingSoon }),
+                };
+              })
+              .filter(isEventDiscoverable)
+          : [];
+        setEvents(processed);
       } catch (err) {
         console.error("Failed to fetch events:", err);
       } finally {
@@ -789,18 +901,64 @@ export default function DiscoverPage() {
         const totalCountCandidate =
           Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : approvedCount;
         const totalCount = Math.max(totalCountCandidate, approvedCount);
+
+        const flags = computeClosingFlags(event);
+        const closingSoon =
+          (event.isClosingSoon ?? flags.closingSoon) && !flags.registrationClosed;
+        const startLabel = formatEventDateTime(flags.startsAt);
+        const closeRelative = flags.closesAt ? formatRelativeToNow(flags.closesAt) : null;
+        const closeAbsolute = flags.closesAt ? formatEventDateTime(flags.closesAt) : null;
+        const closingLine = closeRelative
+          ? `Registration closes ${closeRelative}`
+          : closeAbsolute
+          ? `Registration closes on ${closeAbsolute}`
+          : null;
+
+        const capacityLimit =
+          Number.isFinite(Number(event.maxParticipants)) && Number(event.maxParticipants) > 0
+            ? Number(event.maxParticipants)
+            : null;
+        const attendeeTarget = capacityLimit ?? Math.max(totalCount, approvedCount, 1);
         const attendeeProgress =
-          totalCount > 0 ? Math.max(0, Math.min(approvedCount / totalCount, 1)) : 0;
+          attendeeTarget > 0 ? Math.max(0, Math.min(approvedCount / attendeeTarget, 1)) : 0;
         const attendeeProgressWidth =
-          attendeeProgress === 0
+          attendeeProgress <= 0
             ? "0%"
             : `${Math.min(100, Math.max(attendeeProgress * 100, 8)).toFixed(0)}%`;
-        const attendeeCaption =
-          totalCount === 0
-            ? "No bookings yet"
-            : `${approvedCount} approved of ${totalCount} booking${
-                totalCount === 1 ? "" : "s"
-              }`;
+        let attendeeCaption;
+        if (capacityLimit) {
+          const spotsLeft = Math.max(0, capacityLimit - approvedCount);
+          attendeeCaption =
+            spotsLeft > 0
+              ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`
+              : "All slots filled";
+          if (totalCount > capacityLimit) {
+            attendeeCaption = `${attendeeCaption} • ${totalCount} total request${
+              totalCount === 1 ? "" : "s"
+            }`;
+          }
+        } else {
+          attendeeCaption =
+            totalCount === 0
+              ? "No bookings yet"
+              : `${approvedCount} approved of ${totalCount} booking${
+                  totalCount === 1 ? "" : "s"
+                }`;
+        }
+        const attendeeValueLabel = capacityLimit
+          ? `${approvedCount}/${capacityLimit}`
+          : totalCount > 0
+          ? `${approvedCount}/${totalCount}`
+          : `${approvedCount} approved`;
+
+        const minParticipantsCount =
+          Number.isFinite(Number(event.minParticipants)) && Number(event.minParticipants) > 0
+            ? Number(event.minParticipants)
+            : 0;
+        const minShortfall = Math.max(0, minParticipantsCount - approvedCount);
+        const isFull =
+          event.isFull ??
+          (capacityLimit !== null ? approvedCount >= capacityLimit : false);
 
         let matchChipConfig = null;
         if (typeof score === "number") {
@@ -872,6 +1030,33 @@ export default function DiscoverPage() {
                 </View>
               )}
               <Text style={styles.location}>{getLocationLabel(event)}</Text>
+              <View style={styles.scheduleBlock}>
+                <Text style={styles.scheduleLabel}>Starts</Text>
+                <Text style={styles.schedulePrimary}>
+                  {startLabel ?? "Schedule coming soon"}
+                </Text>
+                {closingLine ? (
+                  <Text style={styles.scheduleSecondary}>{closingLine}</Text>
+                ) : null}
+                <View style={styles.badgeRow}>
+                  {closingSoon ? (
+                    <View style={styles.badgeClosingSoon}>
+                      <Text style={styles.badgeClosingSoonText}>Closing soon</Text>
+                    </View>
+                  ) : null}
+                  {isFull ? (
+                    <View style={styles.badgeFull}>
+                      <Text style={styles.badgeFullText}>Fully booked</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              {minParticipantsCount > 0 && minShortfall > 0 && (
+                <Text style={styles.minimumNotice}>
+                  Needs {minShortfall} more approved hiker{minShortfall === 1 ? "" : "s"} to reach
+                  the minimum of {minParticipantsCount}.
+                </Text>
+              )}
               {metrics.length > 0 && (
                 <View style={styles.metricRow}>
                   {metrics.map((metric) => (
@@ -884,12 +1069,16 @@ export default function DiscoverPage() {
               <View style={styles.attendeeBarContainer}>
                 <View style={styles.attendeeBarHeader}>
                   <Text style={styles.attendeeBarLabel}>Attendees</Text>
-                  <Text style={styles.attendeeBarValue}>
-                    {approvedCount}/{totalCount}
-                  </Text>
+                  <Text style={styles.attendeeBarValue}>{attendeeValueLabel}</Text>
                 </View>
                 <View style={styles.attendeeBarTrack}>
-                  <View style={[styles.attendeeBarFill, { width: attendeeProgressWidth }]} />
+                  <View
+                    style={[
+                      styles.attendeeBarFill,
+                      isFull && styles.attendeeBarFillFull,
+                      { width: attendeeProgressWidth },
+                    ]}
+                  />
                 </View>
                 <Text style={styles.attendeeBarCaption}>{attendeeCaption}</Text>
               </View>
@@ -986,6 +1175,64 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#4B5563",
     marginBottom: 10,
+  },
+  scheduleBlock: {
+    marginBottom: 12,
+  },
+  scheduleLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    textTransform: "uppercase",
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  schedulePrimary: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  scheduleSecondary: {
+    fontSize: 13,
+    color: "#475569",
+    marginTop: 4,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 10,
+  },
+  badgeClosingSoon: {
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  badgeClosingSoonText: {
+    color: "#92400E",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  badgeFull: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  badgeFullText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  minimumNotice: {
+    fontSize: 12,
+    color: "#2563EB",
+    fontWeight: "600",
+    marginBottom: 12,
   },
   matchChip: {
     alignSelf: "flex-start",
@@ -1098,6 +1345,9 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: "#2E7D32",
     borderRadius: 999,
+  },
+  attendeeBarFillFull: {
+    backgroundColor: "#DC2626",
   },
   attendeeBarCaption: { fontSize: 12, color: "#475569" },
   sectionSpacing: {

@@ -28,6 +28,8 @@ const supabaseStorageClient =
     ? createClient(supabaseUrl, supabaseServiceKey)
     : null;
 
+const ACTIVE_BOOKING_STATUSES = new Set(["PENDING", "APPROVED", "CONFIRMED"]);
+
 async function persistReceipt(file) {
   if (!file) {
     return null;
@@ -98,6 +100,45 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "Event not found." }), { status: 404 });
     }
 
+    const now = new Date();
+    const normalizedStatus = (event.status || "").toUpperCase();
+    if (normalizedStatus !== "PUBLISHED") {
+      return new Response(
+        JSON.stringify({ error: "Bookings are closed for this event." }),
+        { status: 403 },
+      );
+    }
+
+    if (event.startsAt) {
+      const startsAt = new Date(event.startsAt);
+      if (!Number.isNaN(startsAt.valueOf()) && startsAt <= now) {
+        return new Response(
+          JSON.stringify({ error: "This event has already started or finished." }),
+          { status: 403 },
+        );
+      }
+    }
+
+    if (event.registrationOpensAt) {
+      const opensAt = new Date(event.registrationOpensAt);
+      if (!Number.isNaN(opensAt.valueOf()) && opensAt > now) {
+        return new Response(
+          JSON.stringify({ error: "Registration has not opened yet." }),
+          { status: 403 },
+        );
+      }
+    }
+
+    if (event.registrationClosesAt) {
+      const closesAt = new Date(event.registrationClosesAt);
+      if (!Number.isNaN(closesAt.valueOf()) && closesAt <= now) {
+        return new Response(
+          JSON.stringify({ error: "Registration for this event is already closed." }),
+          { status: 403 },
+        );
+      }
+    }
+
     const existingBooking = await prisma.booking.findFirst({
       where: {
         eventId,
@@ -140,6 +181,22 @@ export async function POST(req) {
     } else if (receipt && typeof receipt.arrayBuffer === "function") {
       // Persist optional receipts for free events as well.
       paymentUrl = await persistReceipt(receipt);
+    }
+
+    if (event.maxParticipants) {
+      const activeBookingCount = await prisma.booking.count({
+        where: {
+          eventId,
+          status: { in: Array.from(ACTIVE_BOOKING_STATUSES) },
+        },
+      });
+
+      if (activeBookingCount >= event.maxParticipants) {
+        return new Response(
+          JSON.stringify({ error: "The event is already fully booked." }),
+          { status: 409 },
+        );
+      }
     }
 
     const booking = await prisma.booking.create({

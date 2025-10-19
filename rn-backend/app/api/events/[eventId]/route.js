@@ -32,6 +32,23 @@ function toInt(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+function toDate(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.valueOf()) ? null : value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.valueOf())) {
+      return null;
+    }
+    return parsed;
+  }
+  return null;
+}
+
 function sanitizeBounds(bounds) {
   if (!bounds || typeof bounds !== "object") {
     return null;
@@ -105,6 +122,9 @@ async function findOwnedTrail(userId, trailId) {
     },
   });
 }
+
+const EVENT_STATUSES = new Set(["DRAFT", "PUBLISHED", "CLOSED", "COMPLETED", "CANCELLED"]);
+const ATTENDEE_STATUSES = new Set(["APPROVED", "CONFIRMED"]);
 
 export async function GET(request, { params }) {
   const { eventId } = params;
@@ -229,6 +249,122 @@ export async function PATCH(request, { params }) {
       difficultyValue = sanitizedDifficulty;
     }
 
+    let startsAt = existingEvent.startsAt;
+    if (Object.prototype.hasOwnProperty.call(body, "startsAt")) {
+      startsAt = toDate(body?.startsAt);
+      if (!startsAt) {
+        return NextResponse.json(
+          { error: "Event start date/time is required." },
+          { status: 400 },
+        );
+      }
+    }
+
+    let endsAt = existingEvent.endsAt;
+    if (Object.prototype.hasOwnProperty.call(body, "endsAt")) {
+      const nextEndsAt = toDate(body?.endsAt);
+      if (nextEndsAt && startsAt && nextEndsAt <= startsAt) {
+        return NextResponse.json(
+          { error: "End time must be later than the start time." },
+          { status: 400 },
+        );
+      }
+      endsAt = nextEndsAt;
+    } else if (endsAt && startsAt && endsAt <= startsAt) {
+      endsAt = null;
+    }
+
+    let registrationOpensAt = existingEvent.registrationOpensAt;
+    if (Object.prototype.hasOwnProperty.call(body, "registrationOpensAt")) {
+      registrationOpensAt = toDate(body?.registrationOpensAt);
+    }
+
+    let registrationClosesAt = existingEvent.registrationClosesAt;
+    if (Object.prototype.hasOwnProperty.call(body, "registrationClosesAt")) {
+      registrationClosesAt = toDate(body?.registrationClosesAt);
+    }
+
+    if (
+      registrationOpensAt &&
+      registrationClosesAt &&
+      registrationClosesAt <= registrationOpensAt
+    ) {
+      return NextResponse.json(
+        { error: "Registration closing time must be after the opening time." },
+        { status: 400 },
+      );
+    }
+
+    if (registrationClosesAt && startsAt && registrationClosesAt >= startsAt) {
+      return NextResponse.json(
+        { error: "Registration must close before the event starts." },
+        { status: 400 },
+      );
+    }
+
+    let minParticipants = existingEvent.minParticipants ?? 0;
+    if (Object.prototype.hasOwnProperty.call(body, "minParticipants")) {
+      const parsedMin = toInt(body?.minParticipants);
+      minParticipants = Math.max(0, parsedMin ?? 0);
+    }
+
+    let maxParticipants = existingEvent.maxParticipants ?? null;
+    if (Object.prototype.hasOwnProperty.call(body, "maxParticipants")) {
+      const parsedMax = toInt(body?.maxParticipants);
+      maxParticipants =
+        Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null;
+    }
+
+    if (maxParticipants !== null && minParticipants > maxParticipants) {
+      return NextResponse.json(
+        {
+          error:
+            "Maximum hikers must be greater than or equal to the minimum hikers required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    let status = existingEvent.status ?? "PUBLISHED";
+    if (Object.prototype.hasOwnProperty.call(body, "status")) {
+      const incomingStatus =
+        typeof body.status === "string" ? body.status.trim().toUpperCase() : null;
+      if (!incomingStatus || !EVENT_STATUSES.has(incomingStatus)) {
+        return NextResponse.json({ error: "Invalid event status." }, { status: 400 });
+      }
+      status = incomingStatus;
+    }
+
+    const announceAt = Object.prototype.hasOwnProperty.call(body, "announceAt")
+      ? toDate(body?.announceAt)
+      : existingEvent.announceAt ?? null;
+
+    if (announceAt && startsAt && announceAt >= startsAt) {
+      return NextResponse.json(
+        { error: "Announcement time must be before the event starts." },
+        { status: 400 },
+      );
+    }
+
+    let approvedCount = 0;
+    if (maxParticipants !== null || status === "COMPLETED" || status === "CLOSED") {
+      approvedCount = await prisma.booking.count({
+        where: {
+          eventId,
+          status: { in: Array.from(ATTENDEE_STATUSES) },
+        },
+      });
+    }
+
+    if (maxParticipants !== null && approvedCount > maxParticipants) {
+      return NextResponse.json(
+        {
+          error: `Cannot set the maximum hikers below the currently approved count (${approvedCount}).`,
+        },
+        { status: 400 },
+      );
+    }
+
     const updateData = {
       title,
       overview: sanitizeString(body?.overview),
@@ -247,6 +383,14 @@ export async function PATCH(request, { params }) {
       locationZoomLevel: toFloat(body?.locationZoomLevel),
       locationBounds: sanitizeBounds(body?.locationBounds),
       difficulty: difficultyValue,
+      startsAt,
+      endsAt,
+      registrationOpensAt,
+      registrationClosesAt,
+      minParticipants,
+      maxParticipants,
+      status,
+      announceAt,
       trailId: selectedTrail.id,
       trailGeoJson: selectedTrail.geoJson ?? sanitizeGeoJson(body?.trailGeoJson) ?? existingEvent.trailGeoJson,
       trailDistanceMeters:
@@ -254,6 +398,12 @@ export async function PATCH(request, { params }) {
         toFloat(body?.trailDistanceMeters) ??
         existingEvent.trailDistanceMeters,
     };
+
+    if (status === "COMPLETED") {
+      updateData.completedAt = existingEvent.completedAt ?? new Date();
+    } else {
+      updateData.completedAt = null;
+    }
 
     const updatedEvent = await prisma.event.update({
       where: { id: eventId },
