@@ -198,7 +198,6 @@ export default function ApplyExpertPage({ navigation }) {
     setSubmitting(true);
 
     try {
-      const uploads = [];
       const timestamp = Date.now();
 
       const maybeQueue = (image, kind) => {
@@ -229,7 +228,6 @@ export default function ApplyExpertPage({ navigation }) {
           .from('Capstone')
           .upload(path, decode(image.base64), {
             contentType: image.mimeType || 'image/jpeg',
-            upsert: true,
           });
 
         if (uploadError) {
@@ -238,30 +236,31 @@ export default function ApplyExpertPage({ navigation }) {
         }
 
         const { data: urlData } = supabase.storage.from('Capstone').getPublicUrl(path);
+        if (!urlData?.publicUrl) {
+          throw new Error(
+            `Failed to generate a download link for the ${kind === 'peak' ? 'summit photo' : 'certificate'}.`,
+          );
+        }
         return urlData.publicUrl;
       };
 
-      if (peakEntry && !peakEntry.uploadedUrl) {
-        uploads.push(
-          uploadImage(peakEntry).then((url) => {
-            results.peak = url;
-          }),
-        );
-      } else if (peakEntry?.uploadedUrl) {
-        results.peak = peakEntry.uploadedUrl;
-      }
+      const queue = [
+        { entry: peakEntry, field: 'peak' },
+        { entry: certificateEntry, field: 'certificate' },
+      ];
 
-      if (certificateEntry && !certificateEntry.uploadedUrl) {
-        uploads.push(
-          uploadImage(certificateEntry).then((url) => {
-            results.certificate = url;
-          }),
-        );
-      } else if (certificateEntry?.uploadedUrl) {
-        results.certificate = certificateEntry.uploadedUrl;
+      // Upload sequentially to avoid simultaneous storage collisions and make error reporting clearer.
+      for (const { entry, field } of queue) {
+        if (!entry) {
+          continue;
+        }
+        if (entry.uploadedUrl) {
+          results[field] = entry.uploadedUrl;
+          continue;
+        }
+        const url = await uploadImage(entry);
+        results[field] = url;
       }
-
-      await Promise.all(uploads);
 
       const payload = {
         summitName: summitName.trim(),
