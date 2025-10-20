@@ -1,51 +1,77 @@
-import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, Image, Alert, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  Image,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
+
 import { supabase } from '../lib/supabase';
 import { post } from '../lib/api';
 
 export default function SignupPage({ navigation }) {
-  const [name, setName] = useState(''); // ✅ Add state for the name
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [loading, setLoading] = useState(false); // Add loading state
+  const [loading, setLoading] = useState(false);
+  const [hasAcceptedPolicies, setHasAcceptedPolicies] = useState(false);
+
+  const checkboxStyles = useMemo(
+    () =>
+      hasAcceptedPolicies
+        ? 'border-green-700 bg-green-700'
+        : 'border-slate-400 bg-white dark:bg-slate-900',
+    [hasAcceptedPolicies],
+  );
+
+  const handleOpenLegal = (documentKey) => {
+    navigation.navigate('LegalDocument', { documentKey });
+  };
 
   async function handleSignup() {
-    // ✅ Add name to the validation check
     if (!name || !email || !password || !confirm) {
-      Alert.alert('Error', 'Please fill out all fields');
+      Alert.alert('Error', 'Please fill out all fields.');
       return;
     }
     if (password !== confirm) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert('Error', 'Passwords do not match.');
+      return;
+    }
+    if (!hasAcceptedPolicies) {
+      Alert.alert('Hold on', 'Please review and accept the terms before creating an account.');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Step 1: Create the user in Supabase Authentication
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email,
-        password: password,
+        email,
+        password,
       });
 
       if (authError) throw authError;
       if (!authData.user) throw new Error('Signup failed, no user created in Supabase.');
 
-      // Step 2: Create the user profile in your own database via your backend API
       await post('/api/auth/create-profile', {
-        id: authData.user.id, // The ID from Supabase
+        id: authData.user.id,
         email: authData.user.email,
-        name: name,
+        name,
       });
 
-      Alert.alert('Success!', 'Your account has been created. Please check your email to verify your account before logging in.');
+      Alert.alert(
+        'Success!',
+        'Your account has been created. Please check your email to verify your account before logging in.',
+      );
       navigation.replace('Login');
-
-    } catch (e) {
-      console.error('🔴 Signup failed:', e);
-      Alert.alert(`Signup failed`, e.message || 'An unknown error occurred');
+    } catch (error) {
+      console.error('Signup failed:', error);
+      Alert.alert('Signup failed', error.message || 'An unknown error occurred.');
     } finally {
       setLoading(false);
     }
@@ -53,21 +79,17 @@ export default function SignupPage({ navigation }) {
 
   return (
     <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
-      <View className="flex-row items-center justify-center mb-10">
-        <Image
-          source={require('../../assets/Pabukid-Logo.png')}
-          className="w-8 h-8 mr-2"
-        />
-        <Text className="text-green-700 text-2xl font-bold">Pabukid</Text>
+      <View className="mb-10 flex-row items-center justify-center">
+        <Image source={require('../../assets/Pabukid-Logo.png')} className="mr-2 h-8 w-8" />
+        <Text className="text-2xl font-bold text-green-700">Pabukid</Text>
       </View>
 
-      <Text className="text-2xl font-bold text-center text-gray-800 mb-6 dark:text-slate-100">
+      <Text className="mb-6 text-center text-2xl font-bold text-gray-800 dark:text-slate-100">
         Create Your Account
       </Text>
 
-      {/* ✅ Add Name Input Field */}
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
         placeholder="Full Name"
         placeholderTextColor="#888"
         value={name}
@@ -76,7 +98,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
         placeholder="Email"
         placeholderTextColor="#888"
         value={email}
@@ -86,7 +108,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
         placeholder="Password"
         placeholderTextColor="#888"
         secureTextEntry
@@ -95,7 +117,7 @@ export default function SignupPage({ navigation }) {
       />
 
       <TextInput
-        className="border border-gray-300 rounded-xl p-4 mb-6 dark:border-slate-600"
+        className="mb-6 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
         placeholder="Confirm Password"
         placeholderTextColor="#888"
         secureTextEntry
@@ -104,21 +126,47 @@ export default function SignupPage({ navigation }) {
       />
 
       <TouchableOpacity
-        className="bg-green-700 rounded-xl py-4 mb-4 flex-row justify-center"
+        className="mb-6 flex-row items-start"
+        activeOpacity={0.85}
+        onPress={() => setHasAcceptedPolicies((prev) => !prev)}
+      >
+        <View className={`mr-3 flex h-5 w-5 items-center justify-center rounded-md border ${checkboxStyles}`}>
+          {hasAcceptedPolicies ? <Feather name="check" size={14} color="#ffffff" /> : null}
+        </View>
+        <Text className="flex-1 text-sm text-slate-600 dark:text-slate-300">
+          I have read and agree to the{' '}
+          <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('terms')}>
+            Terms of Use
+          </Text>
+          ,{' '}
+          <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('privacy')}>
+            Privacy Notice
+          </Text>
+          , and{' '}
+          <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('eula')}>
+            End User License Agreement
+          </Text>
+          .
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        className={`flex-row justify-center rounded-xl py-4 ${
+          hasAcceptedPolicies ? 'bg-green-700' : 'bg-green-300'
+        }`}
         onPress={handleSignup}
-        disabled={loading}
+        disabled={loading || !hasAcceptedPolicies}
+        activeOpacity={0.85}
       >
         {loading ? (
-          <ActivityIndicator color="#FFF" />
+          <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text className="text-center text-white font-semibold">
-            Create Account
-          </Text>
+          <Text className="text-center font-semibold text-white">Create Account</Text>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text className="text-center text-green-700 font-medium">
+      <TouchableOpacity className="mt-6" onPress={() => navigation.goBack()}>
+        <Text className="text-center font-medium text-green-700">
           Already have an account? <Text className="underline">Log in</Text>
         </Text>
       </TouchableOpacity>

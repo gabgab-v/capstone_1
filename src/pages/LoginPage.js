@@ -35,6 +35,10 @@ export default function LoginPage({ navigation }) {
     }
   }
 
+  const handleOpenLegal = (documentKey) => {
+    navigation.navigate('LegalDocument', { documentKey });
+  };
+
   return (
     <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
       {/* Header */}
@@ -73,13 +77,34 @@ export default function LoginPage({ navigation }) {
       <TouchableOpacity
         className="bg-green-700 rounded-xl py-4 mb-4"
         onPress={handleLogin}
+        disabled={loading}
       >
-        <Text className="text-center text-white font-semibold text-base">
-          Sign In
-        </Text>
+        {loading ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <Text className="text-center text-white font-semibold text-base">
+            Sign In
+          </Text>
+        )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+      <Text className="text-center text-xs text-gray-500 dark:text-slate-400">
+        By signing in you agree to our{' '}
+        <Text className="text-green-700 font-semibold" onPress={() => handleOpenLegal('terms')}>
+          Terms of Use
+        </Text>
+        ,{' '}
+        <Text className="text-green-700 font-semibold" onPress={() => handleOpenLegal('privacy')}>
+          Privacy Notice
+        </Text>
+        , and{' '}
+        <Text className="text-green-700 font-semibold" onPress={() => handleOpenLegal('eula')}>
+          End User License Agreement
+        </Text>
+        .
+      </Text>
+
+      <TouchableOpacity className="mt-6" onPress={() => navigation.navigate('Signup')}>
         <Text className="text-center text-green-700 font-medium">
           Don't have an account? <Text className="underline">Create one</Text>
         </Text>

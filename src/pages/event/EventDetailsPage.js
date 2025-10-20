@@ -264,11 +264,16 @@ function AttendeeRow({
     actionInFlight?.bookingId === booking?.id && actionInFlight?.status === 'PENDING',
   );
   const disableActions = approving || rejecting || pending;
-  const bookingUserId = booking?.user?.id;
+  const bookingUserId = booking?.user?.id ?? booking?.userId ?? null;
   const isMessaging = Boolean(
     messagingUserId && bookingUserId && messagingUserId === bookingUserId,
   );
-  const canMessage = Boolean(onMessage && bookingUserId && !isCurrentUser);
+  const canMessage = Boolean(onMessage && bookingUserId && !isCurrentUser && canManage);
+  const showPersonalDetails = Boolean(isCurrentUser || canManage);
+  const attendeeEmailLabel = showPersonalDetails
+    ? booking?.user?.email || 'No email provided'
+    : 'Hidden for privacy';
+  const displayAmount = formatPrice(booking?.totalAmount);
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
@@ -354,11 +359,11 @@ function AttendeeRow({
       </View>
       <View style={styles.attendeeDetails}>
         <Text style={styles.attendeeName}>{booking?.user?.name || 'Anonymous hiker'}</Text>
-        <Text style={styles.attendeeEmail}>{booking?.user?.email || 'No email provided'}</Text>
+        <Text style={styles.attendeeEmail}>{attendeeEmailLabel}</Text>
         {isCurrentUser ? <Text style={styles.attendeeYou}>You</Text> : null}
       </View>
       <View style={styles.attendeeMeta}>
-        <Text style={styles.attendeeAmount}>{formatPrice(booking?.totalAmount)}</Text>
+        <Text style={styles.attendeeAmount}>{displayAmount ?? '—'}</Text>
         <Text style={[styles.attendeeStatus, { color: statusMeta.color }]}>
           {statusMeta.label}
         </Text>
@@ -1217,7 +1222,7 @@ export default function EventDetailsPage({ route, navigation }) {
                       canManage={isOrganizer}
                       onUpdateStatus={handleUpdateBookingStatus}
                       actionInFlight={bookingActionInFlight}
-                      onMessage={handleMessageUser}
+                      onMessage={isOrganizer ? handleMessageUser : null}
                       messagingUserId={messageTargetId}
                     />
                   ))

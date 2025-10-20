@@ -28,6 +28,7 @@ import SettingsPage from './src/pages/user/SettingsPage';
 import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
 import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
+import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -81,6 +82,7 @@ function AppNavigator() {
           <Stack.Screen name="Signup" component={SignupPage} />
         </>
       )}
+      <Stack.Screen name="LegalDocument" component={LegalDocumentPage} />
     </Stack.Navigator>
   );
 }

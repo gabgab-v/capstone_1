@@ -124,6 +124,13 @@ export default function SettingsPage({ navigation }) {
     handleOpenLink('https://trailmate.app/rate');
   };
 
+  const openLegalDocument = useCallback(
+    (documentKey) => {
+      navigation.navigate('LegalDocument', { documentKey });
+    },
+    [navigation],
+  );
+
   const handleTogglePushNotifications = useCallback(
     async (value) => {
       if (isRequestingPush) {
@@ -546,12 +553,27 @@ export default function SettingsPage({ navigation }) {
           </Text>
         </TouchableOpacity>
         <View className="h-px bg-slate-100 dark:bg-slate-900" />
-        <TouchableOpacity className="py-3" onPress={() => handleOpenLink('https://trailmate.app/terms')}>
-          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Terms of service</Text>
+        <TouchableOpacity className="py-3" onPress={() => openLegalDocument('terms')}>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Terms of use</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Review participation rules for adventures, chat, and bookings.
+          </Text>
         </TouchableOpacity>
         <View className="h-px bg-slate-100 dark:bg-slate-900" />
-        <TouchableOpacity className="py-3" onPress={() => handleOpenLink('https://trailmate.app/privacy')}>
-          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Privacy policy</Text>
+        <TouchableOpacity className="py-3" onPress={() => openLegalDocument('privacy')}>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Privacy notice</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Learn how we handle profile, booking, and trail data.
+          </Text>
+        </TouchableOpacity>
+        <View className="h-px bg-slate-100 dark:bg-slate-900" />
+        <TouchableOpacity className="py-3" onPress={() => openLegalDocument('eula')}>
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">
+            End user license agreement
+          </Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Understand the license and acceptable use for the mobile app.
+          </Text>
         </TouchableOpacity>
       </View>
       <Text className="mt-6 text-xs uppercase text-slate-400 dark:text-slate-500">App version {appVersion}</Text>
