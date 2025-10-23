@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { Appearance, Platform, StatusBar, Text } from 'react-native';
+import { Platform, StatusBar, Text } from 'react-native';
 import { NativeWindStyleSheet } from 'nativewind';
 import * as SecureStore from 'expo-secure-store';
 
@@ -20,13 +20,6 @@ const ThemeContext = createContext({
   setDarkMode: () => {},
   toggleDarkMode: () => {},
 });
-
-function getSystemScheme() {
-  if (typeof Appearance?.getColorScheme !== 'function') {
-    return 'light';
-  }
-  return Appearance.getColorScheme() ?? 'light';
-}
 
 async function persistPreference(value) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -75,7 +68,7 @@ async function readPersistedPreference() {
 }
 
 export function ThemeProvider({ children }) {
-  const [isDarkMode, setIsDarkMode] = useState(() => getSystemScheme() === 'dark');
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -104,18 +97,6 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
   }, [isDarkMode]);
-
-  useEffect(() => {
-    const listener = Appearance.addChangeListener(({ colorScheme }) => {
-      if (colorScheme && !isReady) {
-        setIsDarkMode(colorScheme === 'dark');
-      }
-    });
-
-    return () => {
-      listener.remove();
-    };
-  }, [isReady]);
 
   const setDarkMode = useCallback((value) => {
     setIsDarkMode(value);

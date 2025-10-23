@@ -38,7 +38,7 @@ export const darkPalette = {
   surfaceElevated: '#111c2d',
   surfaceMuted: '#1e293b',
   surfaceInverse: '#ffffff',
-  textPrimary: '#e2e8f0',
+  textPrimary: '#ffffff',
   textSecondary: '#cbd5f5',
   textMuted: '#94a3b8',
   textSubtle: '#73859f',
@@ -65,4 +65,3 @@ export const darkPalette = {
   inputText: '#f8fafc',
   inputBorder: '#334155',
 };
-
