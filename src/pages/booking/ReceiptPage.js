@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { BASE_URL } from "../../lib/api";
+import KeyboardSpacer from "../../components/KeyboardSpacer";
 
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== "string" || !paymentUrl.trim()) {
@@ -69,7 +70,10 @@ export default function ReceiptPage({ route, navigation }) {
   }, [isCancelled, isConfirmed, isRejected]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>OK</Text>
@@ -114,6 +118,7 @@ export default function ReceiptPage({ route, navigation }) {
       >
         <Text style={styles.okText}>Back to Home</Text>
       </TouchableOpacity>
+      <KeyboardSpacer extraHeight={24} />
     </ScrollView>
   );
 }

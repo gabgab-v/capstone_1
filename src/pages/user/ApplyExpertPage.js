@@ -16,6 +16,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import KeyboardSpacer from '../../components/KeyboardSpacer';
 
 function extensionFromMime(mimeType) {
   if (!mimeType) {
@@ -299,7 +300,10 @@ export default function ApplyExpertPage({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Expert Experience Verification</Text>
         <Text style={styles.subtitle}>
           Provide proof of your summit achievements so admins can verify you as an expert hiker.
@@ -442,6 +446,7 @@ export default function ApplyExpertPage({ navigation }) {
         >
           <Text style={styles.cancelButtonText}>Go back</Text>
         </TouchableOpacity>
+        <KeyboardSpacer extraHeight={24} />
       </ScrollView>
     </View>
   );

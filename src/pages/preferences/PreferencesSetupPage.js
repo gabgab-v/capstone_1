@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import KeyboardSpacer from '../../components/KeyboardSpacer';
 
 const EXPERIENCE_OPTIONS = [
   { label: 'Select...', value: '' },
@@ -373,6 +374,7 @@ export default function PreferencesSetupPage({ navigation }) {
           <Text className="text-center text-white font-semibold">Save Preferences</Text>
         )}
       </TouchableOpacity>
+      <KeyboardSpacer extraHeight={24} />
     </ScrollView>
   );
 }

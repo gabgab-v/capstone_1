@@ -7,11 +7,15 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
 import { post } from '../lib/api';
+import KeyboardSpacer from '../components/KeyboardSpacer';
 
 export default function SignupPage({ navigation }) {
   const [name, setName] = useState('');
@@ -78,7 +82,16 @@ export default function SignupPage({ navigation }) {
   }
 
   return (
-    <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        <View className="flex-1 bg-white px-6 pt-16 pb-12 dark:bg-slate-900">
       <View className="mb-10 flex-row items-center justify-center">
         <Image source={require('../../assets/Pabukid-Logo.png')} className="mr-2 h-8 w-8" />
         <Text className="text-2xl font-bold text-green-700">Pabukid</Text>
@@ -170,6 +183,9 @@ export default function SignupPage({ navigation }) {
           Already have an account? <Text className="underline">Log in</Text>
         </Text>
       </TouchableOpacity>
-    </View>
+          <KeyboardSpacer extraHeight={24} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

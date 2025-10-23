@@ -17,6 +17,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensureAvatarUri } from '../../utils/media';
 import ScreenHeader from '../../components/ScreenHeader';
+import KeyboardSpacer from '../../components/KeyboardSpacer';
 
 function statusMeta(status) {
   switch (status) {
@@ -606,6 +607,7 @@ export default function SettingsPage({ navigation }) {
         className="flex-1"
         contentContainerStyle={contentContainerStyle}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {renderProfileCard()}
 
@@ -640,6 +642,8 @@ export default function SettingsPage({ navigation }) {
         >
           <Text className="text-center text-base font-semibold text-white">Sign out</Text>
         </TouchableOpacity>
+
+        <KeyboardSpacer extraHeight={24} />
       </ScrollView>
     </View>
   );

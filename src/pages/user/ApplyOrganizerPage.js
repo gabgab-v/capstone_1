@@ -15,6 +15,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import KeyboardSpacer from '../../components/KeyboardSpacer';
 
 const MAX_DOCUMENTS = 5;
 
@@ -244,7 +245,10 @@ export default function ApplyOrganizerPage({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Organizer Application</Text>
         <Text style={styles.subtitle}>
           Share proof of your credentials and identity so admins can verify you as a legitimate
@@ -411,6 +415,7 @@ export default function ApplyOrganizerPage({ navigation }) {
         >
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
+        <KeyboardSpacer extraHeight={24} />
       </ScrollView>
     </View>
   );

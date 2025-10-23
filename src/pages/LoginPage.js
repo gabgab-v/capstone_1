@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useAuth } from '../context/AuthContext'; // Import the useAuth hook
+import KeyboardSpacer from '../components/KeyboardSpacer';
 
 export default function LoginPage({ navigation }) {
   const [email, setEmail] = useState('');
@@ -40,7 +52,16 @@ export default function LoginPage({ navigation }) {
   };
 
   return (
-    <View className="flex-1 bg-white px-6 pt-16 dark:bg-slate-900">
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        <View className="flex-1 bg-white px-6 pt-16 pb-12 dark:bg-slate-900">
       {/* Header */}
       <View className="flex-row items-center justify-center mb-10">
         <Image
@@ -109,6 +130,9 @@ export default function LoginPage({ navigation }) {
           Don't have an account? <Text className="underline">Create one</Text>
         </Text>
       </TouchableOpacity>
-    </View>
+          <KeyboardSpacer extraHeight={24} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

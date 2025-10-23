@@ -21,6 +21,7 @@ import PostCard from '../components/PostCard';
 import { get, post, patch, del as deleteRequest } from '../lib/api';
 import { ensureAvatarUri } from '../utils/media';
 import { supabase } from '../lib/supabase';
+import useKeyboardInsets from '../hooks/useKeyboardInsets';
 
 function getAvatarUri(profile) {
   const seed = profile?.id ?? profile?.email ?? 'profile';
@@ -98,14 +99,35 @@ export default function ProfilePage({ navigation, route }) {
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const keyboardInsets = useKeyboardInsets(32);
   const headerTopPadding = useMemo(() => Math.max(insets.top, 16), [insets.top]);
+  const listPaddingBottom = useMemo(() => {
+    if (keyboardInsets.isKeyboardVisible) {
+      return Math.max(32, keyboardInsets.paddedBottom);
+    }
+    return Math.max(32, keyboardInsets.safeAreaPadding);
+  }, [
+    keyboardInsets.isKeyboardVisible,
+    keyboardInsets.paddedBottom,
+    keyboardInsets.safeAreaPadding,
+  ]);
   const listContentInset = useMemo(
-    () => ({ paddingBottom: Math.max(32, insets.bottom + 16) }),
-    [insets.bottom],
+    () => ({ paddingBottom: listPaddingBottom }),
+    [listPaddingBottom],
   );
   const scrollIndicatorInsets = useMemo(
-    () => ({ top: headerTopPadding, bottom: insets.bottom }),
-    [headerTopPadding, insets.bottom],
+    () => ({
+      top: headerTopPadding,
+      bottom: keyboardInsets.isKeyboardVisible
+        ? Math.max(insets.bottom, keyboardInsets.paddedBottom)
+        : insets.bottom,
+    }),
+    [
+      headerTopPadding,
+      insets.bottom,
+      keyboardInsets.isKeyboardVisible,
+      keyboardInsets.paddedBottom,
+    ],
   );
 
   const routeUserId = route?.params?.userId;
@@ -813,6 +835,7 @@ export default function ProfilePage({ navigation, route }) {
         }
         contentContainerStyle={listContentInset}
         scrollIndicatorInsets={scrollIndicatorInsets}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2E7D32" />
         }

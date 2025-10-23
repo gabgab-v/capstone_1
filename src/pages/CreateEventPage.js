@@ -23,6 +23,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
 import ScreenHeader from '../components/ScreenHeader';
+import KeyboardSpacer from '../components/KeyboardSpacer';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
 import { normalizeDifficultyValue } from '../utils/matchScoring';
 
@@ -914,8 +915,12 @@ export default function CreateEventPage({ route, navigation }) {
   return (
     <View style={styles.screen}>
       <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
-      <ScrollView style={styles.container}>
-      <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, styles.scrollPadding]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
         {selectedImage ? (
           <Image source={{ uri: selectedImage.uri }} style={styles.selectedImage} />
         ) : (
@@ -1291,7 +1296,9 @@ export default function CreateEventPage({ route, navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+
+      <KeyboardSpacer extraHeight={32} />
+      </ScrollView>
     </View>
   );
 }
@@ -1364,6 +1371,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   contentContainer: { padding: 20 },
+  scrollPadding: { paddingBottom: 32 },
   detailsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

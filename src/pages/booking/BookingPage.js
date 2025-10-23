@@ -13,6 +13,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { useNotifications } from "../../context/NotificationContext";
 import { postFormData } from "../../lib/api";
 import { getEventDifficultyLabel } from "../../utils/matchScoring";
+import KeyboardSpacer from "../../components/KeyboardSpacer";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -145,7 +146,10 @@ export default function BookingPage({ route, navigation }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <Image source={{ uri: event.imageUrl }} style={styles.image} />
       <Text style={styles.title}>{event.title}</Text>
       <Text style={styles.price}>{priceLabel}</Text>
@@ -232,6 +236,7 @@ export default function BookingPage({ route, navigation }) {
       >
         <Text style={styles.cancelText}>Cancel</Text>
       </TouchableOpacity>
+      <KeyboardSpacer extraHeight={24} />
     </ScrollView>
   );
 }

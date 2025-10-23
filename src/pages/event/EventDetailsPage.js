@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 import EventLocationMap from '../../components/EventLocationMap';
 import ScreenHeader from '../../components/ScreenHeader';
+import KeyboardSpacer from '../../components/KeyboardSpacer';
 import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
 import { get, put, post, del as deleteRequest, BASE_URL } from '../../lib/api';
@@ -1055,7 +1056,10 @@ export default function EventDetailsPage({ route, navigation }) {
         title={event.title ?? 'Event Details'}
         subtitle={locationLabel}
       />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <Image
           source={{ uri: event.imageUrl || 'https://picsum.photos/600/400' }}
           style={styles.banner}
@@ -1366,6 +1370,7 @@ export default function EventDetailsPage({ route, navigation }) {
             ) : null}
           </View>
         </View>
+        <KeyboardSpacer extraHeight={24} />
       </ScrollView>
 
       {viewerCanBook ? (
@@ -1446,6 +1451,7 @@ export default function EventDetailsPage({ route, navigation }) {
               </Text>
             )}
           </View>
+          <KeyboardSpacer extraHeight={24} />
         </View>
       </Modal>
     </View>
