@@ -83,6 +83,111 @@ function RatingStars({ rating = 0, size = 16, editable = false, onSelect }) {
   );
 }
 
+function CompletedTrailCard({ booking, onPress }) {
+  const event = booking?.event ?? null;
+  const title = typeof event?.title === 'string' && event.title.trim().length
+    ? event.title.trim()
+    : 'Completed Event';
+
+  const resolveDate = () => {
+    const candidateDates = [
+      booking?.completedAtDate instanceof Date ? booking.completedAtDate : null,
+      event?.completedAt,
+      event?.endsAt,
+      event?.startsAt,
+      booking?.createdAt,
+    ];
+
+    for (const candidate of candidateDates) {
+      if (!candidate) {
+        continue;
+      }
+      const date = candidate instanceof Date ? candidate : new Date(candidate);
+      if (!Number.isNaN(date.valueOf())) {
+        return date;
+      }
+    }
+    return null;
+  };
+
+  const completedDate = resolveDate();
+  const dateLabel = completedDate
+    ? completedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Date to be announced';
+
+  const metrics = [];
+  const distanceKm = Number(event?.distanceKm);
+  if (Number.isFinite(distanceKm) && distanceKm > 0) {
+    metrics.push(`${distanceKm.toFixed(1)} km`);
+  }
+  const durationHrs = Number(event?.durationHrs);
+  if (Number.isFinite(durationHrs) && durationHrs > 0) {
+    metrics.push(`${durationHrs.toFixed(1)} hrs`);
+  }
+  const difficulty =
+    typeof event?.difficulty === 'string' && event.difficulty.trim()
+      ? event.difficulty.trim()
+      : null;
+  if (difficulty) {
+    metrics.push(difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase());
+  }
+
+  const bookingSuffix =
+    typeof booking?.id === 'string' && booking.id.length >= 6
+      ? booking.id.slice(-6).toUpperCase()
+      : null;
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.85 : 1}
+      disabled={!onPress}
+      className="mx-4 mt-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:bg-slate-900 dark:border-slate-700"
+    >
+      <View className="flex-row items-start justify-between">
+        <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-slate-100">{title}</Text>
+        <View className="ml-3 rounded-full bg-green-100 px-3 py-1 dark:bg-green-500/20">
+          <Text className="text-xs font-semibold uppercase text-green-700 dark:text-green-300">
+            Completed
+          </Text>
+        </View>
+      </View>
+
+      <View className="mt-3 flex-row items-center">
+        <Ionicons name="calendar-outline" size={16} color="#16a34a" />
+        <Text className="ml-2 text-sm text-gray-600 dark:text-slate-300">{dateLabel}</Text>
+      </View>
+
+      {metrics.length > 0 ? (
+        <View className="mt-3 flex-row flex-wrap">
+          {metrics.map((metric) => (
+            <View
+              key={metric}
+              className="mr-2 mb-2 rounded-full bg-gray-100 px-3 py-1 dark:bg-slate-800"
+            >
+              <Text className="text-xs font-semibold text-gray-700 dark:text-slate-300">{metric}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View className="mt-4 flex-row items-center justify-between">
+        <Text className="text-xs uppercase text-gray-400 dark:text-slate-500">
+          {bookingSuffix ? `Booking #${bookingSuffix}` : 'Confirmed attendance'}
+        </Text>
+        {onPress ? (
+          <View className="flex-row items-center">
+            <Text className="text-sm font-semibold text-green-600 dark:text-green-400">
+              View Event
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#16a34a" />
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function ProfilePage({ navigation, route }) {
   const { user: authUser, isLoading: authLoading, refreshUser } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -96,8 +201,13 @@ export default function ProfilePage({ navigation, route }) {
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
+  const [activeTab, setActiveTab] = useState('posts');
+  const [completedBookings, setCompletedBookings] = useState([]);
+  const [completedLoading, setCompletedLoading] = useState(false);
+  const [completedError, setCompletedError] = useState(null);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
+  const completedLoadedRef = useRef(false);
   const insets = useSafeAreaInsets();
   const keyboardInsets = useKeyboardInsets(32);
   const headerTopPadding = useMemo(() => Math.max(insets.top, 16), [insets.top]);
@@ -146,6 +256,11 @@ export default function ProfilePage({ navigation, route }) {
       profileRef.current = null;
       setProfile(null);
       setPosts([]);
+      setActiveTab('posts');
+      setCompletedBookings([]);
+      setCompletedError(null);
+      setCompletedLoading(false);
+      completedLoadedRef.current = false;
       return;
     }
 
@@ -155,6 +270,11 @@ export default function ProfilePage({ navigation, route }) {
       setProfile(null);
       setPosts([]);
       setLoading(true);
+      setActiveTab('posts');
+      setCompletedBookings([]);
+      setCompletedError(null);
+      setCompletedLoading(false);
+      completedLoadedRef.current = false;
     }
   }, [viewedUserId]);
 
@@ -216,15 +336,101 @@ export default function ProfilePage({ navigation, route }) {
     [viewedUserId],
   );
 
+  const loadCompletedBookings = useCallback(
+    async ({ force = false } = {}) => {
+      const isProfileOwner =
+        profile?.isSelf || (!profile && authUser?.id && authUser.id === viewedUserId);
+
+      if (!isProfileOwner) {
+        setCompletedBookings([]);
+        completedLoadedRef.current = false;
+        return;
+      }
+
+      if (!force && (completedLoadedRef.current || completedLoading)) {
+        return;
+      }
+
+      setCompletedError(null);
+      setCompletedLoading(true);
+      try {
+        const data = await get('/api/bookings');
+        const bookingsArray = Array.isArray(data) ? data : [];
+
+        const parseDate = (value) => {
+          if (!value) {
+            return null;
+          }
+          const date = new Date(value);
+          return Number.isNaN(date.valueOf()) ? null : date;
+        };
+
+        const filtered = bookingsArray
+          .filter((booking) => {
+            const bookingStatus = typeof booking?.status === 'string' ? booking.status.toUpperCase() : '';
+            const eventStatus =
+              typeof booking?.event?.status === 'string' ? booking.event.status.toUpperCase() : '';
+            return bookingStatus === 'CONFIRMED' && eventStatus === 'COMPLETED';
+          })
+          .map((booking) => {
+            const event = booking?.event ?? null;
+            const completedDate =
+              parseDate(event?.completedAt) ??
+              parseDate(event?.endsAt) ??
+              parseDate(event?.startsAt) ??
+              parseDate(booking?.createdAt) ??
+              new Date();
+
+            return {
+              ...booking,
+              event,
+              completedAtDate: completedDate,
+            };
+          })
+          .sort((a, b) => {
+            const aTime = a.completedAtDate ? a.completedAtDate.getTime() : 0;
+            const bTime = b.completedAtDate ? b.completedAtDate.getTime() : 0;
+            return bTime - aTime;
+          });
+
+        setCompletedBookings(filtered);
+        completedLoadedRef.current = true;
+      } catch (error) {
+        console.error('Failed to load completed bookings:', error);
+        const message =
+          error?.body?.error || error?.message || 'Unable to load completed trails right now.';
+        setCompletedError(message);
+        setCompletedBookings([]);
+        completedLoadedRef.current = false;
+      } finally {
+        setCompletedLoading(false);
+      }
+    },
+    [authUser?.id, completedLoading, profile?.isSelf, viewedUserId],
+  );
+
   useFocusEffect(
     useCallback(() => {
       fetchProfile({ useRefresh: false });
     }, [fetchProfile]),
   );
 
+  useEffect(() => {
+    if (activeTab === 'completedTrails') {
+      loadCompletedBookings();
+    }
+  }, [activeTab, loadCompletedBookings]);
+
   const handleRefresh = useCallback(() => {
     fetchProfile({ useRefresh: true });
-  }, [fetchProfile]);
+
+    if (profile?.isSelf || authUser?.id === viewedUserId) {
+      completedLoadedRef.current = false;
+      if (activeTab === 'completedTrails') {
+        loadCompletedBookings({ force: true });
+      }
+    }
+  }, [activeTab, authUser?.id, fetchProfile, loadCompletedBookings, profile?.isSelf, viewedUserId]);
 
   const handleFollowToggle = useCallback(async () => {
     if (!profile || isOwnProfile || followUpdating) {
@@ -809,30 +1015,145 @@ export default function ProfilePage({ navigation, route }) {
         </View>
       </View>
 
-      <View className="mt-6 px-4">
-        <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">Recent Posts</Text>
-      </View>
+      {isOwnProfile ? (
+        <>
+          <View className="mt-6 px-4">
+            <View className="flex-row rounded-full bg-gray-200 p-1 dark:bg-slate-800">
+              <TouchableOpacity
+                onPress={() => setActiveTab('posts')}
+                className={`flex-1 rounded-full py-2 ${activeTab === 'posts' ? 'bg-white dark:bg-slate-900 shadow-sm' : ''}`}
+              >
+                <Text
+                  className={`text-center text-sm font-semibold ${
+                    activeTab === 'posts'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-gray-600 dark:text-slate-400'
+                  }`}
+                >
+                  Posts
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setActiveTab('completedTrails')}
+                className={`flex-1 rounded-full py-2 ${activeTab === 'completedTrails' ? 'bg-white dark:bg-slate-900 shadow-sm' : ''}`}
+              >
+                <Text
+                  className={`text-center text-sm font-semibold ${
+                    activeTab === 'completedTrails'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-gray-600 dark:text-slate-400'
+                  }`}
+                >
+                  Completed Trails
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View className="mt-4 px-4">
+            <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">
+              {activeTab === 'completedTrails' ? 'Completed Trails' : 'Recent Posts'}
+            </Text>
+            {activeTab === 'completedTrails' ? (
+              <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                Trails you booked, attended, and were confirmed by organizers.
+              </Text>
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <View className="mt-6 px-4">
+          <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">Recent Posts</Text>
+        </View>
+      )}
     </View>
   );
+
+  const listData = useMemo(
+    () => (activeTab === 'completedTrails' ? completedBookings : posts),
+    [activeTab, completedBookings, posts],
+  );
+
+  const renderListItem = useCallback(
+    ({ item }) => {
+      if (activeTab === 'completedTrails') {
+        const eventId = item?.event?.id;
+        const handlePress = eventId
+          ? () => {
+              navigation.navigate('EventDetails', { eventId });
+            }
+          : undefined;
+        return <CompletedTrailCard booking={item} onPress={handlePress} />;
+      }
+
+      return <PostCard post={item} />;
+    },
+    [activeTab, navigation],
+  );
+
+  const keyExtractor = useCallback(
+    (item) => {
+      const baseKey = item?.id ? String(item.id) : 'missing-id';
+      return activeTab === 'completedTrails' ? `completed-${baseKey}` : baseKey;
+    },
+    [activeTab],
+  );
+
+  const renderEmptyComponent = useCallback(() => {
+    if (activeTab === 'completedTrails') {
+      if (completedLoading) {
+        return (
+          <View className="items-center justify-center px-4 py-12">
+            <ActivityIndicator size="small" color="#2E7D32" />
+            <Text className="mt-3 text-center text-sm text-gray-500 dark:text-slate-400">
+              Loading your completed trails...
+            </Text>
+          </View>
+        );
+      }
+
+      if (completedError) {
+        return (
+          <View className="items-center justify-center px-4 py-12">
+            <Text className="text-center text-sm text-red-600 dark:text-red-400">{completedError}</Text>
+            <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
+              Pull down to refresh and try again.
+            </Text>
+          </View>
+        );
+      }
+
+      return (
+        <View className="items-center justify-center px-4 py-12">
+          <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
+            Organizer-confirmed hikes will appear here once you complete them.
+          </Text>
+        </View>
+      );
+    }
+
+    if (loading) {
+      return null;
+    }
+
+    return (
+      <View className="items-center justify-center px-4 py-12">
+        <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
+          {isOwnProfile
+            ? "You haven't shared any posts yet."
+            : 'No posts to show from this user yet.'}
+        </Text>
+      </View>
+    );
+  }, [activeTab, completedError, completedLoading, isOwnProfile, loading]);
 
   return (
     <View className="flex-1 bg-gray-100 dark:bg-slate-950">
       <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PostCard post={item} />}
+        data={listData}
+        keyExtractor={keyExtractor}
+        renderItem={renderListItem}
         ListHeaderComponent={renderHeader}
-        ListEmptyComponent={
-          !loading ? (
-            <View className="items-center justify-center px-4 py-12">
-              <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
-                {isOwnProfile
-                  ? "You haven't shared any posts yet."
-                  : 'No posts to show from this user yet.'}
-              </Text>
-            </View>
-          ) : null
-        }
+        ListEmptyComponent={renderEmptyComponent}
         contentContainerStyle={listContentInset}
         scrollIndicatorInsets={scrollIndicatorInsets}
         keyboardShouldPersistTaps="handled"
