@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import KeyboardSpacer from '../../components/KeyboardSpacer';
+import { Ionicons } from '@expo/vector-icons';
 
 const MAX_DOCUMENTS = 5;
 
@@ -291,6 +292,26 @@ export default function ApplyOrganizerPage({ navigation }) {
           />
         </View>
 
+        <View style={styles.dtiCard}>
+          <View style={styles.dtiIconWrapper}>
+            <Ionicons name="business-outline" size={22} color="#1d4ed8" />
+          </View>
+          <View style={styles.dtiContent}>
+            <Text style={styles.dtiTitle}>Check your DTI registration</Text>
+            <Text style={styles.dtiDescription}>
+              Use the official DTI Business Name Search to confirm your business or organization
+              details before submitting your application.
+            </Text>
+            <TouchableOpacity
+              style={styles.dtiButton}
+              onPress={() => navigation.navigate('DtiBusinessSearch')}
+            >
+              <Text style={styles.dtiButtonText}>Open DTI search</Text>
+              <Ionicons name="arrow-forward" size={16} color="#1d4ed8" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.sectionRow}>
           <View style={styles.rowItem}>
             <Text style={styles.label}>Years of Experience</Text>
@@ -507,6 +528,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  dtiCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#e0f2fe',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    padding: 16,
+    marginBottom: 20,
+  },
+  dtiIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#bfdbfe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  dtiContent: {
+    flex: 1,
+  },
+  dtiTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  dtiDescription: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#1e293b',
+    lineHeight: 18,
+  },
+  dtiButton: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  dtiButtonText: {
+    marginRight: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1d4ed8',
   },
   documentCard: {
     width: '47%',
