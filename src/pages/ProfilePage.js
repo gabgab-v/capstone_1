@@ -726,8 +726,11 @@ export default function ProfilePage({ navigation, route }) {
   }
 
   if (!authUser) {
-    navigation.replace('Login');
-    return null;
+    return (
+      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-900">
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </View>
+    );
   }
 
   if (!viewedUserId) {
