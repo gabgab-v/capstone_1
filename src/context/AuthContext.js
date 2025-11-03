@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { get } from '../lib/api';
 
 const AuthContext = createContext(null);
@@ -22,16 +22,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let isMounted = true;
-    if (!isSupabaseConfigured) {
-      console.error(
-        'Supabase credentials are missing. The app will run in a limited state until they are configured.',
-      );
-      setIsLoading(false);
-      return () => {
-        isMounted = false;
-      };
-    }
-
     const initializeAuth = async () => {
       try {
         const {
@@ -72,27 +62,29 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
 
     // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isMounted) {
-        return;
-      }
-
-      if (session) {
-        try {
-          const profile = await get('/api/users/me');
-          if (isMounted) {
-            setUser(profile);
-          }
-        } catch (error) {
-          console.error('Error fetching user profile:', error);
-          if (isMounted) {
-            setUser(null);
-          }
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!isMounted) {
+          return;
         }
-      } else {
-        setUser(null);
-      }
-    });
+
+        if (session) {
+          try {
+            const profile = await get('/api/users/me');
+            if (isMounted) {
+              setUser(profile);
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+            if (isMounted) {
+              setUser(null);
+            }
+          }
+        } else {
+          setUser(null);
+        }
+      },
+    );
 
     // Cleanup the listener on unmount
     return () => {
@@ -105,18 +97,8 @@ export const AuthProvider = ({ children }) => {
   const value = {
       user,
       isLoading,
-      login: async (email, password) => {
-        if (!isSupabaseConfigured) {
-          throw new Error('Supabase is not configured. Unable to log in.');
-        }
-        return supabase.auth.signInWithPassword({ email, password });
-      },
-      logout: async () => {
-        if (!isSupabaseConfigured) {
-          throw new Error('Supabase is not configured. Unable to log out.');
-        }
-        return supabase.auth.signOut();
-      },
+      login: async (email, password) => supabase.auth.signInWithPassword({ email, password }),
+      logout: async () => supabase.auth.signOut(),
       refreshUser: fetchUserProfile,
   };
 
