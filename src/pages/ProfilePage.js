@@ -771,10 +771,18 @@ export default function ProfilePage({ navigation, route }) {
   ].filter((item) => item.value);
 
   const ratingSummary = profile?.organizerRating ?? null;
-  const averageRatingValue = Number(ratingSummary?.averageRating);
-  const hasAverageRating = Number.isFinite(averageRatingValue);
-  const averageRatingLabel = hasAverageRating ? averageRatingValue.toFixed(1) : null;
-  const averageRatingForStars = hasAverageRating ? averageRatingValue : 0;
+  const rawAverageRating = ratingSummary?.averageRating;
+  let averageRatingValue = null;
+  if (typeof rawAverageRating === 'number' && Number.isFinite(rawAverageRating)) {
+    averageRatingValue = rawAverageRating;
+  } else if (typeof rawAverageRating === 'string') {
+    const parsed = parseFloat(rawAverageRating);
+    if (Number.isFinite(parsed)) {
+      averageRatingValue = parsed;
+    }
+  }
+  const averageRatingLabel = averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
+  const averageRatingForStars = averageRatingValue ?? 0;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
   const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
   const viewerReview = ratingSummary?.viewerReview ?? null;
