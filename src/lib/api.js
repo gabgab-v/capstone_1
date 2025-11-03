@@ -101,7 +101,20 @@ async function request(path, options = {}) {
   }
 }
 
-export async function postFormData(path, formData) {
+export function createIdempotencyKey(prefix = 'bk') {
+  const timePart = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${timePart}-${randomPart}`;
+}
+
+function normalizeHeaderBag(headersLike = {}) {
+  if (!headersLike || typeof headersLike !== 'object') {
+    return {};
+  }
+  return { ...headersLike };
+}
+
+export async function postFormData(path, formData, options = {}) {
   const url = `${BASE_URL}${path}`;
   const {
     data: { session },
@@ -109,9 +122,25 @@ export async function postFormData(path, formData) {
   const token = session?.access_token;
   if (__DEV__) console.log('[api] POST (FormData)', url);
 
+  const extraHeaders = normalizeHeaderBag(options.headers);
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
   };
+
+  const existingIdempotencyHeaderKey = Object.keys(headers).find(
+    (key) => key && key.toLowerCase() === 'idempotency-key',
+  );
+
+  if (existingIdempotencyHeaderKey) {
+    const normalized = headers[existingIdempotencyHeaderKey];
+    headers[existingIdempotencyHeaderKey] =
+      typeof normalized === 'string' ? normalized : String(normalized ?? '');
+  } else if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = String(options.idempotencyKey);
+  } else {
+    headers['Idempotency-Key'] = createIdempotencyKey();
+  }
 
   let response;
   try {

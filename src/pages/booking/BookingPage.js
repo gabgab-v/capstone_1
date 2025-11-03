@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useNotifications } from "../../context/NotificationContext";
-import { postFormData } from "../../lib/api";
+import { createIdempotencyKey, postFormData } from "../../lib/api";
 import { getEventDifficultyLabel } from "../../utils/matchScoring";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -22,6 +22,7 @@ export default function BookingPage({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const { scheduleNotification } = useNotifications();
   const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
+  const [bookingRequestKey, setBookingRequestKey] = useState(() => createIdempotencyKey());
 
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
   const eventDifficulty = useMemo(() => getEventDifficultyLabel(event), [event]);
@@ -30,6 +31,7 @@ export default function BookingPage({ route, navigation }) {
 
   useEffect(() => {
     setExpertWaiverAccepted(false);
+    setBookingRequestKey(createIdempotencyKey());
   }, [event?.id, isExpertDifficulty]);
 
   const priceLabel = useMemo(() => {
@@ -101,7 +103,9 @@ export default function BookingPage({ route, navigation }) {
         });
       }
 
-      const booking = await postFormData("/api/bookings", formData);
+      const booking = await postFormData("/api/bookings", formData, {
+        idempotencyKey: bookingRequestKey,
+      });
 
       await scheduleNotification({
         title: "Booking submitted",
@@ -114,10 +118,15 @@ export default function BookingPage({ route, navigation }) {
       });
 
       navigation.navigate("ReceiptPage", { event, booking });
+      setBookingRequestKey(createIdempotencyKey());
     } catch (err) {
       console.error("Booking failed:", err);
       const errorMessage = err.body?.error || err.message || "Something went wrong while booking.";
       Alert.alert("Booking Failed", errorMessage);
+      const shouldRotateKey = typeof err?.status === "number" ? err.status !== 0 : true;
+      if (shouldRotateKey) {
+        setBookingRequestKey(createIdempotencyKey());
+      }
     } finally {
       setLoading(false);
     }

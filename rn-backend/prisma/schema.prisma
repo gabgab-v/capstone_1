@@ -49,6 +49,8 @@ model User {
   messages                Message[]
   organizerReviewsReceived OrganizerReview[] @relation("OrganizerReviewsReceived")
   organizerReviewsGiven   OrganizerReview[] @relation("OrganizerReviewsGiven")
+  bookingRequestLogs      BookingRequestLog[]
+  bookingAccessLogs       BookingAccessLog[] @relation("OrganizerAccessLogs")
 
   createdAt               DateTime  @default(now())
 }
@@ -93,6 +95,8 @@ model Event {
   bookings             Booking[]
   comments             EventComment[]
   conversations        Conversation[]
+  bookingRequestLogs   BookingRequestLog[]
+  bookingAccessLogs    BookingAccessLog[]
 
   createdAt            DateTime @default(now())
 
@@ -117,6 +121,7 @@ model Booking {
   paymentUrl  String?
   totalAmount Float
   createdAt   DateTime @default(now())
+  requestLogs BookingRequestLog[]
 }
 
 model Trail {
@@ -316,4 +321,52 @@ model EventComment {
 
   @@index([eventId, createdAt])
   @@index([userId])
+}
+
+enum BookingRequestOutcome {
+  PENDING
+  SUCCESS
+  REJECTED
+  RATE_LIMITED
+  ERROR
+}
+
+model BookingRequestLog {
+  id             String                @id @default(cuid())
+  user           User                  @relation(fields: [userId], references: [id])
+  userId         String
+  event          Event?                @relation(fields: [eventId], references: [id])
+  eventId        String?
+  booking        Booking?              @relation(fields: [bookingId], references: [id])
+  bookingId      String?
+  idempotencyKey String
+  ipAddress      String?
+  outcome        BookingRequestOutcome @default(PENDING)
+  responseStatus Int?
+  responseBody   Json?
+  errorMessage   String?
+  createdAt      DateTime              @default(now())
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+enum BookingAccessAction {
+  VIEW_BOOKINGS
+  VIEW_PAYMENT_RECEIPTS
+}
+
+model BookingAccessLog {
+  id          String               @id @default(cuid())
+  organizer   User                 @relation("OrganizerAccessLogs", fields: [organizerId], references: [id])
+  organizerId String
+  event       Event                @relation(fields: [eventId], references: [id])
+  eventId     String
+  action      BookingAccessAction
+  details     String?
+  ipAddress   String?
+  createdAt   DateTime             @default(now())
+
+  @@index([organizerId, createdAt])
+  @@index([eventId, createdAt])
 }

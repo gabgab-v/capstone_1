@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
+import { BookingAccessAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
 const PUBLIC_BOOKING_STATUSES = new Set(["CONFIRMED", "APPROVED"]);
+
+function extractClientIp(request) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",").map((part) => part.trim()).find(Boolean);
+    if (first) {
+      return first;
+    }
+  }
+  const realIp = request.headers.get("x-real-ip");
+  return realIp ? realIp.trim() : null;
+}
 
 function maskEmail(email) {
   if (typeof email !== "string") {
@@ -116,7 +129,7 @@ export async function GET(request, { params }) {
       .map((booking) => {
         const canViewReceipt = isOrganizer || booking.userId === currentUserId;
         const canViewPersonalData = canViewReceipt;
-        const { paymentUrl, totalAmount, userId, user: bookingUser, ...rest } = booking;
+        const { paymentUrl, totalAmount, userId, user: bookingUser } = booking;
 
         const safeUser = canViewPersonalData
           ? bookingUser
@@ -127,7 +140,9 @@ export async function GET(request, { params }) {
             };
 
         return {
-          ...rest,
+          id: booking.id,
+          eventId: booking.eventId,
+          createdAt: booking.createdAt,
           status: booking.status,
           userId: canViewPersonalData ? userId : null,
           totalAmount: canViewPersonalData ? totalAmount : null,
@@ -135,6 +150,28 @@ export async function GET(request, { params }) {
           user: safeUser,
         };
       });
+
+    if (isOrganizer) {
+      const receiptsExposed = sanitizedBookings.filter(
+        (entry) => typeof entry.paymentUrl === "string" && entry.paymentUrl.trim().length > 0,
+      );
+
+      if (receiptsExposed.length > 0) {
+        try {
+          await prisma.bookingAccessLog.create({
+            data: {
+              organizerId: user.id,
+              eventId,
+              action: BookingAccessAction.VIEW_PAYMENT_RECEIPTS,
+              details: `Returned ${receiptsExposed.length} receipt${receiptsExposed.length === 1 ? "" : "s"} to organizer.`,
+              ipAddress: extractClientIp(request),
+            },
+          });
+        } catch (logError) {
+          console.error("Failed to record booking access log:", logError);
+        }
+      }
+    }
 
     return NextResponse.json(sanitizedBookings, { status: 200 });
   } catch (err) {
