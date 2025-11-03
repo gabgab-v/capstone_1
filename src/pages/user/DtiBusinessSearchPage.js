@@ -1,25 +1,38 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
 
 import ScreenHeader from '../../components/ScreenHeader';
 import { useTheme } from '../../context/ThemeContext';
 
 const DTI_SEARCH_URL = 'https://bnrs.dti.gov.ph/search';
 
+let WebViewComponent = null;
+
+try {
+  const webViewModule = require('react-native-webview');
+  if (webViewModule && typeof webViewModule.WebView !== 'undefined') {
+    WebViewComponent = webViewModule.WebView;
+  }
+} catch (error) {
+  console.warn('react-native-webview is not available; falling back to external browser.', error);
+}
+
 export default function DtiBusinessSearchPage({ navigation }) {
   const { colors } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [webViewKey, setWebViewKey] = useState(0);
+  const [isEmbeddedSupported, setIsEmbeddedSupported] = useState(false);
 
   const loadingText = 'Loading DTI search...';
 
@@ -33,6 +46,47 @@ export default function DtiBusinessSearchPage({ navigation }) {
     Linking.openURL(DTI_SEARCH_URL).catch((error) => {
       console.warn('Unable to open DTI search link:', error);
     });
+  }, []);
+
+  useEffect(() => {
+    if (!WebViewComponent) {
+      setIsEmbeddedSupported(false);
+      setIsLoading(false);
+      return;
+    }
+
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      setIsEmbeddedSupported(false);
+      setIsLoading(false);
+      return;
+    }
+
+    let hasManager = false;
+
+    if (typeof UIManager?.getViewManagerConfig === 'function') {
+      try {
+        const config = UIManager.getViewManagerConfig('RNCWebView');
+        hasManager = config != null;
+      } catch (error) {
+        hasManager = false;
+      }
+    }
+
+    if (!hasManager && typeof UIManager?.hasViewManager === 'function') {
+      try {
+        hasManager = UIManager.hasViewManager('RNCWebView');
+      } catch (error) {
+        hasManager = false;
+      }
+    }
+
+    if (hasManager) {
+      setIsEmbeddedSupported(true);
+    } else {
+      console.warn('RNCWebView native module is unavailable; using external browser fallback.');
+      setIsEmbeddedSupported(false);
+      setIsLoading(false);
+    }
   }, []);
 
   const headerActions = useMemo(
@@ -99,9 +153,29 @@ export default function DtiBusinessSearchPage({ navigation }) {
               </Text>
             </TouchableOpacity>
           </View>
+        ) : !isEmbeddedSupported ? (
+          <View style={[styles.errorContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.errorIcon, { backgroundColor: colors.border }]}>
+              <Ionicons name="information-circle-outline" size={24} color={colors.textPrimary} />
+            </View>
+            <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>
+              Embedded browser unavailable
+            </Text>
+            <Text style={[styles.errorMessage, { color: colors.textMuted }]}>
+              Update to the latest build of TrailMate to view the DTI search inside the app, or open
+              it in your device browser instead.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: colors.accent }]}
+              onPress={handleOpenExternal}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryButtonText}>Open in browser</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <>
-            <WebView
+            <WebViewComponent
               key={webViewKey}
               source={{ uri: DTI_SEARCH_URL }}
               originWhitelist={['*']}
