@@ -16,7 +16,11 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-const extra = Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? {};
+const extra =
+  Constants.expoConfig?.extra ??
+  Constants.manifest?.extra ??
+  Constants.manifest2?.extra ??
+  {};
 const supabaseUrl =
   (typeof extra?.supabaseUrl === 'string' && extra.supabaseUrl.trim()) ||
   (typeof process !== 'undefined' &&
