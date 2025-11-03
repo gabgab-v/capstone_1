@@ -27,6 +27,7 @@ import CreateEventPage from './src/pages/CreateEventPage';
 import SettingsPage from './src/pages/user/SettingsPage';
 import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
 import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
+import DtiBusinessSearchPage from './src/pages/user/DtiBusinessSearchPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 
@@ -74,6 +75,7 @@ function AppNavigator() {
           <Stack.Screen name="Settings" component={SettingsPage} />
           <Stack.Screen name="ApplyOrganizer" component={ApplyOrganizerPage} />
           <Stack.Screen name="ApplyExpert" component={ApplyExpertPage} />
+          <Stack.Screen name="DtiBusinessSearch" component={DtiBusinessSearchPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />
         </>
       ) : (

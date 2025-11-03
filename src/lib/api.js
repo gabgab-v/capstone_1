@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import { supabase } from './supabase';
+import { getExpoExtra } from './expoConfig';
 
-const extra = Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? {};
+const extra = getExpoExtra();
 
 const configuredBaseUrl = (() => {
   const fromExtra = typeof extra?.apiBaseUrl === 'string' ? extra.apiBaseUrl.trim() : '';

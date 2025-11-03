@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -276,6 +277,21 @@ export default function SettingsPage({ navigation }) {
             <Text className="text-sm text-amber-700 mt-2">Notes: {application.reviewNotes}</Text>
           ) : null}
           <TouchableOpacity
+            className="mt-4 flex-row items-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-400/40 dark:bg-blue-950/40"
+            onPress={() => navigation.navigate('DtiBusinessSearch')}
+            activeOpacity={0.85}
+          >
+            <View className="mr-3 rounded-full bg-blue-100 p-2 dark:bg-blue-800/70">
+              <Ionicons name="business-outline" size={20} color="#1d4ed8" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-blue-700 dark:text-blue-200">Verify with DTI</Text>
+              <Text className="mt-1 text-xs text-blue-600 dark:text-blue-300/90">
+                Search the official registry to make sure your business details are up to date.
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
             className="bg-blue-600 px-5 py-3 rounded-xl mt-4"
             onPress={() => navigation.navigate('ApplyOrganizer')}
           >
@@ -295,6 +311,21 @@ export default function SettingsPage({ navigation }) {
             Submit your credentials and IDs so the admin team can review and approve you to host
             events.
           </Text>
+          <TouchableOpacity
+            className="mt-4 flex-row items-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-400/40 dark:bg-blue-950/40"
+            onPress={() => navigation.navigate('DtiBusinessSearch')}
+            activeOpacity={0.85}
+          >
+            <View className="mr-3 rounded-full bg-blue-100 p-2 dark:bg-blue-800/70">
+              <Ionicons name="business-outline" size={20} color="#1d4ed8" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-blue-700 dark:text-blue-200">Verify with DTI</Text>
+              <Text className="mt-1 text-xs text-blue-600 dark:text-blue-300/90">
+                Look up your business name in the official DTI search before sending your documents.
+              </Text>
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity
             className="bg-blue-600 px-5 py-3 rounded-xl mt-4"
             onPress={() => navigation.navigate('ApplyOrganizer')}

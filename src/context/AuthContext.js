@@ -21,42 +21,78 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // Get the initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        // If a session exists, fetch the full user profile from your backend
-        get('/api/users/me')
-          .then(setUser)
-          .catch((err) => {
-            console.error('Error fetching user profile:', err);
-            // If profile fetch fails, treat as logged out
-            supabase.auth.signOut(); 
+    let isMounted = true;
+    const initializeAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          if (isMounted) {
             setUser(null);
-          });
+          }
+          return;
+        }
+
+        try {
+          const profile = await get('/api/users/me');
+          if (isMounted) {
+            setUser(profile);
+          }
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+          await supabase.auth.signOut();
+          if (isMounted) {
+            setUser(null);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing auth session:', error);
+        if (isMounted) {
+          setUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-      setIsLoading(false);
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!isMounted) {
+          return;
+        }
+
         if (session) {
-          // When user logs in, fetch their full profile
-          const profile = await get('/api/users/me');
-          setUser(profile);
+          try {
+            const profile = await get('/api/users/me');
+            if (isMounted) {
+              setUser(profile);
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+            if (isMounted) {
+              setUser(null);
+            }
+          }
         } else {
-          // When user logs out, clear the user state
           setUser(null);
         }
-      }
+      },
     );
 
     // Cleanup the listener on unmount
     return () => {
+      isMounted = false;
       authListener.subscription.unsubscribe();
     };
   }, []);
-  
+
   // The login and logout functions are now just wrappers around supabase.auth
   const value = {
       user,
