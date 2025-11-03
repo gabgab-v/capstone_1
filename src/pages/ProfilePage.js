@@ -771,10 +771,10 @@ export default function ProfilePage({ navigation, route }) {
   ].filter((item) => item.value);
 
   const ratingSummary = profile?.organizerRating ?? null;
-  const averageRatingLabel =
-    ratingSummary && ratingSummary.averageRating != null
-      ? ratingSummary.averageRating.toFixed(1)
-      : null;
+  const averageRatingValue = Number(ratingSummary?.averageRating);
+  const hasAverageRating = Number.isFinite(averageRatingValue);
+  const averageRatingLabel = hasAverageRating ? averageRatingValue.toFixed(1) : null;
+  const averageRatingForStars = hasAverageRating ? averageRatingValue : 0;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
   const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
   const viewerReview = ratingSummary?.viewerReview ?? null;
@@ -902,7 +902,7 @@ export default function ProfilePage({ navigation, route }) {
               <View>
                 <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Organizer Rating</Text>
                 <View className="mt-1 flex-row items-center space-x-2">
-                  <RatingStars rating={ratingSummary?.averageRating ?? 0} size={18} />
+                  <RatingStars rating={averageRatingForStars} size={18} />
                   <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">
                     {averageRatingLabel ?? '—'}
                   </Text>
@@ -983,7 +983,7 @@ export default function ProfilePage({ navigation, route }) {
                       <Text className="text-sm font-semibold text-gray-800 dark:text-slate-100">
                         {review.reviewer?.name ?? review.reviewer?.email ?? 'Explorer'}
                       </Text>
-                      <RatingStars rating={review.rating} size={16} />
+                      <RatingStars rating={Number(review.rating) || 0} size={16} />
                     </View>
                     {review.feedback ? (
                       <Text className="mt-2 text-sm text-gray-700 dark:text-slate-300">{review.feedback}</Text>
