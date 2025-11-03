@@ -207,6 +207,10 @@ export default function ProfilePage({ navigation, route }) {
   const [completedError, setCompletedError] = useState(null);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
+  const latestProfileRequestRef = useRef(null);
+  const latestCompletedRequestRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const loadingRequestRef = useRef(null);
   const completedLoadedRef = useRef(false);
   const insets = useSafeAreaInsets();
   const keyboardInsets = useKeyboardInsets(32);
@@ -249,6 +253,19 @@ export default function ProfilePage({ navigation, route }) {
   }, [authUser?.id, routeUserId]);
 
   const isOwnProfile = profile ? profile.isSelf ?? authUser?.id === profile.id : authUser?.id === viewedUserId;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      navigation.replace('Login');
+    }
+  }, [authLoading, authUser, navigation]);
 
   useEffect(() => {
     if (!viewedUserId) {
@@ -295,16 +312,28 @@ export default function ProfilePage({ navigation, route }) {
         return;
       }
 
+      const requestMeta = {
+        token: Symbol('profileRequest'),
+        userId: viewedUserId,
+        useRefresh,
+      };
+      latestProfileRequestRef.current = requestMeta;
+
       const existingProfile = profileRef.current;
       const isDifferentUser =
         profileOwnerIdRef.current && profileOwnerIdRef.current !== viewedUserId;
 
       let shouldHandleLoading = false;
       if (useRefresh) {
-        setRefreshing(true);
+        if (isMountedRef.current) {
+          setRefreshing(true);
+        }
       } else if (!existingProfile || isDifferentUser) {
         shouldHandleLoading = true;
-        setLoading(true);
+        if (isMountedRef.current) {
+          setLoading(true);
+          loadingRequestRef.current = requestMeta;
+        }
       }
 
       try {
@@ -316,6 +345,10 @@ export default function ProfilePage({ navigation, route }) {
           postCount: data.postCount ?? (Array.isArray(data.posts) ? data.posts.length : 0),
         };
 
+        if (!isMountedRef.current || latestProfileRequestRef.current !== requestMeta) {
+          return;
+        }
+
         profileOwnerIdRef.current = formattedProfile.id;
         profileRef.current = formattedProfile;
 
@@ -323,13 +356,24 @@ export default function ProfilePage({ navigation, route }) {
         setPosts(Array.isArray(data.posts) ? data.posts : []);
       } catch (error) {
         console.error('Failed to load profile:', error);
+        if (!isMountedRef.current || latestProfileRequestRef.current !== requestMeta) {
+          return;
+        }
         Alert.alert('Profile unavailable', error?.message ?? 'Unable to load this profile right now.');
       } finally {
-        if (useRefresh) {
+        if (useRefresh && isMountedRef.current) {
           setRefreshing(false);
         }
-        if (shouldHandleLoading) {
+        if (
+          shouldHandleLoading &&
+          isMountedRef.current &&
+          loadingRequestRef.current === requestMeta
+        ) {
           setLoading(false);
+          loadingRequestRef.current = null;
+        }
+        if (latestProfileRequestRef.current === requestMeta) {
+          latestProfileRequestRef.current = null;
         }
       }
     },
@@ -342,7 +386,9 @@ export default function ProfilePage({ navigation, route }) {
         profile?.isSelf || (!profile && authUser?.id && authUser.id === viewedUserId);
 
       if (!isProfileOwner) {
-        setCompletedBookings([]);
+        if (isMountedRef.current) {
+          setCompletedBookings([]);
+        }
         completedLoadedRef.current = false;
         return;
       }
@@ -351,8 +397,15 @@ export default function ProfilePage({ navigation, route }) {
         return;
       }
 
-      setCompletedError(null);
-      setCompletedLoading(true);
+      const requestToken = Symbol('completedRequest');
+      latestCompletedRequestRef.current = requestToken;
+
+      if (isMountedRef.current) {
+        setCompletedError(null);
+      }
+      if (isMountedRef.current) {
+        setCompletedLoading(true);
+      }
       try {
         const data = await get('/api/bookings');
         const bookingsArray = Array.isArray(data) ? data : [];
@@ -393,17 +446,26 @@ export default function ProfilePage({ navigation, route }) {
             return bTime - aTime;
           });
 
+        if (!isMountedRef.current || latestCompletedRequestRef.current !== requestToken) {
+          return;
+        }
+
         setCompletedBookings(filtered);
         completedLoadedRef.current = true;
       } catch (error) {
         console.error('Failed to load completed bookings:', error);
         const message =
           error?.body?.error || error?.message || 'Unable to load completed trails right now.';
-        setCompletedError(message);
-        setCompletedBookings([]);
-        completedLoadedRef.current = false;
+        if (isMountedRef.current && latestCompletedRequestRef.current === requestToken) {
+          setCompletedError(message);
+          setCompletedBookings([]);
+          completedLoadedRef.current = false;
+        }
       } finally {
-        setCompletedLoading(false);
+        if (isMountedRef.current && latestCompletedRequestRef.current === requestToken) {
+          setCompletedLoading(false);
+          latestCompletedRequestRef.current = null;
+        }
       }
     },
     [authUser?.id, completedLoading, profile?.isSelf, viewedUserId],
@@ -726,7 +788,6 @@ export default function ProfilePage({ navigation, route }) {
   }
 
   if (!authUser) {
-    navigation.replace('Login');
     return null;
   }
 
