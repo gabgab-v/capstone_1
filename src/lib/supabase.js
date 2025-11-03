@@ -1,8 +1,8 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
-import * as Updates from 'expo-updates';
+
+import { getExpoExtra } from './expoConfig';
 
 // An adapter for SecureStore to make it work with Supabase's browser-based storage persistence
 const ExpoSecureStoreAdapter = {
@@ -17,26 +17,7 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-function resolveExpoExtra() {
-  const candidates = [
-    Constants?.expoConfig?.extra,
-    Constants?.manifest?.extra,
-    Constants?.manifest2?.extra?.expoClient?.extra,
-    Constants?.manifest2?.extra,
-    Updates?.manifest?.extra?.expoClient?.extra,
-    Updates?.manifest?.extra,
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === 'object' && Object.keys(candidate).length > 0) {
-      return candidate;
-    }
-  }
-
-  return {};
-}
-
-const extra = resolveExpoExtra();
+const extra = getExpoExtra();
 const supabaseUrl =
   (typeof extra?.supabaseUrl === 'string' && extra.supabaseUrl.trim()) ||
   (typeof process !== 'undefined' &&
