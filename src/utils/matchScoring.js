@@ -1,6 +1,7 @@
 const LEVEL_SCORE_MAP = {
   beginner: 0.2,
   intermediate: 0.6,
+  technical: 1,
   expert: 1,
 };
 
@@ -34,6 +35,9 @@ function normalizeDifficultyValue(value) {
     normalized.includes('medium')
   ) {
     return 'Intermediate';
+  }
+  if (normalized.includes('technical')) {
+    return 'Technical';
   }
   if (
     normalized.includes('expert') ||

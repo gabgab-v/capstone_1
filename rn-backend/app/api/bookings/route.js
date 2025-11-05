@@ -5,21 +5,42 @@ import { BookingRequestOutcome } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 
-const ALLOWED_RECEIPT_TYPES = new Set([
+const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/gif",
   "image/jpg",
 ]);
-const FALLBACK_EXTENSIONS = {
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  ...ALLOWED_IMAGE_TYPES,
+  "application/pdf",
+]);
+
+const DEFAULT_FALLBACK_EXTENSIONS = {
   "image/jpeg": ".jpg",
   "image/png": ".png",
   "image/webp": ".webp",
   "image/gif": ".gif",
+  "application/pdf": ".pdf",
 };
-const RECEIPT_BUCKET = process.env.SUPABASE_RECEIPT_BUCKET || "Capstone";
-const RECEIPT_FOLDER = "receipts";
+
+const STORAGE_BUCKET = process.env.SUPABASE_RECEIPT_BUCKET || "Capstone";
+const STORAGE_FOLDERS = {
+  receipt: "receipts",
+  waiver: "waivers",
+  medicalCertificate: "medical-certificates",
+  trailPolicy: "trail-policies",
+};
+const DOCUMENT_LABELS = {
+  waiver: "waiver",
+  medicalCertificate: "medical certificate",
+  trailPolicy: "trail policy document",
+};
+const REQUIRED_DOCUMENTS_BY_DIFFICULTY = {
+  TECHNICAL: ["waiver", "trailPolicy"],
+  EXPERT: ["waiver", "medicalCertificate"],
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -35,53 +56,88 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:/._-]{8,128}$/;
 
-async function persistReceipt(file) {
-  if (!file) {
+function isFileLike(file) {
+  return file && typeof file.arrayBuffer === "function";
+}
+
+async function persistUpload(file, options = {}) {
+  if (!isFileLike(file)) {
     return null;
   }
 
+  const {
+    folderKey = "documents",
+    allowedMimeTypes = null,
+    fallbackExtensions = DEFAULT_FALLBACK_EXTENSIONS,
+    defaultBaseName = "upload",
+    label = "file",
+  } = options;
+
   const mimeType = typeof file.type === "string" ? file.type.toLowerCase() : "";
-  if (mimeType && !ALLOWED_RECEIPT_TYPES.has(mimeType)) {
-    throw new Error("Unsupported receipt file type. Please upload an image.");
+  if (allowedMimeTypes && allowedMimeTypes.size > 0) {
+    if (!mimeType || !allowedMimeTypes.has(mimeType)) {
+      throw new Error(
+        `Unsupported ${label} type. Please upload one of: ${Array.from(allowedMimeTypes).join(", ")}.`,
+      );
+    }
   }
 
   const arrayBuffer = await file.arrayBuffer();
   if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-    throw new Error("Uploaded receipt is empty.");
+    throw new Error(`Uploaded ${label} is empty.`);
   }
 
   if (!supabaseStorageClient) {
     throw new Error("Supabase storage is not configured on the server.");
   }
 
-  const originalName = typeof file.name === "string" ? file.name : "receipt";
+  const originalName = typeof file.name === "string" ? file.name : defaultBaseName;
   const extensionFromName = path.extname(originalName) || "";
-  const extension =
-    extensionFromName.toLowerCase() || FALLBACK_EXTENSIONS[mimeType] || ".jpg";
+  const fallbackExtension =
+    (mimeType && fallbackExtensions && fallbackExtensions[mimeType]) || null;
+  const extension = (extensionFromName || fallbackExtension || ".bin").toLowerCase();
   const safeExtension = extension.startsWith(".") ? extension : `.${extension}`;
+  const folder = STORAGE_FOLDERS[folderKey] || folderKey || "documents";
   const fileName = `${Date.now()}-${randomUUID()}${safeExtension}`;
-
-  const objectPath = `${RECEIPT_FOLDER}/${fileName}`;
+  const objectPath = `${folder}/${fileName}`;
 
   const { error: uploadError } = await supabaseStorageClient.storage
-    .from(RECEIPT_BUCKET)
+    .from(STORAGE_BUCKET)
     .upload(objectPath, Buffer.from(arrayBuffer), {
-      contentType: mimeType || "image/jpeg",
+      contentType: mimeType || "application/octet-stream",
       upsert: false,
     });
 
   if (uploadError) {
-    throw new Error(`Failed to upload receipt: ${uploadError.message}`);
+    throw new Error(`Failed to upload ${label}: ${uploadError.message}`);
   }
 
   const { data: publicUrlData, error: publicUrlError } =
-    supabaseStorageClient.storage.from(RECEIPT_BUCKET).getPublicUrl(objectPath);
+    supabaseStorageClient.storage.from(STORAGE_BUCKET).getPublicUrl(objectPath);
 
   if (publicUrlError || !publicUrlData?.publicUrl) {
-    throw new Error("Unable to generate public URL for uploaded receipt.");
+    throw new Error(`Unable to generate public URL for uploaded ${label}.`);
   }
 
   return publicUrlData.publicUrl;
+}
+
+async function persistReceipt(file) {
+  return persistUpload(file, {
+    folderKey: "receipt",
+    allowedMimeTypes: ALLOWED_IMAGE_TYPES,
+    defaultBaseName: "receipt",
+    label: "receipt",
+  });
+}
+
+async function persistBookingDocument(file, documentKey) {
+  return persistUpload(file, {
+    folderKey: documentKey,
+    allowedMimeTypes: ALLOWED_DOCUMENT_TYPES,
+    defaultBaseName: documentKey ?? "document",
+    label: DOCUMENT_LABELS[documentKey] ?? "document",
+  });
 }
 
 function jsonResponse(body, status, headers = {}) {
@@ -246,6 +302,9 @@ export async function POST(req) {
     const eventIdRaw = formData.get("eventId");
     const amountRaw = formData.get("amount");
     const receipt = formData.get("receipt");
+    const waiver = formData.get("waiver");
+    const medicalCertificate = formData.get("medicalCertificate");
+    const trailPolicy = formData.get("trailPolicy");
 
     const eventId = typeof eventIdRaw === "string" ? eventIdRaw : null;
     if (eventId) {
@@ -398,7 +457,33 @@ export async function POST(req) {
       );
     }
 
+    const eventDifficulty =
+      typeof event.difficulty === "string" ? event.difficulty.toUpperCase() : null;
+    const documentationInputs = { waiver, medicalCertificate, trailPolicy };
+    const requiredDocuments = REQUIRED_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [];
+    const missingDocuments = requiredDocuments.filter(
+      (docKey) => !isFileLike(documentationInputs[docKey]),
+    );
+
+    if (missingDocuments.length > 0) {
+      const missingLabels = missingDocuments.map(
+        (docKey) => DOCUMENT_LABELS[docKey] || docKey || "document",
+      );
+      return respondWithLog(
+        400,
+        {
+          error: `This event requires additional documentation: ${missingLabels.join(", ")}.`,
+        },
+        BookingRequestOutcome.REJECTED,
+        `Missing documentation: ${missingLabels.join(", ")}`,
+        { "X-Idempotency-Status": "REJECTED" },
+      );
+    }
+
     let paymentUrl = null;
+    let waiverUrl = null;
+    let medicalCertificateUrl = null;
+    let trailPolicyUrl = null;
 
     if (expectedAmount > 0) {
       if (!receipt || typeof receipt.arrayBuffer !== "function") {
@@ -414,6 +499,22 @@ export async function POST(req) {
       paymentUrl = await persistReceipt(receipt);
     } else if (receipt && typeof receipt.arrayBuffer === "function") {
       paymentUrl = await persistReceipt(receipt);
+    }
+
+    if (isFileLike(documentationInputs.waiver)) {
+      waiverUrl = await persistBookingDocument(documentationInputs.waiver, "waiver");
+    }
+    if (isFileLike(documentationInputs.medicalCertificate)) {
+      medicalCertificateUrl = await persistBookingDocument(
+        documentationInputs.medicalCertificate,
+        "medicalCertificate",
+      );
+    }
+    if (isFileLike(documentationInputs.trailPolicy)) {
+      trailPolicyUrl = await persistBookingDocument(
+        documentationInputs.trailPolicy,
+        "trailPolicy",
+      );
     }
 
     if (event.maxParticipants) {
@@ -441,6 +542,9 @@ export async function POST(req) {
         eventId,
         totalAmount,
         paymentUrl,
+        waiverUrl,
+        medicalCertificateUrl,
+        trailPolicyUrl,
       },
       include: {
         event: true,

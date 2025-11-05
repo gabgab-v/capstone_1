@@ -46,6 +46,11 @@ const DIFFICULTY_LEVELS = [
     description: 'Balanced challenge for hikers with some experience and stamina.',
   },
   {
+    value: 'TECHNICAL',
+    label: 'Technical',
+    description: 'Advanced routes requiring technical skills, gear, or exposure readiness.',
+  },
+  {
     value: 'EXPERT',
     label: 'Expert',
     description: 'Demanding routes suited for seasoned hikers ready for steep ascents.',

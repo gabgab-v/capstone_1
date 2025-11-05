@@ -8,6 +8,7 @@ const DIFFICULTY_CANONICAL = {
   intermediate: "INTERMEDIATE",
   moderate: "INTERMEDIATE",
   medium: "INTERMEDIATE",
+  technical: "TECHNICAL",
   expert: "EXPERT",
   advanced: "EXPERT",
   hard: "EXPERT",

@@ -120,6 +120,9 @@ model Booking {
   status      String   @default("PENDING")
   paymentUrl  String?
   totalAmount Float
+  waiverUrl   String?
+  medicalCertificateUrl String?
+  trailPolicyUrl String?
   createdAt   DateTime @default(now())
   requestLogs BookingRequestLog[]
 }
@@ -164,6 +167,7 @@ enum UserRole {
 enum EventDifficulty {
   BEGINNER
   INTERMEDIATE
+  TECHNICAL
   EXPERT
 }
 

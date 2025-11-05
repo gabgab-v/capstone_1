@@ -8,6 +8,7 @@ const DIFFICULTY_CANONICAL = {
   intermediate: 'INTERMEDIATE',
   moderate: 'INTERMEDIATE',
   medium: 'INTERMEDIATE',
+  technical: 'TECHNICAL',
   expert: 'EXPERT',
   advanced: 'EXPERT',
   hard: 'EXPERT',
@@ -131,7 +132,7 @@ export async function POST(req) {
     if (!difficulty) {
       return new Response(
         JSON.stringify({
-          error: 'Difficulty must be Beginner, Intermediate, or Expert.',
+          error: 'Difficulty must be Beginner, Intermediate, Technical, or Expert.',
         }),
         { status: 400 },
       );

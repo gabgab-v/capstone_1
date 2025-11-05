@@ -1,6 +1,8 @@
 import React, { useMemo } from "react";
 import {
+  Alert,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +21,12 @@ function resolveReceiptUrl(paymentUrl) {
   const normalized = paymentUrl.startsWith("/") ? paymentUrl : `/${paymentUrl}`;
   return `${BASE_URL}${normalized}`;
 }
+
+const DOCUMENT_FIELDS = [
+  { key: "waiverUrl", label: "Risk Waiver" },
+  { key: "medicalCertificateUrl", label: "Medical Clearance" },
+  { key: "trailPolicyUrl", label: "Trail Policy Document" },
+];
 
 function formatAmount(amount) {
   const value = Number(amount ?? 0);
@@ -68,6 +76,40 @@ export default function ReceiptPage({ route, navigation }) {
     return "Waiting for organizer review.";
   }, [isCancelled, isConfirmed, isRejected]);
 
+  const documentationItems = useMemo(() => {
+    if (!booking) {
+      return [];
+    }
+    return DOCUMENT_FIELDS.filter(({ key }) => {
+      const value = booking?.[key];
+      return typeof value === "string" && value.trim().length > 0;
+    }).map(({ key, label }) => ({
+      key,
+      label,
+      url: booking[key],
+    }));
+  }, [booking]);
+
+  const handleOpenDocument = async (url) => {
+    if (typeof url !== "string" || !url.trim()) {
+      return;
+    }
+    const trimmed = url.trim();
+    try {
+      const canOpen = await Linking.canOpenURL(trimmed);
+      if (!canOpen) {
+        throw new Error("Unsupported URL");
+      }
+      await Linking.openURL(trimmed);
+    } catch (err) {
+      console.error("Failed to open documentation link:", err);
+      Alert.alert(
+        "Unable to open",
+        "We couldn't open this document automatically. Please copy the link and open it manually.",
+      );
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
@@ -90,18 +132,41 @@ export default function ReceiptPage({ route, navigation }) {
       </View>
 
       {receiptUrl ? (
-        <View style={styles.receiptCard}>
-          <Text style={styles.receiptTitle}>Uploaded Receipt</Text>
-          <Image source={{ uri: receiptUrl }} style={styles.receiptImage} resizeMode="contain" />
-          <Text style={styles.receiptHint}>
-            Keep this receipt handy. Organizers use it to verify your payment.
+      <View style={styles.receiptCard}>
+        <Text style={styles.receiptTitle}>Uploaded Receipt</Text>
+        <Image source={{ uri: receiptUrl }} style={styles.receiptImage} resizeMode="contain" />
+        <Text style={styles.receiptHint}>
+          Keep this receipt handy. Organizers use it to verify your payment.
+        </Text>
+      </View>
+    ) : (
+      <Text style={styles.receiptPlaceholder}>
+        No receipt was uploaded for this booking.
+      </Text>
+    )}
+
+      {documentationItems.length ? (
+        <View style={styles.docsCard}>
+          <Text style={styles.docsTitle}>Submitted Documentation</Text>
+          {documentationItems.map((item, index) => {
+            const isLast = index === documentationItems.length - 1;
+            return (
+              <TouchableOpacity
+                key={item.key}
+              style={[styles.docRow, isLast && styles.docRowLast]}
+                onPress={() => handleOpenDocument(item.url)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.docLabel}>{item.label}</Text>
+                <Text style={styles.docLink}>Open</Text>
+              </TouchableOpacity>
+            );
+          })}
+          <Text style={styles.docsHint}>
+            Keep these files accessible. Organizers may request them during check-in.
           </Text>
         </View>
-      ) : (
-        <Text style={styles.receiptPlaceholder}>
-          No receipt was uploaded for this booking.
-        </Text>
-      )}
+      ) : null}
 
       <View style={[styles.statusBanner, { borderColor: statusMeta.color }]}>
         <Text style={[styles.statusBannerText, { color: statusMeta.color }]}>{statusMessage}</Text>
@@ -174,6 +239,30 @@ const styles = StyleSheet.create({
   receiptImage: { width: "100%", height: 260, backgroundColor: "#f3f4f6", borderRadius: 12 },
   receiptHint: { fontSize: 12, color: "#6b7280", marginTop: 12, textAlign: "center" },
   receiptPlaceholder: { fontSize: 13, color: "#6b7280", marginBottom: 24 },
+  docsCard: {
+    width: "100%",
+    padding: 20,
+    borderRadius: 16,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    marginBottom: 24,
+  },
+  docsTitle: { fontSize: 16, fontWeight: "700", color: "#065f46", marginBottom: 12 },
+  docRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#dcfce7",
+  },
+  docRowLast: {
+    borderBottomWidth: 0,
+  },
+  docLabel: { fontSize: 14, fontWeight: "600", color: "#064e3b" },
+  docLink: { fontSize: 13, fontWeight: "700", color: "#047857" },
+  docsHint: { fontSize: 12, color: "#047857", marginTop: 12, lineHeight: 18 },
   statusBanner: {
     width: "100%",
     padding: 14,

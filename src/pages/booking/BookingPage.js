@@ -14,11 +14,40 @@ import { useNotifications } from "../../context/NotificationContext";
 import { createIdempotencyKey, postFormData } from "../../lib/api";
 import { getEventDifficultyLabel } from "../../utils/matchScoring";
 
-const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/jpg"];
+const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_RECEIPT_TYPES, "application/pdf"];
+
+const DOCUMENT_CONFIG = {
+  waiver: {
+    key: "waiver",
+    label: "Risk Waiver",
+    helper: "Upload the signed waiver acknowledging you understand the advanced risks.",
+  },
+  medicalCertificate: {
+    key: "medicalCertificate",
+    label: "Medical Clearance",
+    helper: "Provide a recent medical certificate showing you are fit to join.",
+  },
+  trailPolicy: {
+    key: "trailPolicy",
+    label: "Trail Policy Acknowledgement",
+    helper: "Attach any trail-specific policy or permit required by the organizer.",
+  },
+};
+
+const REQUIRED_DOCUMENTS_BY_DIFFICULTY = {
+  Technical: ["waiver", "trailPolicy"],
+  Expert: ["waiver", "medicalCertificate"],
+};
 
 export default function BookingPage({ route, navigation }) {
   const { event } = route.params;
   const [receipt, setReceipt] = useState(null);
+  const [documents, setDocuments] = useState({
+    waiver: null,
+    medicalCertificate: null,
+    trailPolicy: null,
+  });
   const [loading, setLoading] = useState(false);
   const { scheduleNotification } = useNotifications();
   const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
@@ -27,12 +56,18 @@ export default function BookingPage({ route, navigation }) {
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
   const eventDifficulty = useMemo(() => getEventDifficultyLabel(event), [event]);
   const isExpertDifficulty = eventDifficulty === "Expert";
+  const requiredDocuments = useMemo(
+    () => REQUIRED_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [],
+    [eventDifficulty],
+  );
   const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
 
   useEffect(() => {
     setExpertWaiverAccepted(false);
     setBookingRequestKey(createIdempotencyKey());
-  }, [event?.id, isExpertDifficulty]);
+    setDocuments({ waiver: null, medicalCertificate: null, trailPolicy: null });
+    setReceipt(null);
+  }, [event?.id, eventDifficulty]);
 
   const priceLabel = useMemo(() => {
     const amount = Number(event?.price ?? 0);
@@ -42,10 +77,27 @@ export default function BookingPage({ route, navigation }) {
     return `PHP ${amount.toLocaleString()}`;
   }, [event?.price]);
 
-  const pickReceipt = async () => {
+  const createFilePayload = (asset, fallbackName, fallbackMimeType) => {
+    const normalizedMime = (asset.mimeType || asset.type || fallbackMimeType || "").toLowerCase();
+    return {
+      uri: asset.uri,
+      name: asset.name || fallbackName,
+      mimeType: normalizedMime || fallbackMimeType || "application/octet-stream",
+    };
+  };
+
+  const pickFile = async ({
+    pickerTypes,
+    allowedMimeTypes,
+    fallbackName,
+    fallbackMimeType,
+    label,
+    unsupportedMessage,
+    onPicked,
+  }) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["image/*"],
+        type: pickerTypes,
         multiple: false,
         copyToCacheDirectory: false,
       });
@@ -54,29 +106,72 @@ export default function BookingPage({ route, navigation }) {
         return;
       }
 
-      const asset = result.assets[0];
-      const mimeType = (asset.mimeType || asset.type || "").toLowerCase();
-      if (mimeType && !ALLOWED_RECEIPT_TYPES.includes(mimeType)) {
-        Alert.alert(
-          "Unsupported File",
-          "Please upload an image receipt (JPEG, PNG, WEBP, or GIF).",
-        );
+      const file = createFilePayload(result.assets[0], fallbackName, fallbackMimeType);
+
+      if (
+        Array.isArray(allowedMimeTypes) &&
+        allowedMimeTypes.length > 0 &&
+        file.mimeType &&
+        !allowedMimeTypes.includes(file.mimeType)
+      ) {
+        Alert.alert("Unsupported File", unsupportedMessage);
         return;
       }
 
-      setReceipt({
-        uri: asset.uri,
-        name: asset.name || "receipt.jpg",
-        mimeType: mimeType || "image/jpeg",
-      });
+      onPicked(file);
     } catch (error) {
-      console.error("Error picking document:", error);
-      Alert.alert("Error", "Could not pick the document.");
+      console.error(`Error picking ${label}:`, error);
+      Alert.alert("Error", `Could not pick the ${label.toLowerCase()}.`);
     }
+  };
+
+  const pickReceipt = async () => {
+    if (loading) {
+      return;
+    }
+    await pickFile({
+      pickerTypes: ["image/*"],
+      allowedMimeTypes: ALLOWED_RECEIPT_TYPES,
+      fallbackName: "receipt.jpg",
+      fallbackMimeType: "image/jpeg",
+      label: "Receipt",
+      unsupportedMessage: "Please upload an image receipt (JPEG, PNG, WEBP, or GIF).",
+      onPicked: (file) => setReceipt(file),
+    });
+  };
+
+  const pickDocument = async (docKey) => {
+    if (loading) {
+      return;
+    }
+    const config = DOCUMENT_CONFIG[docKey];
+    if (!config) {
+      return;
+    }
+    await pickFile({
+      pickerTypes: ["image/*", "application/pdf"],
+      allowedMimeTypes: ALLOWED_DOCUMENT_TYPES,
+      fallbackName: `${docKey}.pdf`,
+      fallbackMimeType: "application/pdf",
+      label: config.label,
+      unsupportedMessage: "Please upload an image or PDF for this document.",
+      onPicked: (file) =>
+        setDocuments((prev) => ({
+          ...prev,
+          [docKey]: file,
+        })),
+    });
   };
 
   const clearReceipt = () => {
     setReceipt(null);
+  };
+
+  const clearDocument = (docKey) => {
+    setDocuments((prev) => ({
+      ...prev,
+      [docKey]: null,
+    }));
   };
 
   const submitBooking = async () => {
@@ -86,6 +181,18 @@ export default function BookingPage({ route, navigation }) {
 
     if (requiresReceipt && !receipt) {
       Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
+      return;
+    }
+
+    const missingDocumentLabels = requiredDocuments
+      .filter((docKey) => !documents[docKey])
+      .map((docKey) => DOCUMENT_CONFIG[docKey]?.label || docKey);
+
+    if (missingDocumentLabels.length) {
+      Alert.alert(
+        "Documentation Required",
+        `Please upload the following before submitting: ${missingDocumentLabels.join(", ")}.`,
+      );
       return;
     }
 
@@ -103,6 +210,17 @@ export default function BookingPage({ route, navigation }) {
         });
       }
 
+      Object.entries(documents).forEach(([docKey, file]) => {
+        if (!file) {
+          return;
+        }
+        formData.append(docKey, {
+          uri: file.uri,
+          name: file.name,
+          type: file.mimeType,
+        });
+      });
+
       const booking = await postFormData("/api/bookings", formData, {
         idempotencyKey: bookingRequestKey,
       });
@@ -117,6 +235,8 @@ export default function BookingPage({ route, navigation }) {
         },
       });
 
+      setDocuments({ waiver: null, medicalCertificate: null, trailPolicy: null });
+      setReceipt(null);
       navigation.navigate("ReceiptPage", { event, booking });
       setBookingRequestKey(createIdempotencyKey());
     } catch (err) {
@@ -139,6 +259,17 @@ export default function BookingPage({ route, navigation }) {
 
     if (requiresReceipt && !receipt) {
       Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
+      return;
+    }
+
+    const missingDocumentLabels = requiredDocuments
+      .filter((docKey) => !documents[docKey])
+      .map((docKey) => DOCUMENT_CONFIG[docKey]?.label || docKey);
+    if (missingDocumentLabels.length) {
+      Alert.alert(
+        "Documentation Required",
+        `Please upload the following before submitting: ${missingDocumentLabels.join(", ")}.`,
+      );
       return;
     }
 
@@ -199,6 +330,61 @@ export default function BookingPage({ route, navigation }) {
               I understand the risks of this expert event and wish to proceed with my booking.
             </Text>
           </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {requiredDocuments.length ? (
+        <View style={styles.documentationCard}>
+          <Text style={styles.documentationTitle}>Required Documentation</Text>
+          <Text style={styles.documentationSubtitle}>
+            {`This trail is rated ${eventDifficulty || "advanced"}. Upload these files before submitting your booking.`}
+          </Text>
+
+          {requiredDocuments.map((docKey) => {
+            const config = DOCUMENT_CONFIG[docKey];
+            if (!config) {
+              return null;
+            }
+            const doc = documents[docKey];
+            const isImage = (doc?.mimeType || "").startsWith("image/");
+            return (
+              <View key={docKey} style={styles.documentSection}>
+                <View style={styles.documentLabelRow}>
+                  <Text style={styles.documentLabel}>{config.label}</Text>
+                  <Text style={styles.documentRequiredBadge}>Required</Text>
+                </View>
+                <Text style={styles.documentHelper}>{config.helper}</Text>
+                <TouchableOpacity
+                  style={styles.uploadBtn}
+                  onPress={() => pickDocument(docKey)}
+                  disabled={loading}
+                >
+                  <Text style={styles.uploadBtnText}>
+                    {doc ? `Change ${config.label}` : `Upload ${config.label}`}
+                  </Text>
+                </TouchableOpacity>
+                {doc ? (
+                  <View style={styles.previewCard}>
+                    {isImage ? (
+                      <Image source={{ uri: doc.uri }} style={styles.previewImage} />
+                    ) : (
+                      <View style={styles.documentPlaceholder}>
+                        <Text style={styles.documentPlaceholderText}>PDF attached</Text>
+                      </View>
+                    )}
+                    <View style={styles.previewMeta}>
+                      <Text style={styles.previewName} numberOfLines={1}>
+                        {doc.name}
+                      </Text>
+                      <TouchableOpacity onPress={() => clearDocument(docKey)} disabled={loading}>
+                        <Text style={styles.removeText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
 
@@ -358,6 +544,45 @@ const styles = StyleSheet.create({
     color: "#7f1d1d",
     lineHeight: 20,
   },
+  documentationCard: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: "#ecfeff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  documentationTitle: { fontSize: 16, fontWeight: "700", color: "#0f172a", marginBottom: 6 },
+  documentationSubtitle: {
+    fontSize: 13,
+    color: "#1e3a8a",
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  documentSection: {
+    marginBottom: 16,
+  },
+  documentLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  documentLabel: { fontSize: 14, fontWeight: "600", color: "#0f172a" },
+  documentRequiredBadge: { fontSize: 12, fontWeight: "700", color: "#b91c1c" },
+  documentHelper: { fontSize: 12, color: "#334155", marginBottom: 10, lineHeight: 18 },
+  documentPlaceholder: {
+    width: "100%",
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5f5",
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  documentPlaceholderText: { fontSize: 13, fontWeight: "600", color: "#475569" },
   cancelBtn: {
     padding: 14,
     alignItems: "center",
