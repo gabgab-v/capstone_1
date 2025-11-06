@@ -57,6 +57,75 @@ const statusClassName = (value) => {
   return 'info';
 };
 
+const formatOutcomeLabel = (value) => {
+  if (!value) {
+    return 'Unknown';
+  }
+  return String(value)
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const bookingOutcomeClassName = (value) => {
+  const normalized = typeof value === 'string' ? value.toUpperCase() : '';
+  if (normalized === 'SUCCESS') {
+    return 'approved';
+  }
+  if (normalized === 'PENDING') {
+    return 'pending';
+  }
+  if (normalized === 'REJECTED' || normalized === 'ERROR') {
+    return 'rejected';
+  }
+  if (normalized === 'RATE_LIMITED') {
+    return 'info';
+  }
+  return 'info';
+};
+
+const extractLogMessage = (log) => {
+  if (!log) {
+    return '';
+  }
+  const { errorMessage, responseBody } = log;
+  if (typeof errorMessage === 'string' && errorMessage.trim().length > 0) {
+    return errorMessage.trim();
+  }
+  if (!responseBody) {
+    return '';
+  }
+  if (typeof responseBody === 'string') {
+    return responseBody;
+  }
+  if (typeof responseBody === 'object') {
+    if (typeof responseBody.error === 'string' && responseBody.error.trim().length > 0) {
+      return responseBody.error.trim();
+    }
+    if (typeof responseBody.message === 'string' && responseBody.message.trim().length > 0) {
+      return responseBody.message.trim();
+    }
+    try {
+      return JSON.stringify(responseBody);
+    } catch {
+      return '';
+    }
+  }
+  return String(responseBody);
+};
+
+const truncateMessage = (value, length = 140) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  if (value.length <= length) {
+    return value;
+  }
+  return `${value.slice(0, length - 1)}…`;
+};
+
 const formatDateTime = (value, { includeTime = false } = {}) => {
   if (!value) {
     return unknownValue;
@@ -369,6 +438,8 @@ const Dashboard = ({ setToken }) => {
         ? document.getElementById('organizer-requests')
         : target === 'expert'
         ? document.getElementById('expert-requests')
+        : target === 'bookingLogs'
+        ? document.getElementById('booking-logs')
         : target === 'dashboard'
         ? document.getElementById('dashboard')
         : document.getElementById('submissions-panel');
@@ -395,6 +466,10 @@ const Dashboard = ({ setToken }) => {
             <button type="button" className="admin-nav-item" onClick={() => handleNavigate('submissions')}>
               <span className="admin-nav-item__icon" />
               Submissions
+            </button>
+            <button type="button" className="admin-nav-item" onClick={() => handleNavigate('bookingLogs')}>
+              <span className="admin-nav-item__icon" />
+              Booking logs
             </button>
           </div>
         </nav>
@@ -577,11 +652,228 @@ const Dashboard = ({ setToken }) => {
             onStatsUpdate={setExpertStats}
             onDataChange={setExpertData}
           />
+
+          <BookingLogsPanel onUnauthorized={handleLogout} />
         </main>
       </div>
     </div>
   );
 };
+const BookingLogsPanel = ({ onUnauthorized }) => {
+  const [logs, setLogs] = useState([]);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('all');
+
+  const fetchLogs = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const response = await adminApi.get('/api/admin/booking-logs');
+      const payload = response.data?.logs ?? response.data ?? [];
+      setLogs(Array.isArray(payload) ? payload : []);
+    } catch (err) {
+      console.error('Fetch booking logs error:', err);
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        onUnauthorized?.();
+      } else if (err.response) {
+        setError(err.response.data?.message || 'Unable to load booking logs.');
+      } else if (err.request) {
+        setError('Network error: no response received.');
+      } else {
+        setError('Unexpected error while fetching booking logs.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onUnauthorized]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  const outcomeOptions = useMemo(() => {
+    const values = new Set(['all']);
+    logs.forEach((log) => {
+      if (log?.outcome) {
+        values.add(String(log.outcome).toUpperCase());
+      }
+    });
+    return Array.from(values);
+  }, [logs]);
+
+  const filteredLogs = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const selectedOutcome = outcomeFilter === 'all' ? null : outcomeFilter;
+    return logs.filter((log) => {
+      const logOutcome = String(log?.outcome || '').toUpperCase();
+      if (selectedOutcome && logOutcome !== selectedOutcome) {
+        return false;
+      }
+      if (term.length === 0) {
+        return true;
+      }
+      const searchableFields = [
+        log?.user?.name,
+        log?.user?.email,
+        log?.event?.title,
+        log?.event?.difficulty,
+        log?.idempotencyKey,
+        log?.ipAddress,
+        log?.booking?.id,
+        log?.booking?.status,
+        extractLogMessage(log),
+      ];
+      return searchableFields
+        .filter((value) => typeof value === 'string')
+        .some((value) => value.toLowerCase().includes(term));
+    });
+  }, [logs, outcomeFilter, searchTerm]);
+
+  return (
+    <section className="panel" id="booking-logs">
+      <div className="panel__header">
+        <div className="panel__header-row">
+          <h2 className="panel__title">Booking Submission Logs</h2>
+          <div className="panel__actions">
+            <button type="button" className="link-button" onClick={fetchLogs} disabled={isLoading}>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <p className="panel__subtitle">
+          Review recent booking submission attempts, server responses, and validation errors for technical trails.
+        </p>
+      </div>
+      <div className="panel__body">
+        {error ? <div className="error-banner">{error}</div> : null}
+        <div className="filter-row">
+          <input
+            className="filter-input"
+            placeholder="Search users, events, idempotency keys..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+          <select
+            className="filter-select"
+            value={outcomeFilter}
+            onChange={(event) => setOutcomeFilter(event.target.value)}
+          >
+            {outcomeOptions.map((outcome) => (
+              <option key={outcome} value={outcome}>
+                {outcome === 'all' ? 'All outcomes' : formatOutcomeLabel(outcome)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Outcome</th>
+                <th>HTTP</th>
+                <th>User</th>
+                <th>Event</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td className="table-empty" colSpan={6}>
+                    Loading booking logs...
+                  </td>
+                </tr>
+              ) : filteredLogs.length === 0 ? (
+                <tr>
+                  <td className="table-empty" colSpan={6}>
+                    No booking activity matches your filters.
+                  </td>
+                </tr>
+              ) : (
+                filteredLogs.map((log) => {
+                  const message = extractLogMessage(log);
+                  const truncated = truncateMessage(message);
+                  const outcomeClass = bookingOutcomeClassName(log.outcome);
+                  const eventMetaParts = [];
+                  if (log.event?.difficulty) {
+                    eventMetaParts.push(formatOutcomeLabel(log.event.difficulty));
+                  }
+                  if (log.booking?.status) {
+                    eventMetaParts.push(`Booking ${formatOutcomeLabel(log.booking.status)}`);
+                  }
+                  const eventMeta = eventMetaParts.length ? eventMetaParts.join(' • ') : null;
+                  const metaDetails = [];
+                  if (log.idempotencyKey) {
+                    metaDetails.push(`Key ${log.idempotencyKey}`);
+                  }
+                  if (log.booking?.id) {
+                    metaDetails.push(`Booking ${log.booking.id}`);
+                  }
+
+                  return (
+                    <tr key={log.id}>
+                      <td>{formatDateTime(log.createdAt, { includeTime: true })}</td>
+                      <td>
+                        <span className={`status-pill status-pill--${outcomeClass}`}>
+                          {formatOutcomeLabel(log.outcome)}
+                        </span>
+                      </td>
+                      <td>{typeof log.responseStatus === 'number' ? log.responseStatus : '—'}</td>
+                      <td>
+                        <div className="table-applicant">
+                          <div className="table-avatar">
+                            {getInitials(log.user?.name || log.user?.email || 'Booking')}
+                          </div>
+                          <div>
+                            <div>{log.user?.name || log.user?.email || 'Unknown user'}</div>
+                            {log.user?.email ? (
+                              <small className="activity-item__meta">{log.user.email}</small>
+                            ) : null}
+                            {log.ipAddress ? (
+                              <small className="activity-item__meta">IP {log.ipAddress}</small>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <div>{log.event?.title || 'Unlinked event'}</div>
+                          {eventMeta ? <small className="activity-item__meta">{eventMeta}</small> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          {truncated ? (
+                            <span title={message}>{truncated}</span>
+                          ) : (
+                            <span className="activity-item__meta">No server message</span>
+                          )}
+                          {metaDetails.length ? (
+                            <div>
+                              {metaDetails.map((meta, index) => (
+                                <small key={`${log.id}-meta-${index}`} className="activity-item__meta">
+                                  {meta}
+                                </small>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const OrganizerRequests = ({ onUnauthorized, onStatsUpdate, onDataChange }) => {
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState('');
