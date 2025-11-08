@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { TRAIL_TYPE_OPTIONS } from '../../constants/trailTypes';
 
 const EXPERIENCE_OPTIONS = [
   { label: 'Select...', value: '' },
@@ -34,18 +35,6 @@ const DIFFICULTY_OPTIONS = [
   { label: 'Moderate', value: 'Moderate' },
   { label: 'Hard', value: 'Hard' },
   { label: 'Challenging', value: 'Challenging' },
-];
-
-const TRAIL_TYPE_OPTIONS = [
-  { label: 'Select...', value: '' },
-  { label: 'Forest', value: 'Forest' },
-  { label: 'Mountain', value: 'Mountain' },
-  { label: 'Coastal', value: 'Coastal' },
-  { label: 'River', value: 'River' },
-  { label: 'Waterfall', value: 'Waterfall' },
-  { label: 'Desert', value: 'Desert' },
-  { label: 'Urban', value: 'Urban' },
-  { label: 'Other', value: 'Other' },
 ];
 
 export default function PreferencesSetupPage({ navigation }) {
@@ -80,10 +69,11 @@ export default function PreferencesSetupPage({ navigation }) {
     return [...DIFFICULTY_OPTIONS, { label: difficulty, value: difficulty }];
   }, [difficulty]);
   const trailTypeOptions = useMemo(() => {
+    const baseOptions = [{ label: 'Select...', value: '' }, ...TRAIL_TYPE_OPTIONS];
     if (!trailType || TRAIL_TYPE_OPTIONS.some((option) => option.value === trailType)) {
-      return TRAIL_TYPE_OPTIONS;
+      return baseOptions;
     }
-    return [...TRAIL_TYPE_OPTIONS, { label: trailType, value: trailType }];
+    return [...baseOptions, { label: trailType, value: trailType }];
   }, [trailType]);
   const isExperienceLocked = Boolean(user?.experienceLevelLocked);
   const hasExpertBadge = Boolean(user?.expertBadgeAwarded);

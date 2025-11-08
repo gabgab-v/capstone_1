@@ -366,6 +366,9 @@ export async function PATCH(request, { params }) {
       );
     }
 
+    const hasTrailTypeField = Object.prototype.hasOwnProperty.call(body, "trailType");
+    const normalizedTrailType = hasTrailTypeField ? sanitizeString(body?.trailType) : null;
+
     const updateData = {
       title,
       overview: sanitizeString(body?.overview),
@@ -392,6 +395,7 @@ export async function PATCH(request, { params }) {
       maxParticipants,
       status,
       announceAt,
+      trailType: hasTrailTypeField ? normalizedTrailType : existingEvent.trailType,
       trailId: selectedTrail.id,
       trailGeoJson: selectedTrail.geoJson ?? sanitizeGeoJson(body?.trailGeoJson) ?? existingEvent.trailGeoJson,
       trailDistanceMeters:

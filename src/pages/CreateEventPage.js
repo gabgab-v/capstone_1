@@ -25,6 +25,7 @@ import TrailMapPicker from '../components/TrailMapPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
 import { normalizeDifficultyValue } from '../utils/matchScoring';
+import { TRAIL_TYPE_OPTIONS } from '../constants/trailTypes';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -330,6 +331,7 @@ export default function CreateEventPage({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [selectedTrailId, setSelectedTrailId] = useState(() => eventFromParams?.trailId ?? null);
+  const [trailType, setTrailType] = useState(() => eventFromParams?.trailType ?? '');
   const [locationName, setLocationName] = useState(() => eventFromParams?.locationName ?? '');
 
   const initialLatitude = Number(eventFromParams?.locationLatitude);
@@ -366,6 +368,10 @@ export default function CreateEventPage({ route, navigation }) {
         : null;
     return raw && EVENT_STATUS_SET.has(raw) ? raw : DEFAULT_EVENT_STATUS;
   });
+  const trailTypePickerOptions = useMemo(
+    () => [{ label: 'Select...', value: '' }, ...TRAIL_TYPE_OPTIONS],
+    [],
+  );
 
   const initialZoom = Number(eventFromParams?.locationZoomLevel);
   const [locationZoomLevel, setLocationZoomLevel] = useState(() =>
@@ -430,6 +436,7 @@ export default function CreateEventPage({ route, navigation }) {
     setPrice(Number.isFinite(Number(activeEvent.price)) ? String(activeEvent.price) : '');
     setDifficulty(resolveDifficultyValue(activeEvent.difficulty));
     setGcashNumber(activeEvent.gcashNumber ?? '');
+    setTrailType(activeEvent.trailType ?? '');
 
     setSelectedImage(activeEvent.imageUrl ? { uri: activeEvent.imageUrl } : null);
     setSelectedTrailId(activeEvent.trailId ?? null);
@@ -611,9 +618,15 @@ export default function CreateEventPage({ route, navigation }) {
   const handleSubmit = useCallback(async () => {
     const trimmedTitle = trimOrNull(title);
     const trimmedGcash = trimOrNull(gcashNumber);
+    const normalizedTrailType = trimOrNull(trailType);
     if (!trimmedTitle) {
       Alert.alert('Missing Information', 'Please add a title for your event.');
       setActiveTab('overview');
+      return;
+    }
+    if (!normalizedTrailType) {
+      Alert.alert('Missing Information', 'Select the trail style that best describes this event.');
+      setActiveTab('details');
       return;
     }
     if (!trimmedGcash) {
@@ -818,6 +831,7 @@ export default function CreateEventPage({ route, navigation }) {
         minParticipants: minParticipantsValue,
         maxParticipants: normalizedMaxParticipants,
         status: normalizedStatus,
+        trailType: normalizedTrailType,
       };
 
       let savedEvent;
@@ -878,6 +892,7 @@ export default function CreateEventPage({ route, navigation }) {
     selectedImage,
     selectedLocation,
     locationName,
+    trailType,
     locationBounds,
     locationZoomLevel,
     startsAt,
@@ -1074,6 +1089,25 @@ export default function CreateEventPage({ route, navigation }) {
                   onChangeText={setGcashNumber}
                   placeholder="09XXXXXXXXX"
                 />
+              </View>
+
+              <View style={styles.infoFieldFull}>
+                <Text style={styles.infoLabel}>Trail Style</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={trailType}
+                    onValueChange={(value) => setTrailType(value)}
+                    style={styles.picker}
+                    dropdownIconColor="#1d4ed8"
+                  >
+                    {trailTypePickerOptions.map((option) => (
+                      <Picker.Item key={option.value} label={option.label} value={option.value} />
+                    ))}
+                  </Picker>
+                </View>
+                <Text style={styles.helperText}>
+                  This helps us match the event to hikers who prefer that terrain.
+                </Text>
               </View>
             </View>
 

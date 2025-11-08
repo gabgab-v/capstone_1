@@ -377,9 +377,19 @@ function computeEventVector(event, user) {
   const durationScore = normalizeDuration(Number(event?.durationHrs));
   const priceScore = normalizePrice(Number(event?.price));
   const difficultyScore = deriveEventDifficultyScore(event);
-  const trailPreference = user?.preferredTrailType;
-  const descriptor = trailPreference ? extractTrailDescriptor(event) : null;
-  const trailScore = trailPreference && descriptor && textContains(descriptor, trailPreference) ? 1 : 0;
+  const trailPreferenceRaw =
+    typeof user?.preferredTrailType === "string" ? user.preferredTrailType.trim() : "";
+  const descriptor = trailPreferenceRaw ? extractTrailDescriptor(event) : null;
+  const eventTrailType = typeof event?.trailType === "string" ? event.trailType.trim() : "";
+  const hasDirectTrailMatch =
+    trailPreferenceRaw &&
+    eventTrailType &&
+    eventTrailType.toLowerCase() === trailPreferenceRaw.toLowerCase();
+  const trailScore =
+    trailPreferenceRaw &&
+    (hasDirectTrailMatch || (descriptor && textContains(descriptor, trailPreferenceRaw)))
+      ? 1
+      : 0;
   const distanceScore = normalizeDistance(Number(event?.distanceKm));
   const elevationScore = normalizeElevation(Number(event?.elevationM));
 
@@ -439,10 +449,18 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
   const eventDistance = Number(event?.distanceKm);
   const preferredElevation = Number(user?.preferredElevationM);
   const eventElevation = Number(event?.elevationM);
-  const preferredTrailRaw = typeof user?.preferredTrailType === "string" ? user.preferredTrailType.trim() : "";
+  const preferredTrailRaw =
+    typeof user?.preferredTrailType === "string" ? user.preferredTrailType.trim() : "";
   const preferredTrail = preferredTrailRaw || "";
   const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
-  const matchesTrail = Boolean(preferredTrail && descriptor && textContains(descriptor, preferredTrail));
+  const eventTrailType = typeof event?.trailType === "string" ? event.trailType.trim() : "";
+  const hasDirectTrailMatch =
+    preferredTrail &&
+    eventTrailType &&
+    eventTrailType.toLowerCase() === preferredTrail.toLowerCase();
+  const matchesTrail =
+    Boolean(preferredTrail) &&
+    (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
 
   const context = {
     eventDifficultyLabel,
@@ -457,6 +475,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
     preferredElevation,
     eventElevation,
     preferredTrail,
+    eventTrailType,
     matchesTrail,
   };
 
@@ -644,12 +663,15 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
       key: "trailType",
       label: "Trail style",
       indices: [4],
-      detail: ({ preferredTrail, matchesTrail }) => {
+      detail: ({ preferredTrail, matchesTrail, eventTrailType }) => {
         if (!preferredTrail) {
           return null;
         }
         if (matchesTrail) {
           return `Highlights ${preferredTrail} trails, matching what you look for.`;
+        }
+        if (eventTrailType) {
+          return `Spotlights ${eventTrailType} trails, which differs from your ${preferredTrail} preference.`;
         }
         return `Trail description has not mentioned ${preferredTrail} yet.`;
       },
@@ -895,6 +917,8 @@ export default function DiscoverPage() {
             : null,
           Number.isFinite(Number(event.steps)) ? `${event.steps} steps` : null,
         ].filter(Boolean);
+        const eventTrailType =
+          typeof event.trailType === "string" ? event.trailType.trim() : "";
 
         const directionText =
           truncate(event.directions) ?? "Directions will be shared soon.";
@@ -1034,6 +1058,12 @@ export default function DiscoverPage() {
                 </View>
               )}
               <Text style={styles.location}>{getLocationLabel(event)}</Text>
+              {eventTrailType ? (
+                <View style={styles.trailTypeChip}>
+                  <Text style={styles.trailTypeChipLabel}>Trail style</Text>
+                  <Text style={styles.trailTypeChipValue}>{eventTrailType}</Text>
+                </View>
+              ) : null}
               <View style={styles.scheduleBlock}>
                 <Text style={styles.scheduleLabel}>Starts</Text>
                 <Text style={styles.schedulePrimary}>
@@ -1179,6 +1209,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#4B5563",
     marginBottom: 10,
+  },
+  trailTypeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  trailTypeChipLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    textTransform: "uppercase",
+    marginRight: 6,
+  },
+  trailTypeChipValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
   },
   scheduleBlock: {
     marginBottom: 12,

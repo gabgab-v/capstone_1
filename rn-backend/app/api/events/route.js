@@ -200,6 +200,7 @@ export async function POST(req) {
 
     const locationLatitude = toFloat(body?.locationLatitude);
     const locationLongitude = toFloat(body?.locationLongitude);
+    const trailType = sanitizeString(body?.trailType);
 
     const minParticipants = Math.max(0, toInt(body?.minParticipants) ?? 0);
     const maxParticipantsRaw = toInt(body?.maxParticipants);
@@ -259,6 +260,7 @@ export async function POST(req) {
       trailGeoJson: selectedTrail?.geoJson ?? sanitizeGeoJson(body?.trailGeoJson),
       trailDistanceMeters:
         selectedTrail?.totalDistanceMeters ?? toFloat(body?.trailDistanceMeters),
+      trailType,
       organizerId: user.id,
       minParticipants,
       maxParticipants,

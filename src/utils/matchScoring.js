@@ -233,9 +233,19 @@ function computeEventVector(event, user) {
   const durationScore = normalizeDuration(Number(event?.durationHrs));
   const priceScore = normalizePrice(Number(event?.price));
   const difficultyScore = deriveEventDifficultyScore(event);
-  const trailPreference = user?.preferredTrailType;
-  const descriptor = trailPreference ? extractTrailDescriptor(event) : null;
-  const trailScore = trailPreference && descriptor && textContains(descriptor, trailPreference) ? 1 : 0;
+  const trailPreferenceRaw =
+    typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
+  const descriptor = trailPreferenceRaw ? extractTrailDescriptor(event) : null;
+  const eventTrailType = typeof event?.trailType === 'string' ? event.trailType.trim() : '';
+  const hasDirectTrailMatch =
+    trailPreferenceRaw &&
+    eventTrailType &&
+    eventTrailType.toLowerCase() === trailPreferenceRaw.toLowerCase();
+  const trailScore =
+    trailPreferenceRaw &&
+    (hasDirectTrailMatch || (descriptor && textContains(descriptor, trailPreferenceRaw)))
+      ? 1
+      : 0;
   const distanceScore = normalizeDistance(Number(event?.distanceKm));
   const elevationScore = normalizeElevation(Number(event?.elevationM));
 
@@ -307,10 +317,18 @@ function buildMatchBreakdown({
   const eventDistance = Number(event?.distanceKm);
   const preferredElevation = Number(user?.preferredElevationM);
   const eventElevation = Number(event?.elevationM);
-  const preferredTrailRaw = typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
+  const preferredTrailRaw =
+    typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
   const preferredTrail = preferredTrailRaw || '';
   const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
-  const matchesTrail = Boolean(preferredTrail && descriptor && textContains(descriptor, preferredTrail));
+  const eventTrailType = typeof event?.trailType === 'string' ? event.trailType.trim() : '';
+  const hasDirectTrailMatch =
+    preferredTrail &&
+    eventTrailType &&
+    eventTrailType.toLowerCase() === preferredTrail.toLowerCase();
+  const matchesTrail =
+    Boolean(preferredTrail) &&
+    (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
 
   const context = {
     eventDifficultyLabel,
@@ -325,6 +343,7 @@ function buildMatchBreakdown({
     preferredElevation,
     eventElevation,
     preferredTrail,
+    eventTrailType,
     matchesTrail,
   };
 
@@ -512,12 +531,15 @@ function buildMatchBreakdown({
       key: 'trailType',
       label: 'Trail style',
       indices: [4],
-      detail: ({ preferredTrail, matchesTrail }) => {
+      detail: ({ preferredTrail, matchesTrail, eventTrailType }) => {
         if (!preferredTrail) {
           return null;
         }
         if (matchesTrail) {
           return `Highlights ${preferredTrail} trails, matching what you look for.`;
+        }
+        if (eventTrailType) {
+          return `Spotlights ${eventTrailType} trails, which differs from your ${preferredTrail} preference.`;
         }
         return `Trail description has not mentioned ${preferredTrail} yet.`;
       },
