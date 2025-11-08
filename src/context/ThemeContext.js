@@ -16,7 +16,9 @@ const STORAGE_KEY = 'trailmate.theme.preference';
 
 const ThemeContext = createContext({
   isDarkMode: false,
+  themePreference: 'system',
   colors: lightPalette,
+  setThemePreference: () => {},
   setDarkMode: () => {},
   toggleDarkMode: () => {},
 });
@@ -31,14 +33,14 @@ function getSystemScheme() {
 async function persistPreference(value) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
-      window.localStorage.setItem(STORAGE_KEY, value ? 'dark' : 'light');
+      window.localStorage.setItem(STORAGE_KEY, value);
     } catch (error) {
       console.warn('Unable to persist theme preference via localStorage', error);
     }
     return;
   }
   try {
-    await SecureStore.setItemAsync(STORAGE_KEY, value ? 'dark' : 'light');
+    await SecureStore.setItemAsync(STORAGE_KEY, value);
   } catch (error) {
     console.warn('Unable to persist theme preference', error);
   }
@@ -46,14 +48,16 @@ async function persistPreference(value) {
 
 async function readPersistedPreference() {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const normalize = (storedValue) => {
+      if (storedValue === 'dark' || storedValue === 'light' || storedValue === 'system') {
+        return storedValue;
+      }
+      return null;
+    };
+
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored === 'dark') {
-        return true;
-      }
-      if (stored === 'light') {
-        return false;
-      }
+      return normalize(stored);
     } catch (error) {
       console.warn('Unable to read theme preference via localStorage', error);
     }
@@ -61,11 +65,8 @@ async function readPersistedPreference() {
   }
   try {
     const stored = await SecureStore.getItemAsync(STORAGE_KEY);
-    if (stored === 'dark') {
-      return true;
-    }
-    if (stored === 'light') {
-      return false;
+    if (stored === 'dark' || stored === 'light' || stored === 'system') {
+      return stored;
     }
     return null;
   } catch (error) {
@@ -75,15 +76,16 @@ async function readPersistedPreference() {
 }
 
 export function ThemeProvider({ children }) {
-  const [isDarkMode, setIsDarkMode] = useState(() => getSystemScheme() === 'dark');
+  const [themePreference, setThemePreferenceState] = useState('system');
+  const [systemScheme, setSystemScheme] = useState(getSystemScheme());
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     readPersistedPreference()
       .then((storedValue) => {
-        if (mounted && storedValue !== null) {
-          setIsDarkMode(storedValue);
+        if (mounted && storedValue) {
+          setThemePreferenceState(storedValue);
         }
       })
       .finally(() => {
@@ -98,6 +100,24 @@ export function ThemeProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    if (typeof Appearance?.addChangeListener !== 'function') {
+      return undefined;
+    }
+
+    const listener = Appearance.addChangeListener(({ colorScheme }) => {
+      if (colorScheme) {
+        setSystemScheme(colorScheme);
+      }
+    });
+
+    return () => {
+      listener?.remove?.();
+    };
+  }, []);
+
+  const isDarkMode = themePreference === 'system' ? systemScheme === 'dark' : themePreference === 'dark';
+
+  useEffect(() => {
     NativeWindStyleSheet?.setColorScheme?.(isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
@@ -105,30 +125,33 @@ export function ThemeProvider({ children }) {
     StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
   }, [isDarkMode]);
 
-  useEffect(() => {
-    const listener = Appearance.addChangeListener(({ colorScheme }) => {
-      if (colorScheme && !isReady) {
-        setIsDarkMode(colorScheme === 'dark');
-      }
-    });
-
-    return () => {
-      listener.remove();
-    };
-  }, [isReady]);
-
-  const setDarkMode = useCallback((value) => {
-    setIsDarkMode(value);
+  const applyThemePreference = useCallback((value) => {
+    setThemePreferenceState(value);
     persistPreference(value);
   }, []);
 
+  const setThemePreference = useCallback(
+    (value) => {
+      applyThemePreference(value);
+    },
+    [applyThemePreference],
+  );
+
+  const setDarkMode = useCallback(
+    (value) => {
+      applyThemePreference(value ? 'dark' : 'light');
+    },
+    [applyThemePreference],
+  );
+
   const toggleDarkMode = useCallback(() => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
+    setThemePreferenceState((prev) => {
+      const next =
+        prev === 'system' ? (systemScheme === 'dark' ? 'light' : 'dark') : prev === 'dark' ? 'light' : 'dark';
       persistPreference(next);
       return next;
     });
-  }, []);
+  }, [systemScheme]);
 
   const colors = isDarkMode ? darkPalette : lightPalette;
 
@@ -140,11 +163,13 @@ export function ThemeProvider({ children }) {
   const value = useMemo(
     () => ({
       isDarkMode,
+      themePreference,
       colors,
+      setThemePreference,
       setDarkMode,
       toggleDarkMode,
     }),
-    [colors, isDarkMode, setDarkMode, toggleDarkMode],
+    [colors, isDarkMode, setDarkMode, setThemePreference, themePreference, toggleDarkMode],
   );
 
   if (!isReady) {

@@ -45,7 +45,7 @@ export default function SettingsPage({ navigation }) {
   const [locationServices, setLocationServices] = useState(true);
   const [shareActivityStatus, setShareActivityStatus] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const { isDarkMode, setDarkMode: setThemeDarkMode } = useTheme();
+  const { themePreference, setThemePreference } = useTheme();
   const insets = useSafeAreaInsets();
   const contentContainerStyle = useMemo(
     () => ({
@@ -500,35 +500,74 @@ export default function SettingsPage({ navigation }) {
     </View>
   );
 
-  const renderAppearanceSection = () => (
-    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
-      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">App Preferences</Text>
-      <View className="mt-4">
-        <View className="py-3">
-          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Dark mode</Text>
+  const renderAppearanceSection = () => {
+    const themeOptions = [
+      {
+        key: 'system',
+        title: 'System default',
+        description: 'Automatically match your device setting.',
+      },
+      {
+        key: 'light',
+        title: 'Light',
+        description: 'Always use a bright interface.',
+      },
+      {
+        key: 'dark',
+        title: 'Dark',
+        description: 'Always use a dim interface.',
+      },
+    ];
+
+    return (
+      <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+        <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">App Preferences</Text>
+        <View className="mt-4">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Theme</Text>
           <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Switch between light and dark themes to match your environment.
+            Choose how Pabukid adapts between light, dark, and system modes.
           </Text>
-          <View className="mt-2 flex-row justify-end">
-            <Switch
-              value={isDarkMode}
-              onValueChange={setThemeDarkMode}
-              trackColor={{ false: '#d6d3d1', true: '#2563eb' }}
-              thumbColor={isDarkMode ? '#1d4ed8' : '#f4f3f4'}
-              ios_backgroundColor="#d6d3d1"
-            />
-          </View>
+          {themeOptions.map((option) => {
+            const isSelected = themePreference === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                className={`mt-3 flex-row items-center justify-between rounded-2xl border px-4 py-3 ${
+                  isSelected
+                    ? 'border-blue-600 bg-blue-50 dark:border-blue-400/70 dark:bg-blue-950/30'
+                    : 'border-slate-200 dark:border-slate-700'
+                }`}
+                onPress={() => {
+                  if (option.key !== themePreference) {
+                    setThemePreference(option.key);
+                  }
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: isSelected }}
+              >
+                <View className="flex-1 pr-4">
+                  <Text className="text-base font-semibold text-slate-900 dark:text-slate-100">{option.title}</Text>
+                  <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">{option.description}</Text>
+                </View>
+                <View
+                  className={`h-5 w-5 rounded-full border-2 ${
+                    isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 dark:border-slate-600'
+                  }`}
+                />
+              </TouchableOpacity>
+            );
+          })}
+          <View className="h-px bg-slate-100 dark:bg-slate-900 mt-4" />
+          <TouchableOpacity className="py-3" onPress={() => navigation.navigate('PreferencesSetup')}>
+            <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Trail preferences</Text>
+            <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Update preferred difficulty, duration, distance, elevation, and terrain types.
+            </Text>
+          </TouchableOpacity>
         </View>
-        <View className="h-px bg-slate-100 dark:bg-slate-900" />
-        <TouchableOpacity className="py-3" onPress={() => navigation.navigate('PreferencesSetup')}>
-          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Trail preferences</Text>
-          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Update preferred difficulty, duration, distance, elevation, and terrain types.
-          </Text>
-        </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderSupportSection = () => (
     <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
