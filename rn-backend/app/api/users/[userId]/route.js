@@ -40,8 +40,18 @@ const userProfileSelect = {
   budgetRange: true,
 };
 
+const COMPLETED_BOOKING_STATUSES = ['APPROVED', 'CONFIRMED'];
+
 function shouldIncludePosts(searchParams) {
   const value = searchParams.get('includePosts');
+  if (value === null) {
+    return false;
+  }
+  return ['1', 'true', 'yes'].includes(value.toLowerCase());
+}
+
+function shouldIncludeCompletedEvents(searchParams) {
+  const value = searchParams.get('includeCompletedEvents');
   if (value === null) {
     return false;
   }
@@ -74,6 +84,7 @@ export async function GET(request, { params }) {
     const isSelf = authUser.id === targetUserId;
 
     const includePosts = shouldIncludePosts(request.nextUrl.searchParams);
+    const includeCompletedEvents = shouldIncludeCompletedEvents(request.nextUrl.searchParams);
 
     const [followersCount, followingCount, postCount, isFollowing, posts] = await Promise.all([
       prisma.follow.count({
@@ -195,6 +206,92 @@ export async function GET(request, { params }) {
 
     if (includePosts) {
       response.posts = posts;
+    }
+
+    if (includeCompletedEvents) {
+      const completedBookings = await prisma.booking.findMany({
+        where: {
+          userId: targetUserId,
+          status: { in: COMPLETED_BOOKING_STATUSES },
+          event: {
+            completedAt: {
+              not: null,
+            },
+          },
+        },
+        orderBy: [
+          { event: { completedAt: 'desc' } },
+          { createdAt: 'desc' },
+        ],
+        take: 20,
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          event: {
+            select: {
+              id: true,
+              title: true,
+              imageUrl: true,
+              completedAt: true,
+              startsAt: true,
+              trailType: true,
+              difficulty: true,
+              distanceKm: true,
+              durationHrs: true,
+              elevationM: true,
+              trailDistanceMeters: true,
+              locationName: true,
+              locationLatitude: true,
+              locationLongitude: true,
+              organizer: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      response.completedEvents = completedBookings
+        .map((booking) => {
+          if (!booking.event) {
+            return null;
+          }
+
+          return {
+            bookingId: booking.id,
+            bookingStatus: booking.status ?? null,
+            recordedAt: booking.createdAt,
+            id: booking.event.id,
+            title: booking.event.title ?? null,
+            imageUrl: booking.event.imageUrl ?? null,
+            completedAt: booking.event.completedAt,
+            startsAt: booking.event.startsAt,
+            trailType: booking.event.trailType ?? null,
+            difficulty: booking.event.difficulty ?? null,
+            distanceKm: booking.event.distanceKm ?? null,
+            durationHrs: booking.event.durationHrs ?? null,
+            elevationM: booking.event.elevationM ?? null,
+            trailDistanceMeters: booking.event.trailDistanceMeters ?? null,
+            locationName: booking.event.locationName ?? null,
+            locationLatitude: booking.event.locationLatitude ?? null,
+            locationLongitude: booking.event.locationLongitude ?? null,
+            organizer: booking.event.organizer
+              ? {
+                  id: booking.event.organizer.id,
+                  name: booking.event.organizer.name ?? null,
+                  email: booking.event.organizer.email ?? null,
+                  avatarUrl: booking.event.organizer.avatarUrl ?? null,
+                }
+              : null,
+          };
+        })
+        .filter(Boolean);
     }
 
     return NextResponse.json(response);

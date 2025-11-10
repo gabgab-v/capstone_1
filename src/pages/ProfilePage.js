@@ -82,6 +82,151 @@ function RatingStars({ rating = 0, size = 16, editable = false, onSelect }) {
   );
 }
 
+const COMPLETION_IMAGE_PLACEHOLDER =
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=600&q=60';
+
+const COMPLETION_STATUS_BADGES = {
+  CONFIRMED: { label: 'Confirmed', background: '#DCFCE7', color: '#166534' },
+  APPROVED: { label: 'Approved', background: '#E0F2FE', color: '#1D4ED8' },
+};
+
+function formatCompletionDate(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function toTitleCase(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const lower = trimmed.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function buildCompletionMetrics(completion) {
+  const metrics = [];
+  const distanceKm = Number(completion?.distanceKm);
+  if (Number.isFinite(distanceKm) && distanceKm > 0) {
+    metrics.push(`${distanceKm.toFixed(1)} km`);
+  } else {
+    const trailDistanceMeters = Number(completion?.trailDistanceMeters);
+    if (Number.isFinite(trailDistanceMeters) && trailDistanceMeters > 0) {
+      metrics.push(`${(trailDistanceMeters / 1000).toFixed(1)} km`);
+    }
+  }
+  const durationHrs = Number(completion?.durationHrs);
+  if (Number.isFinite(durationHrs) && durationHrs > 0) {
+    metrics.push(`${durationHrs.toFixed(1)} hrs`);
+  }
+  const elevationM = Number(completion?.elevationM);
+  if (Number.isFinite(elevationM) && elevationM > 0) {
+    metrics.push(`${Math.round(elevationM)} m gain`);
+  }
+  if (completion?.trailType) {
+    metrics.push(completion.trailType);
+  } else if (completion?.difficulty) {
+    const difficultyLabel = toTitleCase(completion.difficulty);
+    if (difficultyLabel) {
+      metrics.push(`${difficultyLabel} level`);
+    }
+  }
+
+  return metrics;
+}
+
+function getCompletionBadge(status) {
+  const normalized = typeof status === 'string' ? status.trim().toUpperCase() : '';
+  if (COMPLETION_STATUS_BADGES[normalized]) {
+    return COMPLETION_STATUS_BADGES[normalized];
+  }
+  if (!normalized) {
+    return { label: 'Recorded', background: '#E5E7EB', color: '#374151' };
+  }
+  return { label: normalized, background: '#E5E7EB', color: '#374151' };
+}
+
+function CompletedTrailCard({ completion }) {
+  if (!completion) {
+    return null;
+  }
+
+  const badge = getCompletionBadge(completion.bookingStatus);
+  const completionDateLabel = formatCompletionDate(completion.completedAt);
+  const organizerName = completion?.organizer?.name ?? completion?.organizer?.email ?? null;
+  const locationLabel =
+    completion?.locationName ?? 'Location will be shared with confirmed hikers.';
+  const metrics = buildCompletionMetrics(completion);
+  const imageSource = completion?.imageUrl
+    ? { uri: completion.imageUrl }
+    : { uri: COMPLETION_IMAGE_PLACEHOLDER };
+
+  return (
+    <View className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <View className="flex-row">
+        <Image
+          source={imageSource}
+          resizeMode="cover"
+          className="h-20 w-20 rounded-xl bg-gray-200 dark:bg-slate-800"
+        />
+        <View className="ml-3 flex-1">
+          <View className="flex-row items-start justify-between">
+            <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-slate-100">
+              {completion.title ?? 'Guided adventure'}
+            </Text>
+            <View
+              className="ml-2 rounded-full px-2 py-0.5"
+              style={{ backgroundColor: badge.background }}
+            >
+              <Text
+                className="text-[10px] font-semibold uppercase tracking-wide"
+                style={{ color: badge.color }}
+              >
+                {badge.label}
+              </Text>
+            </View>
+          </View>
+          <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            {completionDateLabel ? `Completed ${completionDateLabel}` : 'Completion date to follow'}
+          </Text>
+          {organizerName ? (
+            <Text className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+              Hosted by {organizerName}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <View className="mt-3 flex-row items-center">
+        <Ionicons name="location-outline" size={14} color="#16a34a" />
+        <Text className="ml-2 text-sm text-gray-800 dark:text-slate-200">{locationLabel}</Text>
+      </View>
+      {metrics.length ? (
+        <View className="mt-3 flex-row flex-wrap">
+          {metrics.map((metric, index) => (
+            <View
+              key={`${completion.id ?? completion.bookingId ?? 'metric'}-${metric}-${index}`}
+              className="mr-2 mb-2 rounded-full bg-gray-100 px-3 py-1 dark:bg-slate-800"
+            >
+              <Text className="text-xs font-medium text-gray-700 dark:text-slate-200">
+                {metric}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function ProfilePage({ navigation, route }) {
   const { user: authUser, isLoading: authLoading, refreshUser } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -106,6 +251,10 @@ export default function ProfilePage({ navigation, route }) {
   const scrollIndicatorInsets = useMemo(
     () => ({ top: headerTopPadding, bottom: insets.bottom }),
     [headerTopPadding, insets.bottom],
+  );
+  const completedEvents = useMemo(
+    () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
+    [profile?.completedEvents],
   );
 
   const routeUserId = route?.params?.userId;
@@ -166,12 +315,15 @@ export default function ProfilePage({ navigation, route }) {
       }
 
       try {
-        const data = await get(`/api/users/${viewedUserId}?includePosts=true`);
+        const data = await get(
+          `/api/users/${viewedUserId}?includePosts=true&includeCompletedEvents=true`,
+        );
         const formattedProfile = {
           ...data,
           followersCount: data.followersCount ?? 0,
           followingCount: data.followingCount ?? 0,
           postCount: data.postCount ?? (Array.isArray(data.posts) ? data.posts.length : 0),
+          completedEvents: Array.isArray(data.completedEvents) ? data.completedEvents : [],
         };
 
         profileOwnerIdRef.current = formattedProfile.id;
@@ -774,6 +926,29 @@ export default function ProfilePage({ navigation, route }) {
             </View>
           </View>
         ) : null}
+
+        <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:bg-slate-900 dark:border-slate-700">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Completed Trails</Text>
+            {completedEvents.length ? (
+              <Text className="text-xs text-gray-500 dark:text-slate-400">
+                {completedEvents.length === 1 ? '1 event' : `${completedEvents.length} events`}
+              </Text>
+            ) : null}
+          </View>
+          {completedEvents.length ? (
+            completedEvents.map((completion, index) => (
+              <CompletedTrailCard
+                key={`${completion.bookingId ?? completion.id ?? index}`}
+                completion={completion}
+              />
+            ))
+          ) : (
+            <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+              Organizer-marked completions will appear here once this hiker finishes an event.
+            </Text>
+          )}
+        </View>
 
         <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:bg-slate-900 dark:border-slate-700">
           <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Trail Preferences</Text>
