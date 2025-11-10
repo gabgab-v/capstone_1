@@ -273,7 +273,12 @@ export default function PreferencesSetupPage({ navigation }) {
           enabled={!isExperienceLocked}
         >
           {experienceOptions.map((option) => (
-            <Picker.Item key={option.value || 'placeholder'} label={option.label} value={option.value} />
+            <Picker.Item
+              key={option.value || 'placeholder'}
+              label={option.label}
+              value={option.value}
+              color={colors.textPrimary}
+            />
           ))}
         </Picker>
       </View>
@@ -294,7 +299,12 @@ export default function PreferencesSetupPage({ navigation }) {
           dropdownIconColor={colors.icon}
         >
           {difficultyOptions.map((option) => (
-            <Picker.Item key={option.value ? `difficulty-${option.value}` : 'difficulty-placeholder'} label={option.label} value={option.value} />
+            <Picker.Item
+              key={option.value ? `difficulty-${option.value}` : 'difficulty-placeholder'}
+              label={option.label}
+              value={option.value}
+              color={colors.textPrimary}
+            />
           ))}
         </Picker>
       </View>
@@ -312,7 +322,12 @@ export default function PreferencesSetupPage({ navigation }) {
           dropdownIconColor={colors.icon}
         >
           {trailTypeOptions.map((option) => (
-            <Picker.Item key={option.value ? `trail-${option.value}` : 'trail-placeholder'} label={option.label} value={option.value} />
+            <Picker.Item
+              key={option.value ? `trail-${option.value}` : 'trail-placeholder'}
+              label={option.label}
+              value={option.value}
+              color={colors.textPrimary}
+            />
           ))}
         </Picker>
       </View>

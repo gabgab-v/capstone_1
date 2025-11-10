@@ -20,6 +20,7 @@ import { decode } from 'base64-arraybuffer';
 import { get, post, patch } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../context/NotificationContext';
+import { useTheme } from '../context/ThemeContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
 import ScreenHeader from '../components/ScreenHeader';
@@ -325,6 +326,9 @@ export default function CreateEventPage({ route, navigation }) {
   );
   const [gcashNumber, setGcashNumber] = useState(() => eventFromParams?.gcashNumber ?? '');
   const { scheduleNotification } = useNotifications();
+  const { colors } = useTheme();
+  const pickerTextColor = colors?.textPrimary ?? '#1F2937';
+  const pickerIconColor = colors?.icon ?? '#1d4ed8';
   const [selectedImage, setSelectedImage] = useState(() =>
     eventFromParams?.imageUrl ? { uri: eventFromParams.imageUrl } : null,
   );
@@ -1097,11 +1101,16 @@ export default function CreateEventPage({ route, navigation }) {
                   <Picker
                     selectedValue={trailType}
                     onValueChange={(value) => setTrailType(value)}
-                    style={styles.picker}
-                    dropdownIconColor="#1d4ed8"
+                    style={[styles.picker, { color: pickerTextColor }]}
+                    dropdownIconColor={pickerIconColor}
                   >
                     {trailTypePickerOptions.map((option) => (
-                      <Picker.Item key={option.value} label={option.label} value={option.value} />
+                      <Picker.Item
+                        key={option.value}
+                        label={option.label}
+                        value={option.value}
+                        color={pickerTextColor}
+                      />
                     ))}
                   </Picker>
                 </View>
@@ -1183,14 +1192,15 @@ export default function CreateEventPage({ route, navigation }) {
                   <Picker
                     selectedValue={status}
                     onValueChange={(value) => setStatus(value)}
-                    style={styles.picker}
-                    dropdownIconColor="#1d4ed8"
+                    style={[styles.picker, { color: pickerTextColor }]}
+                    dropdownIconColor={pickerIconColor}
                   >
                     {EVENT_STATUS_OPTIONS.map((option) => (
                       <Picker.Item
                         key={option.value}
                         label={option.label}
                         value={option.value}
+                        color={pickerTextColor}
                       />
                     ))}
                   </Picker>

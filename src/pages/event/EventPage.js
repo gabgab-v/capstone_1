@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
 import { Picker } from "@react-native-picker/picker";
+import { useTheme } from "../../context/ThemeContext";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -430,6 +431,9 @@ function OrganizerEventCard({
   onUpdateStatus,
   isUpdatingStatus,
 }) {
+  const { colors } = useTheme();
+  const pickerTextColor = colors?.textPrimary ?? "#1F2937";
+  const pickerIconColor = colors?.icon ?? "#1D4ED8";
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
   const priceLabel = formatPrice(event?.price);
   const locationLabel = getLocationLabel(event);
@@ -556,11 +560,16 @@ function OrganizerEventCard({
                 }
               }}
               enabled={Boolean(onUpdateStatus) && !isUpdatingStatus}
-              style={styles.statusPicker}
-              dropdownIconColor="#1D4ED8"
+              style={[styles.statusPicker, { color: pickerTextColor }]}
+              dropdownIconColor={pickerIconColor}
             >
               {EVENT_STATUS_OPTIONS.map((option) => (
-                <Picker.Item key={option.value} label={option.label} value={option.value} />
+                <Picker.Item
+                  key={option.value}
+                  label={option.label}
+                  value={option.value}
+                  color={pickerTextColor}
+                />
               ))}
             </Picker>
             {isUpdatingStatus ? (
