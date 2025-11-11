@@ -37,8 +37,8 @@ const BASE_TABS = [
 const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
 const INACTIVE_BOOKING_STATUSES = new Set(['CANCELLED', 'DECLINED', 'REJECTED']);
-const STRONG_MATCH_THRESHOLD = 0.65;
-const MODERATE_MATCH_THRESHOLD = 0.35;
+const STRONG_MATCH_THRESHOLD = 0.75;
+const MIN_MATCH_DISPLAY_THRESHOLD = 0.15;
 const MATCH_THEMES = {
   strong: {
     background: '#ECFDF5',
@@ -46,13 +46,7 @@ const MATCH_THEMES = {
     accent: '#166534',
     text: '#14532D',
   },
-  moderate: {
-    background: '#FEF3C7',
-    border: '#D97706',
-    accent: '#92400E',
-    text: '#78350F',
-  },
-  low: {
+  weak: {
     background: '#FEE2E2',
     border: '#DC2626',
     accent: '#B91C1C',
@@ -489,29 +483,20 @@ export default function EventDetailsPage({ route, navigation }) {
       return null;
     }
     const breakdown = buildMatchBreakdown({ user, event, preferenceVector, eventVector });
-    if ((!breakdown || breakdown.length === 0) && score <= MODERATE_MATCH_THRESHOLD / 2) {
+    if ((!breakdown || breakdown.length === 0) && score <= MIN_MATCH_DISPLAY_THRESHOLD) {
       return null;
     }
     const percent = Math.round(score * 100);
-    const severity =
-      score >= STRONG_MATCH_THRESHOLD
-        ? 'strong'
-        : score >= MODERATE_MATCH_THRESHOLD
-        ? 'moderate'
-        : 'low';
-    const theme = MATCH_THEMES[severity] ?? MATCH_THEMES.low;
+    const severity = score >= STRONG_MATCH_THRESHOLD ? 'strong' : 'weak';
+    const theme = MATCH_THEMES[severity] ?? MATCH_THEMES.weak;
     const headline =
       severity === 'strong'
         ? `Strong match · ${percent}%`
-        : severity === 'moderate'
-        ? `Close match · ${percent}%`
-        : `Low match · ${percent}%`;
+        : `Weak match · ${percent}%`;
     const summary =
       severity === 'strong'
         ? 'This event aligns closely with your hiking preferences.'
-        : severity === 'moderate'
-        ? 'Several of your saved preferences line up with this event.'
-        : 'Some details differ from what you usually look for.';
+        : 'This event differs from several of your saved preferences.';
     return {
       score,
       percent,

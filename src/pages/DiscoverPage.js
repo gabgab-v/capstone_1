@@ -16,8 +16,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
-const STRONG_MATCH_THRESHOLD = 0.65;
-const MODERATE_MATCH_THRESHOLD = 0.35;
+const STRONG_MATCH_THRESHOLD = 0.75;
 const MIN_BREAKDOWN_SHARE = 0.01;
 
 function truncate(text, limit = 140) {
@@ -715,6 +714,7 @@ export default function DiscoverPage() {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
   const { user } = useAuth();
+  const [showWeakMatches, setShowWeakMatches] = useState(() => !Boolean(user?.preferencesComplete));
   const { isDarkMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
   const insets = useSafeAreaInsets();
@@ -785,6 +785,32 @@ export default function DiscoverPage() {
       });
   }, [events, preferenceVector, user]);
 
+  const filteredEvents = useMemo(() => {
+    if (!preferenceVector || showWeakMatches) {
+      return scoredEvents;
+    }
+    return scoredEvents.filter(
+      ({ score }) => typeof score === "number" && score >= STRONG_MATCH_THRESHOLD
+    );
+  }, [preferenceVector, scoredEvents, showWeakMatches]);
+
+  const { strongMatchCount, weakMatchCount } = useMemo(() => {
+    if (!preferenceVector) {
+      return { strongMatchCount: 0, weakMatchCount: 0 };
+    }
+    return scoredEvents.reduce(
+      (acc, { score }) => {
+        if (typeof score === "number" && score >= STRONG_MATCH_THRESHOLD) {
+          acc.strongMatchCount += 1;
+        } else {
+          acc.weakMatchCount += 1;
+        }
+        return acc;
+      },
+      { strongMatchCount: 0, weakMatchCount: 0 }
+    );
+  }, [preferenceVector, scoredEvents]);
+
   const topSimilarity = useMemo(() => {
     if (!preferenceVector) {
       return 0;
@@ -795,28 +821,62 @@ export default function DiscoverPage() {
     );
   }, [scoredEvents, preferenceVector]);
 
-  const hasPreferenceMatch = Boolean(preferenceVector && topSimilarity >= MODERATE_MATCH_THRESHOLD);
-
   const preferenceHeader = useMemo(() => {
     if (!preferenceVector) {
       return null;
     }
 
     const topPercent = Math.round(topSimilarity * 100);
-    const title = hasPreferenceMatch
-      ? `Personalized matches (top score ${topPercent}%)`
-      : "No strong matches yet";
-    const description = hasPreferenceMatch
-      ? "Events are ranked by your hiking profile and each event."
-      : "We ranked all hikes, but none strongly align with your saved preferences yet.";
+    const title =
+      strongMatchCount > 0
+        ? `Strong matches (${strongMatchCount})`
+        : "No strong matches yet";
+    const description =
+      strongMatchCount > 0
+        ? "Events are ranked by your hiking profile. Strong matches are highlighted."
+        : weakMatchCount > 0
+        ? "No hikes clear the 75% match bar yet. You can still browse weaker matches."
+        : "We ranked all hikes, but none strongly align with your saved preferences yet.";
+    const showToggle = strongMatchCount + weakMatchCount > 0;
+    const statusLabel = showWeakMatches
+      ? "Showing all matches"
+      : strongMatchCount > 0
+      ? "Showing strong matches only"
+      : "Strong matches only (none yet)";
+    const actionLabel = showWeakMatches ? "Hide weak matches" : "Show weak matches";
+    const disableToggle = weakMatchCount === 0 && !showWeakMatches;
 
     return (
       <View style={styles.preferenceBanner}>
-        <Text style={styles.preferenceBannerTitle}>{title}</Text>
+        <View style={styles.preferenceBannerHeader}>
+          <Text style={styles.preferenceBannerTitle}>{title}</Text>
+          <Text style={styles.preferenceBannerPercent}>{`Top score ${topPercent}%`}</Text>
+        </View>
         <Text style={styles.preferenceBannerText}>{description}</Text>
+        {showToggle ? (
+          <View style={styles.matchFilterRow}>
+            <Text style={styles.matchFilterLabel}>{statusLabel}</Text>
+            <TouchableOpacity
+              style={[
+                styles.matchFilterButton,
+                disableToggle && styles.matchFilterButtonDisabled,
+              ]}
+              disabled={disableToggle}
+              onPress={() => setShowWeakMatches((value) => !value)}
+            >
+              <Text style={styles.matchFilterButtonText}>{actionLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     );
-  }, [preferenceVector, hasPreferenceMatch, topSimilarity]);
+  }, [
+    preferenceVector,
+    showWeakMatches,
+    strongMatchCount,
+    weakMatchCount,
+    topSimilarity,
+  ]);
 
   const preferenceHeaderStyle = preferenceHeader ? styles.preferenceBannerWrapper : null;
 
@@ -891,12 +951,31 @@ export default function DiscoverPage() {
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
       <FlatList
-        data={scoredEvents}
+        data={filteredEvents}
         keyExtractor={(item, index) => item.event?.id?.toString() ?? `event-${index}`}
         contentContainerStyle={[styles.listContent, listContentInsets]}
         scrollIndicatorInsets={scrollIndicatorInsets}
         ListHeaderComponent={preferenceHeader}
         ListHeaderComponentStyle={preferenceHeaderStyle}
+        ListEmptyComponent={
+          preferenceVector && !showWeakMatches ? (
+            <View style={styles.emptyStrongMatchContainer}>
+              <Text style={styles.emptyStrongMatchTitle}>No strong matches yet</Text>
+              <Text style={styles.emptyStrongMatchText}>
+                We did not find hikes above the 75% match threshold. You can still browse weaker
+                matches for more options.
+              </Text>
+              {weakMatchCount > 0 ? (
+                <TouchableOpacity
+                  style={styles.emptyStrongMatchButton}
+                  onPress={() => setShowWeakMatches(true)}
+                >
+                  <Text style={styles.emptyStrongMatchButtonText}>Show weak matches</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -905,7 +984,7 @@ export default function DiscoverPage() {
           />
         }
         renderItem={({ item }) => {
-        const { event, score, breakdown } = item;
+          const { event, score, breakdown } = item;
         const breakdownEntries = Array.isArray(breakdown) ? breakdown : [];
 
         const metrics = [
@@ -932,6 +1011,7 @@ export default function DiscoverPage() {
         const totalCountCandidate =
           Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : approvedCount;
         const totalCount = Math.max(totalCountCandidate, approvedCount);
+        const isStrongMatch = typeof score === "number" && score >= STRONG_MATCH_THRESHOLD;
 
         const flags = computeClosingFlags(event);
         const closingSoon =
@@ -994,32 +1074,24 @@ export default function DiscoverPage() {
         let matchChipConfig = null;
         if (typeof score === "number") {
           const percent = Math.round(score * 100);
-          if (score >= STRONG_MATCH_THRESHOLD) {
-            matchChipConfig = {
-              container: styles.matchChipPositive,
-              text: styles.matchChipPositiveText,
-              label: `Strong match • ${percent}%`,
-            };
-          } else if (score >= MODERATE_MATCH_THRESHOLD) {
-            matchChipConfig = {
-              container: styles.matchChipNeutral,
-              text: styles.matchChipNeutralText,
-              label: `Close match • ${percent}%`,
-            };
-          } else {
-            matchChipConfig = {
-              container: styles.matchChipNegative,
-              text: styles.matchChipNegativeText,
-              label: `Low match • ${percent}%`,
-            };
-          }
+          matchChipConfig = isStrongMatch
+            ? {
+                container: styles.matchChipPositive,
+                text: styles.matchChipPositiveText,
+                label: `Strong match • ${percent}%`,
+              }
+            : {
+                container: styles.matchChipWeak,
+                text: styles.matchChipWeakText,
+                label: `Weak match • ${percent}%`,
+              };
         }
 
         const priceNumber = Number(event.price);
 
         return (
           <TouchableOpacity
-            style={styles.card}
+            style={[styles.card, isStrongMatch && styles.cardStrong]}
             activeOpacity={0.85}
             onPress={() => navigation.navigate("EventDetails", { event })}
           >
@@ -1143,13 +1215,45 @@ function createStyles(theme, isDarkMode) {
   const matchBreakdownBg = isDarkMode ? "rgba(22, 101, 52, 0.18)" : "#F0FDF4";
   const metricChipBg = isDarkMode ? "rgba(46, 125, 50, 0.15)" : "#F0FDF4";
   const neutralChipBg = isDarkMode ? "rgba(217, 119, 6, 0.18)" : "#FEF3C7";
-  const negativeChipBg = isDarkMode ? "rgba(185, 28, 28, 0.18)" : "#FEE2E2";
   const attendeeFillFull = isDarkMode ? theme.dangerText : "#DC2626";
 
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: theme.background },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     empty: { fontSize: 16, color: theme.textMuted },
+    emptyStrongMatchContainer: {
+      marginHorizontal: 32,
+      marginVertical: 48,
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceMuted,
+    },
+    emptyStrongMatchTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: theme.textPrimary,
+      marginBottom: 8,
+    },
+    emptyStrongMatchText: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    emptyStrongMatchButton: {
+      alignSelf: "flex-start",
+      backgroundColor: theme.accent,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    emptyStrongMatchButtonText: {
+      color: theme.surface,
+      fontSize: 13,
+      fontWeight: "700",
+    },
     listContent: {
       paddingVertical: 18,
     },
@@ -1164,16 +1268,54 @@ function createStyles(theme, isDarkMode) {
       borderWidth: 1,
       borderColor: preferenceBannerBorder,
     },
+    preferenceBannerHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 4,
+    },
     preferenceBannerTitle: {
       fontSize: 15,
       fontWeight: "700",
       color: theme.accent,
-      marginBottom: 4,
+    },
+    preferenceBannerPercent: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.accent,
     },
     preferenceBannerText: {
       fontSize: 13,
       color: theme.textSecondary,
       lineHeight: 18,
+    },
+    matchFilterRow: {
+      marginTop: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    matchFilterLabel: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      flex: 1,
+      marginRight: 12,
+    },
+    matchFilterButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.accent,
+      backgroundColor: theme.surface,
+    },
+    matchFilterButtonDisabled: {
+      opacity: 0.5,
+    },
+    matchFilterButtonText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.accent,
     },
     card: {
       backgroundColor: theme.surface,
@@ -1188,6 +1330,11 @@ function createStyles(theme, isDarkMode) {
       shadowRadius: cardShadowRadius,
       shadowOffset: { width: 0, height: 4 },
       elevation: 4,
+    },
+    cardStrong: {
+      borderColor: theme.accent,
+      borderWidth: 2,
+      shadowColor: theme.accent,
     },
     banner: {
       width: "100%",
@@ -1319,19 +1466,11 @@ function createStyles(theme, isDarkMode) {
       fontSize: 11,
       fontWeight: "700",
     },
-    matchChipNeutral: {
+    matchChipWeak: {
       backgroundColor: neutralChipBg,
     },
-    matchChipNeutralText: {
+    matchChipWeakText: {
       color: theme.warningText,
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    matchChipNegative: {
-      backgroundColor: negativeChipBg,
-    },
-    matchChipNegativeText: {
-      color: theme.dangerText,
       fontSize: 11,
       fontWeight: "700",
     },
