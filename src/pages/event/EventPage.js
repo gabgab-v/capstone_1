@@ -22,6 +22,12 @@ import { useTheme } from "../../context/ThemeContext";
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
 
+function useEventStyles() {
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
+  return { styles, colors: theme.colors, theme };
+}
+
 function resolveReceiptUrl(paymentUrl) {
   if (typeof paymentUrl !== "string" || !paymentUrl.trim()) {
     return null;
@@ -309,6 +315,7 @@ function getTimeValue(value) {
 }
 
 function AttendeeRow({ attendee, index }) {
+  const { styles } = useEventStyles();
   const initials = getInitials(attendee?.user?.name, attendee?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const receiptUrl = resolveReceiptUrl(attendee?.paymentUrl);
@@ -344,6 +351,7 @@ function AttendeeRow({ attendee, index }) {
 }
 
 function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
+  const { styles } = useEventStyles();
   const event = booking?.event ?? null;
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
   const priceLabel = formatPrice(event?.price);
@@ -431,8 +439,7 @@ function OrganizerEventCard({
   onUpdateStatus,
   isUpdatingStatus,
 }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { styles, colors } = useEventStyles();
   const pickerTextColor = colors?.textPrimary ?? "#1F2937";
   const pickerIconColor = colors?.icon ?? "#1D4ED8";
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
@@ -671,6 +678,7 @@ function OrganizerEventCard({
 }
 
 export default function EventsPage({ navigation }) {
+  const { styles } = useEventStyles();
   const [user, setUser] = useState(null);
   const [bookedEvents, setBookedEvents] = useState([]);
   const [createdEvents, setCreatedEvents] = useState([]);

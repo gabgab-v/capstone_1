@@ -36,6 +36,8 @@ const DIFFICULTY_OPTIONS = [
   { label: 'Hard', value: 'Hard' },
   { label: 'Challenging', value: 'Challenging' },
 ];
+const EXPERT_DIFFICULTY_VALUES = ['Hard', 'Challenging'];
+const isExpertDifficultyValue = (value) => EXPERT_DIFFICULTY_VALUES.includes(value);
 
 export default function PreferencesSetupPage({ navigation }) {
   const { user, refreshUser } = useAuth();
@@ -49,6 +51,9 @@ export default function PreferencesSetupPage({ navigation }) {
   const [elevation, setElevation] = useState('');
   const [budget, setBudget] = useState('');
   const [saving, setSaving] = useState(false);
+  const isExperienceLocked = Boolean(user?.experienceLevelLocked);
+  const hasExpertBadge = Boolean(user?.expertBadgeAwarded);
+  const canAccessExpertDifficulty = experience === 'Expert' && (hasExpertBadge || isExperienceLocked);
   const pickerStyle = useMemo(
     () => ({
       color: colors.textPrimary,
@@ -63,11 +68,26 @@ export default function PreferencesSetupPage({ navigation }) {
     [colors.surface, colors.surfaceMuted, isDarkMode],
   );
   const difficultyOptions = useMemo(() => {
-    if (!difficulty || DIFFICULTY_OPTIONS.some((option) => option.value === difficulty)) {
-      return DIFFICULTY_OPTIONS;
+    const baseOptions = DIFFICULTY_OPTIONS.filter((option) => {
+      if (!option.value) {
+        return true;
+      }
+      if (isExpertDifficultyValue(option.value)) {
+        return canAccessExpertDifficulty;
+      }
+      return true;
+    });
+
+    if (
+      difficulty &&
+      !baseOptions.some((option) => option.value === difficulty) &&
+      (!isExpertDifficultyValue(difficulty) || canAccessExpertDifficulty)
+    ) {
+      return [...baseOptions, { label: difficulty, value: difficulty }];
     }
-    return [...DIFFICULTY_OPTIONS, { label: difficulty, value: difficulty }];
-  }, [difficulty]);
+
+    return baseOptions;
+  }, [difficulty, canAccessExpertDifficulty]);
   const trailTypeOptions = useMemo(() => {
     const baseOptions = [{ label: 'Select...', value: '' }, ...TRAIL_TYPE_OPTIONS];
     if (!trailType || TRAIL_TYPE_OPTIONS.some((option) => option.value === trailType)) {
@@ -75,8 +95,6 @@ export default function PreferencesSetupPage({ navigation }) {
     }
     return [...baseOptions, { label: trailType, value: trailType }];
   }, [trailType]);
-  const isExperienceLocked = Boolean(user?.experienceLevelLocked);
-  const hasExpertBadge = Boolean(user?.expertBadgeAwarded);
   const experienceOptions = useMemo(() => {
     const optionsWithoutExpert = EXPERIENCE_OPTIONS.filter((option) => option.value !== 'Expert');
     if (hasExpertBadge || experience === 'Expert') {
@@ -159,6 +177,12 @@ export default function PreferencesSetupPage({ navigation }) {
     setBudget(user.budgetRange ?? '');
   }, [user]);
 
+  useEffect(() => {
+    if (!canAccessExpertDifficulty && isExpertDifficultyValue(difficulty)) {
+      setDifficulty('');
+    }
+  }, [canAccessExpertDifficulty, difficulty]);
+
   async function handleSave() {
     if (!isExperienceLocked && !hasExpertBadge && experience === 'Expert') {
       Alert.alert(
@@ -167,6 +191,15 @@ export default function PreferencesSetupPage({ navigation }) {
       );
       return;
     }
+
+    if (!canAccessExpertDifficulty && isExpertDifficultyValue(difficulty)) {
+      Alert.alert(
+        'Expert difficulty locked',
+        'Hard and Challenging options unlock after you set your experience level to Expert and earn the badge.'
+      );
+      return;
+    }
+
     if (
       (!isExperienceLocked && !experience) ||
       !difficulty ||
@@ -308,6 +341,11 @@ export default function PreferencesSetupPage({ navigation }) {
           ))}
         </Picker>
       </View>
+      {!canAccessExpertDifficulty ? (
+        <Text className="text-sm text-slate-500 dark:text-slate-400 -mt-2 mb-4">
+          Hard and Challenging unlock once you earn the Expert badge and set your experience level to Expert.
+        </Text>
+      ) : null}
 
       <Text className="font-medium mt-4 mb-2">Preferred Trail Type</Text>
       <View
