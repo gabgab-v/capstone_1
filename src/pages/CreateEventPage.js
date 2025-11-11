@@ -327,6 +327,7 @@ export default function CreateEventPage({ route, navigation }) {
   const [gcashNumber, setGcashNumber] = useState(() => eventFromParams?.gcashNumber ?? '');
   const { scheduleNotification } = useNotifications();
   const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const pickerTextColor = colors?.textPrimary ?? '#1F2937';
   const pickerIconColor = colors?.icon ?? '#1d4ed8';
   const [selectedImage, setSelectedImage] = useState(() =>
@@ -1345,317 +1346,320 @@ export default function CreateEventPage({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FFFFFF' },
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  headerImageContainer: {
-    height: 250,
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  imagePlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    opacity: 0.5,
-    width: '100%',
-    height: '100%',
-  },
-  galleryIconContainer: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 15,
-    padding: 2,
-  },
-  titleContainer: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  titleInput: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    minWidth: 200,
-  },
-  titleIcon: { marginLeft: 8 },
-  tabBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-    backgroundColor: '#FFFFFF',
-  },
-  tabItem: { fontSize: 16, color: '#999999' },
-  tabItemActive: {
-    fontSize: 16,
-    color: '#2E7D32',
-    fontWeight: 'bold',
-    borderBottomWidth: 2,
-    borderBottomColor: '#2E7D32',
-    paddingBottom: 4,
-  },
-  contentContainer: { padding: 20 },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  infoFieldFull: { width: '100%', marginBottom: 16 },
-  infoField: { width: '48%', marginBottom: 16 },
-  infoLabel: { fontSize: 14, color: '#555555', marginBottom: 6, fontWeight: '600' },
-  input: {
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 16,
-    color: '#333333',
-    height: 45,
-  },
-  multilineInput: {
-    height: 120,
-    textAlignVertical: 'top',
-  },
-  largeMultilineInput: {
-    height: 150,
-    textAlignVertical: 'top',
-  },
-  difficultyOption: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: '#F9FAFB',
-  },
-  difficultyOptionActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#EFF6FF',
-  },
-  difficultyOptionLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  difficultyOptionLabelActive: {
-    color: '#1d4ed8',
-  },
-  difficultyOptionDescription: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#4b5563',
-    lineHeight: 18,
-  },
-  difficultyOptionDescriptionActive: {
-    color: '#1e3a8a',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  refreshLabel: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1d4ed8',
-  },
-  helperText: {
-    color: '#64748b',
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  subSection: {
-    marginTop: 24,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  subSectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 14,
-  },
-  datetimeField: {
-    marginBottom: 16,
-  },
-  datetimeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  clearButtonText: {
-    color: '#1d4ed8',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  datetimeValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  datetimeIcon: {
-    marginRight: 12,
-  },
-  datetimeValueText: {
-    fontSize: 15,
-    color: '#1F2937',
-    fontWeight: '500',
-  },
-  datetimeValuePlaceholder: {
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
-  iosModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  iosModalContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 12,
-  },
-  iosModalToolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  iosModalToolbarButton: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1d4ed8',
-  },
-  iosModalToolbarButtonPrimary: {
-    color: '#2563EB',
-  },
-  iosPicker: {
-    backgroundColor: '#fff',
-  },
-  capacityRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  capacityField: {
-    width: '48%',
-  },
-  pickerGroup: {
-    marginTop: 18,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#F5F5F5',
-  },
-  picker: {
-    width: '100%',
-    height: 44,
-    color: '#1F2937',
-  },
-  trailLoading: { marginVertical: 12 },
-  trailList: {
-    marginBottom: 12,
-  },
-  trailCard: {
-    backgroundColor: '#f1f5f9',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 12,
-  },
-  trailCardActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#dbeafe',
-  },
-  trailCardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  trailCardMeta: {
-    fontSize: 12,
-    color: '#475569',
-    marginTop: 6,
-  },
-  trailMapSection: {
-    marginTop: 8,
-  },
-  trailMap: {
-    marginBottom: 12,
-  },
-  locationSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  locationIcon: {
-    marginRight: 8,
-  },
-  locationSummaryText: {
-    color: '#1e293b',
-    fontSize: 14,
-    flexShrink: 1,
-  },
-  createButton: {
-    backgroundColor: '#2E7D32',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-  },
-  createButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
-  buttonDisabled: { opacity: 0.6 },
-  selectedImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  errorText: {
-    color: '#b91c1c',
-    marginBottom: 12,
-    fontSize: 14,
-  },
-});
+function createStyles(theme) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.background },
+    container: { flex: 1, backgroundColor: theme.surface },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: theme.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    headerImageContainer: {
+      height: 250,
+      backgroundColor: theme.surfaceMuted,
+      justifyContent: 'center',
+      alignItems: 'center',
+      position: 'relative',
+    },
+    imagePlaceholder: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      opacity: 0.5,
+      width: '100%',
+      height: '100%',
+    },
+    galleryIconContainer: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 15,
+      padding: 2,
+    },
+    titleContainer: {
+      position: 'absolute',
+      bottom: 20,
+      left: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 10,
+    },
+    titleInput: {
+      fontSize: 28,
+      fontWeight: 'bold',
+      color: '#FFFFFF',
+      minWidth: 200,
+    },
+    titleIcon: { marginLeft: 8 },
+    tabBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    tabItem: { fontSize: 16, color: theme.textMuted },
+    tabItemActive: {
+      fontSize: 16,
+      color: theme.accent,
+      fontWeight: 'bold',
+      borderBottomWidth: 2,
+      borderBottomColor: theme.accent,
+      paddingBottom: 4,
+    },
+    contentContainer: { padding: 20 },
+    detailsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+    },
+    infoFieldFull: { width: '100%', marginBottom: 16 },
+    infoField: { width: '48%', marginBottom: 16 },
+    infoLabel: { fontSize: 14, color: theme.textSecondary, marginBottom: 6, fontWeight: '600' },
+    input: {
+      backgroundColor: theme.surfaceMuted,
+      padding: 12,
+      borderRadius: 8,
+      fontSize: 16,
+      color: theme.textPrimary,
+      height: 45,
+    },
+    multilineInput: {
+      height: 120,
+      textAlignVertical: 'top',
+    },
+    largeMultilineInput: {
+      height: 150,
+      textAlignVertical: 'top',
+    },
+    difficultyOption: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 12,
+      backgroundColor: theme.surface,
+    },
+    difficultyOptionActive: {
+      borderColor: theme.accent,
+      backgroundColor: theme.accentSurface,
+    },
+    difficultyOptionLabel: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: theme.textPrimary,
+    },
+    difficultyOptionLabelActive: {
+      color: theme.accent,
+    },
+    difficultyOptionDescription: {
+      marginTop: 4,
+      fontSize: 13,
+      color: theme.textSecondary,
+      lineHeight: 18,
+    },
+    difficultyOptionDescriptionActive: {
+      color: theme.accent,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    refreshButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.infoText,
+      backgroundColor: theme.infoSurface,
+    },
+    refreshLabel: {
+      marginLeft: 6,
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.infoText,
+    },
+    helperText: {
+      color: theme.textMuted,
+      fontSize: 13,
+      marginBottom: 12,
+    },
+    subSection: {
+      marginTop: 24,
+      paddingTop: 20,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    subSectionTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.textPrimary,
+      marginBottom: 14,
+    },
+    datetimeField: {
+      marginBottom: 16,
+    },
+    datetimeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    clearButtonText: {
+      color: theme.accent,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    datetimeValue: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.surfaceMuted,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    datetimeIcon: {
+      marginRight: 12,
+    },
+    datetimeValueText: {
+      fontSize: 15,
+      color: theme.textPrimary,
+      fontWeight: '500',
+    },
+    datetimeValuePlaceholder: {
+      color: theme.textMuted,
+      fontWeight: '500',
+    },
+    iosModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end',
+    },
+    iosModalContainer: {
+      backgroundColor: theme.surface,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingHorizontal: 16,
+      paddingBottom: 24,
+      paddingTop: 12,
+    },
+    iosModalToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    iosModalToolbarButton: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.accent,
+    },
+    iosModalToolbarButtonPrimary: {
+      color: theme.accent,
+    },
+    iosPicker: {
+      backgroundColor: theme.surface,
+    },
+    capacityRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+    },
+    capacityField: {
+      width: '48%',
+    },
+    pickerGroup: {
+      marginTop: 18,
+    },
+    pickerContainer: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: theme.surfaceMuted,
+    },
+    picker: {
+      width: '100%',
+      height: 44,
+      color: theme.textPrimary,
+    },
+    trailLoading: { marginVertical: 12 },
+    trailList: {
+      marginBottom: 12,
+    },
+    trailCard: {
+      backgroundColor: theme.surfaceMuted,
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 12,
+    },
+    trailCardActive: {
+      borderColor: theme.accent,
+      backgroundColor: theme.accentSurface,
+    },
+    trailCardTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: theme.textPrimary,
+    },
+    trailCardMeta: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: 6,
+    },
+    trailMapSection: {
+      marginTop: 8,
+    },
+    trailMap: {
+      marginBottom: 12,
+    },
+    locationSummary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    locationIcon: {
+      marginRight: 8,
+    },
+    locationSummaryText: {
+      color: theme.textPrimary,
+      fontSize: 14,
+      flexShrink: 1,
+    },
+    createButton: {
+      backgroundColor: theme.accent,
+      padding: 15,
+      borderRadius: 10,
+      alignItems: 'center',
+      marginTop: 30,
+    },
+    createButtonText: { color: theme.textInverse, fontSize: 18, fontWeight: 'bold' },
+    buttonDisabled: { opacity: 0.6 },
+    selectedImage: {
+      width: '100%',
+      height: '100%',
+      resizeMode: 'cover',
+    },
+    errorText: {
+      color: theme.dangerText,
+      marginBottom: 12,
+      fontSize: 14,
+    },
+  });
+}

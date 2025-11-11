@@ -17,6 +17,7 @@ import Icon from 'react-native-vector-icons/Feather';
 
 import { get, post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { ensureAvatarUri } from '../../utils/media';
 
 function formatTimestamp(value) {
@@ -48,7 +49,7 @@ function getSenderInitials(sender) {
   return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
 }
 
-function MessageBubble({ message, isSelf }) {
+function MessageBubble({ message, isSelf, styles }) {
   const bubbleStyles = [
     styles.messageBubble,
     isSelf ? styles.messageBubbleSelf : styles.messageBubblePeer,
@@ -90,6 +91,12 @@ function MessageBubble({ message, isSelf }) {
 
 export default function ChatConversationPage({ route, navigation }) {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const accentColor = colors?.accent ?? '#2E7D32';
+  const iconColor = colors?.textPrimary ?? '#111827';
+  const mutedIconColor = colors?.textMuted ?? '#9CA3AF';
+  const inverseTextColor = colors?.textInverse ?? '#ffffff';
   const conversationId = route?.params?.conversationId;
   const providedPeers = route?.params?.peers ?? [];
   const initialConversation = route?.params?.initialConversation ?? null;
@@ -235,9 +242,9 @@ export default function ChatConversationPage({ route, navigation }) {
 
   const renderMessage = useCallback(
     ({ item }) => (
-      <MessageBubble message={item} isSelf={item?.sender?.id === user?.id} />
+      <MessageBubble message={item} isSelf={item?.sender?.id === user?.id} styles={styles} />
     ),
-    [user?.id],
+    [styles, user?.id],
   );
 
   const listHeader = useMemo(() => {
@@ -252,7 +259,7 @@ export default function ChatConversationPage({ route, navigation }) {
         activeOpacity={0.7}
       >
         {fetchingMore ? (
-          <ActivityIndicator size="small" color="#1F2937" />
+          <ActivityIndicator size="small" color={iconColor} />
         ) : (
           <Text style={styles.loadMoreText}>Load earlier messages</Text>
         )}
@@ -282,7 +289,7 @@ export default function ChatConversationPage({ route, navigation }) {
           style={styles.backButton}
           accessibilityLabel="Back"
         >
-          <Icon name="chevron-left" size={24} color="#111827" />
+          <Icon name="chevron-left" size={24} color={iconColor} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -298,7 +305,7 @@ export default function ChatConversationPage({ route, navigation }) {
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#2E7D32" />
+          <ActivityIndicator size="large" color={accentColor} />
         </View>
       ) : (
         <FlatList
@@ -310,7 +317,7 @@ export default function ChatConversationPage({ route, navigation }) {
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Icon name="message-circle" size={48} color="#9CA3AF" />
+              <Icon name="message-circle" size={48} color={mutedIconColor} />
               <Text style={styles.emptyStateTitle}>Say hello</Text>
               <Text style={styles.emptyStateSubtitle}>Be the first to send a message in this conversation.</Text>
             </View>
@@ -335,210 +342,212 @@ export default function ChatConversationPage({ route, navigation }) {
           accessibilityLabel="Send message"
         >
           {sending ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color={inverseTextColor} />
           ) : (
-            <Icon name="send" size={18} color="#ffffff" />
+            <Icon name="send" size={18} color={inverseTextColor} />
           )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 12,
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  headerSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  loader: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  listEmpty: {
-    justifyContent: 'center',
-  },
-  listTopSpacer: {
-    height: 12,
-  },
-  loadMoreButton: {
-    alignSelf: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  loadMoreText: {
-    fontSize: 12,
-    color: '#1F2937',
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyStateTitle: {
-    marginTop: 16,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  emptyStateSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    paddingHorizontal: 24,
-  },
-  messageRow: {
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  messageRowSelf: {
-    justifyContent: 'flex-end',
-  },
-  messageRowPeer: {
-    justifyContent: 'flex-start',
-  },
-  messageAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  messageAvatarHasImage: {
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  messageAvatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 18,
-  },
-  messageAvatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#166534',
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-  },
-  messageBubbleSelf: {
-    backgroundColor: '#166534',
-    borderBottomRightRadius: 4,
-  },
-  messageBubblePeer: {
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  messageBubblePeerWithAvatar: {
-    marginLeft: 4,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  messageTextSelf: {
-    color: '#FFFFFF',
-  },
-  messageTextPeer: {
-    color: '#111827',
-  },
-  messageMeta: {
-    marginTop: 4,
-    fontSize: 11,
-  },
-  messageMetaSelf: {
-    color: '#DCFCE7',
-    textAlign: 'right',
-  },
-  messageMetaPeer: {
-    color: '#6B7280',
-    textAlign: 'left',
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  input: {
-    flex: 1,
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#FFFFFF',
-    fontSize: 15,
-  },
-  sendButton: {
-    marginLeft: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#16A34A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#A7F3D0',
-  },
-  fallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
-    padding: 24,
-  },
-  fallbackText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-});
+function createStyles(theme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
+      backgroundColor: theme.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    backButton: {
+      padding: 8,
+      marginRight: 12,
+    },
+    headerInfo: {
+      flex: 1,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    headerSubtitle: {
+      marginTop: 2,
+      fontSize: 12,
+      color: theme.textSecondary,
+    },
+    loader: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    listContent: {
+      flexGrow: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    listEmpty: {
+      justifyContent: 'center',
+    },
+    listTopSpacer: {
+      height: 12,
+    },
+    loadMoreButton: {
+      alignSelf: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: 12,
+      backgroundColor: theme.surface,
+    },
+    loadMoreText: {
+      fontSize: 12,
+      color: theme.textPrimary,
+      fontWeight: '600',
+    },
+    emptyState: {
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    emptyStateTitle: {
+      marginTop: 16,
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    emptyStateSubtitle: {
+      marginTop: 6,
+      fontSize: 13,
+      color: theme.textSecondary,
+      textAlign: 'center',
+      paddingHorizontal: 24,
+    },
+    messageRow: {
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+    },
+    messageRowSelf: {
+      justifyContent: 'flex-end',
+    },
+    messageRowPeer: {
+      justifyContent: 'flex-start',
+    },
+    messageAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: theme.accentSurface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 8,
+    },
+    messageAvatarHasImage: {
+      backgroundColor: theme.surfaceMuted,
+      overflow: 'hidden',
+    },
+    messageAvatarImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 18,
+    },
+    messageAvatarText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: theme.accent,
+    },
+    messageBubble: {
+      maxWidth: '80%',
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 16,
+    },
+    messageBubbleSelf: {
+      backgroundColor: theme.accent,
+      borderBottomRightRadius: 4,
+    },
+    messageBubblePeer: {
+      backgroundColor: theme.surface,
+      borderBottomLeftRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    messageBubblePeerWithAvatar: {
+      marginLeft: 4,
+    },
+    messageText: {
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    messageTextSelf: {
+      color: theme.textInverse,
+    },
+    messageTextPeer: {
+      color: theme.textPrimary,
+    },
+    messageMeta: {
+      marginTop: 4,
+      fontSize: 11,
+    },
+    messageMetaSelf: {
+      color: theme.accentSurface,
+      textAlign: 'right',
+    },
+    messageMetaPeer: {
+      color: theme.textSecondary,
+      textAlign: 'left',
+    },
+    composer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      backgroundColor: theme.surface,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+    },
+    input: {
+      flex: 1,
+      height: 44,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceMuted,
+      fontSize: 15,
+      color: theme.textPrimary,
+    },
+    sendButton: {
+      marginLeft: 12,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sendButtonDisabled: {
+      backgroundColor: theme.accentSurface,
+    },
+    fallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surface,
+      padding: 24,
+    },
+    fallbackText: {
+      fontSize: 16,
+      color: theme.textSecondary,
+    },
+  });
+}

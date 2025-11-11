@@ -13,6 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { get } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const STRONG_MATCH_THRESHOLD = 0.65;
@@ -714,6 +715,8 @@ export default function DiscoverPage() {
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { isDarkMode, colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
   const insets = useSafeAreaInsets();
   const listContentInsets = useMemo(
     () => ({
@@ -1132,298 +1135,310 @@ export default function DiscoverPage() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  empty: { fontSize: 16, color: "#666" },
-  listContent: {
-    paddingVertical: 18,
-  },
-  preferenceBannerWrapper: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  preferenceBanner: {
-    backgroundColor: "#ECF6ED",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#C8E6C9",
-  },
-  preferenceBannerTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1A3620",
-    marginBottom: 4,
-  },
-  preferenceBannerText: {
-    fontSize: 13,
-    color: "#3F6246",
-    lineHeight: 18,
-  },
-  card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginBottom: 18,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#E6EAD4",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  banner: {
-    width: "100%",
-    height: 170,
-    backgroundColor: "#F1F5F9",
-  },
-  cardBody: {
-    padding: 16,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  title: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1A3620",
-    marginRight: 12,
-  },
-  priceTag: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#2E7D32",
-    backgroundColor: "#E8F5E9",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  location: {
-    fontSize: 14,
-    color: "#4B5563",
-    marginBottom: 10,
-  },
-  trailTypeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 12,
-  },
-  trailTypeChipLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#475569",
-    textTransform: "uppercase",
-    marginRight: 6,
-  },
-  trailTypeChipValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  scheduleBlock: {
-    marginBottom: 12,
-  },
-  scheduleLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#64748B",
-    textTransform: "uppercase",
-    marginBottom: 4,
-    letterSpacing: 0.5,
-  },
-  schedulePrimary: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  scheduleSecondary: {
-    fontSize: 13,
-    color: "#475569",
-    marginTop: 4,
-  },
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 10,
-  },
-  badgeClosingSoon: {
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    marginRight: 8,
-    marginBottom: 6,
-  },
-  badgeClosingSoonText: {
-    color: "#92400E",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  badgeFull: {
-    backgroundColor: "#FEE2E2",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    marginRight: 8,
-    marginBottom: 6,
-  },
-  badgeFullText: {
-    color: "#B91C1C",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  minimumNotice: {
-    fontSize: 12,
-    color: "#2563EB",
-    fontWeight: "600",
-    marginBottom: 12,
-  },
-  matchChip: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 10,
-  },
-  matchChipPositive: {
-    backgroundColor: "#DCFCE7",
-  },
-  matchChipPositiveText: {
-    color: "#166534",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  matchChipNeutral: {
-    backgroundColor: "#FEF3C7",
-  },
-  matchChipNeutralText: {
-    color: "#92400E",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  matchChipNegative: {
-    backgroundColor: "#FEE2E2",
-  },
-  matchChipNegativeText: {
-    color: "#B91C1C",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  matchBreakdownContainer: {
-    backgroundColor: "#F0FDF4",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  matchBreakdownItem: { marginBottom: 10 },
-  matchBreakdownItemLast: { marginBottom: 0 },
-  matchBreakdownRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
-  matchBreakdownLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#166534",
-    letterSpacing: 0.5,
-  },
-  matchBreakdownPercent: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#166534",
-  },
-  matchBreakdownDetail: {
-    fontSize: 13,
-    color: "#1F2937",
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  metricRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 12,
-  },
-  metricChip: {
-    backgroundColor: "#F0FDF4",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  metricText: {
-    color: "#166534",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  attendeeBarContainer: {
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: "#F8FAFC",
-    marginBottom: 12,
-  },
-  attendeeBarHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 6,
-  },
-  attendeeBarLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1F2937",
-    textTransform: "uppercase",
-  },
-  attendeeBarValue: { fontSize: 13, fontWeight: "700", color: "#0F172A" },
-  attendeeBarTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "#E2E8F0",
-    overflow: "hidden",
-    marginBottom: 6,
-  },
-  attendeeBarFill: {
-    height: "100%",
-    backgroundColor: "#2E7D32",
-    borderRadius: 999,
-  },
-  attendeeBarFillFull: {
-    backgroundColor: "#DC2626",
-  },
-  attendeeBarCaption: { fontSize: 12, color: "#475569" },
-  sectionSpacing: {
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    color: "#6B7280",
-    fontWeight: "600",
-    marginBottom: 4,
-    textTransform: "uppercase",
-  },
-  sectionText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  organizer: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-});
+function createStyles(theme, isDarkMode) {
+  const preferenceBannerBg = theme.accentSurface;
+  const preferenceBannerBorder = isDarkMode ? theme.accent : "#C8E6C9";
+  const cardShadowOpacity = isDarkMode ? 0.35 : 0.08;
+  const cardShadowRadius = isDarkMode ? 12 : 8;
+  const matchBreakdownBg = isDarkMode ? "rgba(22, 101, 52, 0.18)" : "#F0FDF4";
+  const metricChipBg = isDarkMode ? "rgba(46, 125, 50, 0.15)" : "#F0FDF4";
+  const neutralChipBg = isDarkMode ? "rgba(217, 119, 6, 0.18)" : "#FEF3C7";
+  const negativeChipBg = isDarkMode ? "rgba(185, 28, 28, 0.18)" : "#FEE2E2";
+  const attendeeFillFull = isDarkMode ? theme.dangerText : "#DC2626";
+
+  return StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: theme.background },
+    center: { flex: 1, justifyContent: "center", alignItems: "center" },
+    empty: { fontSize: 16, color: theme.textMuted },
+    listContent: {
+      paddingVertical: 18,
+    },
+    preferenceBannerWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+    },
+    preferenceBanner: {
+      backgroundColor: preferenceBannerBg,
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: preferenceBannerBorder,
+    },
+    preferenceBannerTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.accent,
+      marginBottom: 4,
+    },
+    preferenceBannerText: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      lineHeight: 18,
+    },
+    card: {
+      backgroundColor: theme.surface,
+      marginHorizontal: 16,
+      marginBottom: 18,
+      borderRadius: 16,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: theme.border,
+      shadowColor: "#000",
+      shadowOpacity: cardShadowOpacity,
+      shadowRadius: cardShadowRadius,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    banner: {
+      width: "100%",
+      height: 170,
+      backgroundColor: theme.surfaceMuted,
+    },
+    cardBody: {
+      padding: 16,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+    title: {
+      flex: 1,
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.textPrimary,
+      marginRight: 12,
+    },
+    priceTag: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: theme.accent,
+      backgroundColor: theme.accentSurface,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+    location: {
+      fontSize: 14,
+      color: theme.textSecondary,
+      marginBottom: 10,
+    },
+    trailTypeChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      backgroundColor: theme.surfaceMuted,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      marginBottom: 12,
+    },
+    trailTypeChipLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.textMuted,
+      textTransform: "uppercase",
+      marginRight: 6,
+    },
+    trailTypeChipValue: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.textPrimary,
+    },
+    scheduleBlock: {
+      marginBottom: 12,
+    },
+    scheduleLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.textMuted,
+      textTransform: "uppercase",
+      marginBottom: 4,
+      letterSpacing: 0.5,
+    },
+    schedulePrimary: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.textPrimary,
+    },
+    scheduleSecondary: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: 4,
+    },
+    badgeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginTop: 10,
+    },
+    badgeClosingSoon: {
+      backgroundColor: theme.warningSurface,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      marginRight: 8,
+      marginBottom: 6,
+    },
+    badgeClosingSoonText: {
+      color: theme.warningText,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    badgeFull: {
+      backgroundColor: theme.dangerSurface,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      marginRight: 8,
+      marginBottom: 6,
+    },
+    badgeFullText: {
+      color: theme.dangerText,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    minimumNotice: {
+      fontSize: 12,
+      color: theme.infoText,
+      fontWeight: "600",
+      marginBottom: 12,
+    },
+    matchChip: {
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      marginBottom: 10,
+    },
+    matchChipPositive: {
+      backgroundColor: theme.positiveSurface,
+    },
+    matchChipPositiveText: {
+      color: theme.positiveText,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    matchChipNeutral: {
+      backgroundColor: neutralChipBg,
+    },
+    matchChipNeutralText: {
+      color: theme.warningText,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    matchChipNegative: {
+      backgroundColor: negativeChipBg,
+    },
+    matchChipNegativeText: {
+      color: theme.dangerText,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    matchBreakdownContainer: {
+      backgroundColor: matchBreakdownBg,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+    },
+    matchBreakdownItem: { marginBottom: 10 },
+    matchBreakdownItemLast: { marginBottom: 0 },
+    matchBreakdownRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+    },
+    matchBreakdownLabel: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: theme.accent,
+      letterSpacing: 0.5,
+    },
+    matchBreakdownPercent: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.accent,
+    },
+    matchBreakdownDetail: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginTop: 4,
+    },
+    metricRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginBottom: 12,
+    },
+    metricChip: {
+      backgroundColor: metricChipBg,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      marginRight: 8,
+      marginBottom: 8,
+    },
+    metricText: {
+      color: theme.accent,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    attendeeBarContainer: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      padding: 12,
+      backgroundColor: theme.surfaceMuted,
+      marginBottom: 12,
+    },
+    attendeeBarHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginBottom: 6,
+    },
+    attendeeBarLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: theme.textMuted,
+      textTransform: "uppercase",
+    },
+    attendeeBarValue: { fontSize: 13, fontWeight: "700", color: theme.textPrimary },
+    attendeeBarTrack: {
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: theme.border,
+      overflow: "hidden",
+      marginBottom: 6,
+    },
+    attendeeBarFill: {
+      height: "100%",
+      backgroundColor: theme.accent,
+      borderRadius: 999,
+    },
+    attendeeBarFillFull: {
+      backgroundColor: attendeeFillFull,
+    },
+    attendeeBarCaption: { fontSize: 12, color: theme.textSecondary },
+    sectionSpacing: {
+      marginBottom: 12,
+    },
+    sectionLabel: {
+      fontSize: 13,
+      color: theme.textMuted,
+      fontWeight: "600",
+      marginBottom: 4,
+      textTransform: "uppercase",
+    },
+    sectionText: {
+      fontSize: 14,
+      color: theme.textSecondary,
+      lineHeight: 20,
+    },
+    organizer: {
+      fontSize: 12,
+      color: theme.textMuted,
+      fontWeight: "500",
+    },
+  });
+}
