@@ -104,6 +104,86 @@ const EVENT_STATUS_OPTIONS = [
 const EVENT_STATUS_SET = new Set(EVENT_STATUS_OPTIONS.map((option) => option.value));
 const DEFAULT_EVENT_STATUS = 'PUBLISHED';
 
+const fallbackDateTimeStyles = StyleSheet.create({
+  datetimeField: {
+    marginBottom: 16,
+  },
+  datetimeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  clearButtonText: {
+    color: '#1d4ed8',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  datetimeValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  datetimeIcon: {
+    marginRight: 12,
+  },
+  datetimeValueText: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  datetimeValuePlaceholder: {
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  helperText: {
+    color: '#6B7280',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  iosModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  iosModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 12,
+  },
+  iosModalToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  iosModalToolbarButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  iosModalToolbarButtonPrimary: {
+    color: '#1d4ed8',
+  },
+  iosPicker: {
+    backgroundColor: '#FFFFFF',
+  },
+});
+
 function parseDate(value) {
   if (!value) {
     return null;
@@ -155,7 +235,9 @@ function DateTimeInputField({
   minimumDate,
   maximumDate,
   allowClear = false,
+  styles: providedStyles,
 }) {
+  const themedStyles = providedStyles ?? fallbackDateTimeStyles;
   const [iosVisible, setIosVisible] = useState(false);
   const [iosDraftDate, setIosDraftDate] = useState(
     () => clampDateToRange(value, minimumDate, maximumDate) ?? new Date(),
@@ -230,32 +312,32 @@ function DateTimeInputField({
   const displayValue = formattedValue ?? placeholder;
 
   return (
-    <View style={styles.datetimeField}>
-      <View style={styles.datetimeHeader}>
-        <Text style={styles.infoLabel}>{label}</Text>
+    <View style={themedStyles.datetimeField}>
+      <View style={themedStyles.datetimeHeader}>
+        <Text style={themedStyles.infoLabel}>{label}</Text>
         {allowClear && value ? (
           <TouchableOpacity onPress={() => onChange(null)}>
-            <Text style={styles.clearButtonText}>Clear</Text>
+            <Text style={themedStyles.clearButtonText}>Clear</Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       <TouchableOpacity
-        style={styles.datetimeValue}
+        style={themedStyles.datetimeValue}
         onPress={handleOpenPicker}
         activeOpacity={0.85}
       >
-        <Icon name="calendar" size={18} color="#1d4ed8" style={styles.datetimeIcon} />
+        <Icon name="calendar" size={18} color="#1d4ed8" style={themedStyles.datetimeIcon} />
         <Text
           style={[
-            styles.datetimeValueText,
-            !formattedValue && styles.datetimeValuePlaceholder,
+            themedStyles.datetimeValueText,
+            !formattedValue && themedStyles.datetimeValuePlaceholder,
           ]}
         >
           {displayValue}
         </Text>
       </TouchableOpacity>
-      {helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
+      {helperText ? <Text style={themedStyles.helperText}>{helperText}</Text> : null}
 
       {Platform.OS === 'ios' && iosVisible ? (
         <Modal
@@ -264,17 +346,17 @@ function DateTimeInputField({
           visible={iosVisible}
           onRequestClose={handleIosCancel}
         >
-          <View style={styles.iosModalBackdrop}>
-            <View style={styles.iosModalContainer}>
-              <View style={styles.iosModalToolbar}>
+          <View style={themedStyles.iosModalBackdrop}>
+            <View style={themedStyles.iosModalContainer}>
+              <View style={themedStyles.iosModalToolbar}>
                 <TouchableOpacity onPress={handleIosCancel}>
-                  <Text style={styles.iosModalToolbarButton}>Cancel</Text>
+                  <Text style={themedStyles.iosModalToolbarButton}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleIosSave}>
                   <Text
                     style={[
-                      styles.iosModalToolbarButton,
-                      styles.iosModalToolbarButtonPrimary,
+                      themedStyles.iosModalToolbarButton,
+                      themedStyles.iosModalToolbarButtonPrimary,
                     ]}
                   >
                     Save
@@ -288,7 +370,7 @@ function DateTimeInputField({
                 minimumDate={parseDate(minimumDate) ?? undefined}
                 maximumDate={parseDate(maximumDate) ?? undefined}
                 onChange={handleIosChange}
-                style={styles.iosPicker}
+                style={themedStyles.iosPicker}
               />
             </View>
           </View>
@@ -1131,12 +1213,14 @@ export default function CreateEventPage({ route, navigation }) {
             <View style={styles.subSection}>
               <Text style={styles.subSectionTitle}>Schedule</Text>
               <DateTimeInputField
+                styles={styles}
                 label="Event starts"
                 value={startsAt}
                 onChange={setStartsAt}
                 helperText="Attendees will see this as the official start time."
               />
               <DateTimeInputField
+                styles={styles}
                 label="Event ends"
                 value={endsAt}
                 onChange={setEndsAt}
@@ -1145,6 +1229,7 @@ export default function CreateEventPage({ route, navigation }) {
                 helperText="Optional. Helps hikers plan the total time commitment."
               />
               <DateTimeInputField
+                styles={styles}
                 label="Registration opens"
                 value={registrationOpensAt}
                 onChange={setRegistrationOpensAt}
@@ -1153,6 +1238,7 @@ export default function CreateEventPage({ route, navigation }) {
                 helperText="Optional. Leave blank to accept bookings immediately."
               />
               <DateTimeInputField
+                styles={styles}
                 label="Registration closes"
                 value={registrationClosesAt}
                 onChange={setRegistrationClosesAt}
@@ -1161,6 +1247,7 @@ export default function CreateEventPage({ route, navigation }) {
                 helperText="Bookings close at this time. We flag the event as “closing soon” within 72 hours."
               />
               <DateTimeInputField
+                styles={styles}
                 label="Send start reminder"
                 value={announceAt}
                 onChange={setAnnounceAt}

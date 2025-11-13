@@ -90,6 +90,13 @@ const COMPLETION_STATUS_BADGES = {
   APPROVED: { label: 'Approved', background: '#E0F2FE', color: '#1D4ED8' },
 };
 
+function sanitizeRecordList(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.filter((item) => item && typeof item === 'object');
+}
+
 function formatCompletionDate(value) {
   if (!value) {
     return null;
@@ -253,7 +260,10 @@ export default function ProfilePage({ navigation, route }) {
     [headerTopPadding, insets.bottom],
   );
   const completedEvents = useMemo(
-    () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
+    () =>
+      Array.isArray(profile?.completedEvents)
+        ? profile.completedEvents.filter((event) => event && typeof event === 'object')
+        : [],
     [profile?.completedEvents],
   );
 
@@ -318,19 +328,21 @@ export default function ProfilePage({ navigation, route }) {
         const data = await get(
           `/api/users/${viewedUserId}?includePosts=true&includeCompletedEvents=true`,
         );
+        const sanitizedPosts = sanitizeRecordList(data.posts);
+        const sanitizedCompletedEvents = sanitizeRecordList(data.completedEvents);
         const formattedProfile = {
           ...data,
           followersCount: data.followersCount ?? 0,
           followingCount: data.followingCount ?? 0,
-          postCount: data.postCount ?? (Array.isArray(data.posts) ? data.posts.length : 0),
-          completedEvents: Array.isArray(data.completedEvents) ? data.completedEvents : [],
+          postCount: data.postCount ?? sanitizedPosts.length,
+          completedEvents: sanitizedCompletedEvents,
         };
 
         profileOwnerIdRef.current = formattedProfile.id;
         profileRef.current = formattedProfile;
 
         setProfile(formattedProfile);
-        setPosts(Array.isArray(data.posts) ? data.posts : []);
+        setPosts(sanitizedPosts);
       } catch (error) {
         console.error('Failed to load profile:', error);
         Alert.alert('Profile unavailable', error?.message ?? 'Unable to load this profile right now.');
@@ -970,12 +982,19 @@ export default function ProfilePage({ navigation, route }) {
             ) : null}
           </View>
           {completedEvents.length ? (
-            completedEvents.map((completion, index) => (
-              <CompletedTrailCard
-                key={`${completion.bookingId ?? completion.id ?? index}`}
-                completion={completion}
-              />
-            ))
+            completedEvents.map((completion, index) => {
+              if (!completion) {
+                return null;
+              }
+              const completionKey =
+                completion.bookingId ?? completion.id ?? `completion-${index}`;
+              return (
+                <CompletedTrailCard
+                  key={completionKey}
+                  completion={completion}
+                />
+              );
+            })
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
               Organizer-marked completions will appear here once this hiker finishes an event.
@@ -1005,7 +1024,9 @@ export default function ProfilePage({ navigation, route }) {
     <View className="flex-1 bg-gray-100 dark:bg-slate-950">
       <FlatList
         data={posts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) =>
+          item?.id ? String(item.id) : `post-${index}`
+        }
         renderItem={({ item }) => <PostCard post={item} />}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={
