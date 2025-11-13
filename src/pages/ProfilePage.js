@@ -97,6 +97,13 @@ function sanitizeRecordList(items) {
   return items.filter((item) => item && typeof item === 'object');
 }
 
+function sanitizeOptionalObject(candidate) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return null;
+  }
+  return candidate;
+}
+
 function formatCompletionDate(value) {
   if (!value) {
     return null;
@@ -330,12 +337,30 @@ export default function ProfilePage({ navigation, route }) {
         );
         const sanitizedPosts = sanitizeRecordList(data.posts);
         const sanitizedCompletedEvents = sanitizeRecordList(data.completedEvents);
+        const sanitizedApplication = sanitizeOptionalObject(data.organizerApplication);
+        const sanitizedRatingBase = sanitizeOptionalObject(data.organizerRating);
+        const sanitizedRating = sanitizedRatingBase
+          ? {
+              ...sanitizedRatingBase,
+              reviews: sanitizeRecordList(sanitizedRatingBase.reviews),
+              viewerReview: sanitizeOptionalObject(sanitizedRatingBase.viewerReview),
+            }
+          : null;
         const formattedProfile = {
           ...data,
           followersCount: data.followersCount ?? 0,
           followingCount: data.followingCount ?? 0,
           postCount: data.postCount ?? sanitizedPosts.length,
           completedEvents: sanitizedCompletedEvents,
+          organizerApplication: sanitizedApplication
+            ? {
+                ...sanitizedApplication,
+                documentUrls: Array.isArray(sanitizedApplication.documentUrls)
+                  ? sanitizedApplication.documentUrls
+                  : [],
+              }
+            : null,
+          organizerRating: sanitizedRating,
         };
 
         profileOwnerIdRef.current = formattedProfile.id;
