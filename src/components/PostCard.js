@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,16 @@ import {
   ActivityIndicator,
   ScrollView,
   Share,
+  Animated,
+  Dimensions,
+  TouchableWithoutFeedback,
+  FlatList,
+  StyleSheet,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView, PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { del, get, post as apiPost } from '../lib/api';
 import { useTheme } from '../context/ThemeContext';
 import { ensureAvatarUri, resolveImageUrl } from '../utils/media';
@@ -51,10 +58,21 @@ const ActionButton = ({
 
 const getPhotoUri = (value) => resolveImageUrl(value) ?? value ?? null;
 
-const PhotoGrid = ({ photos }) => {
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+
+const PhotoGrid = ({ photos, onPhotoPress }) => {
   if (!photos || photos.length === 0) {
     return null;
   }
+
+  const handlePress = (index) => {
+    if (typeof onPhotoPress === 'function') {
+      onPhotoPress(index);
+    }
+  };
 
   if (photos.length === 1) {
     const uri = getPhotoUri(photos[0]);
@@ -62,11 +80,17 @@ const PhotoGrid = ({ photos }) => {
       return null;
     }
     return (
-      <Image
-        source={{ uri }}
-        className="mt-2 h-64 w-full rounded-lg"
-        resizeMode="cover"
-      />
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => handlePress(0)}
+        className="mt-2"
+      >
+        <Image
+          source={{ uri }}
+          className="h-64 w-full rounded-lg"
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
     );
   }
 
@@ -78,16 +102,30 @@ const PhotoGrid = ({ photos }) => {
     }
     return (
       <View className="mt-2 h-48 flex-row space-x-1">
-        <Image
-          source={{ uri: first }}
-          className="h-full flex-1 rounded-l-lg"
-          resizeMode="cover"
-        />
-        <Image
-          source={{ uri: second }}
-          className="h-full flex-1 rounded-r-lg"
-          resizeMode="cover"
-        />
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          className="h-full"
+          activeOpacity={0.9}
+          onPress={() => handlePress(0)}
+        >
+          <Image
+            source={{ uri: first }}
+            className="h-full w-full rounded-l-lg"
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          className="h-full"
+          activeOpacity={0.9}
+          onPress={() => handlePress(1)}
+        >
+          <Image
+            source={{ uri: second }}
+            className="h-full w-full rounded-r-lg"
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       </View>
     );
   }
@@ -98,26 +136,194 @@ const PhotoGrid = ({ photos }) => {
   if (!first || !second || !third) {
     return null;
   }
+  const remaining = photos.length - 3;
   return (
     <View className="mt-2 h-64 flex-row space-x-1">
-      <Image
-        source={{ uri: first }}
-        className="h-full flex-2 rounded-l-lg"
-        resizeMode="cover"
-      />
+      <TouchableOpacity
+        style={{ flex: 2 }}
+        className="h-full"
+        activeOpacity={0.9}
+        onPress={() => handlePress(0)}
+      >
+        <Image
+          source={{ uri: first }}
+          className="h-full w-full rounded-l-lg"
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
       <View className="h-full flex-1 space-y-1">
-        <Image
-          source={{ uri: second }}
-          className="flex-1 rounded-tr-lg"
-          resizeMode="cover"
-        />
-        <Image
-          source={{ uri: third }}
-          className="flex-1 rounded-br-lg"
-          resizeMode="cover"
-        />
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          className="h-full"
+          activeOpacity={0.9}
+          onPress={() => handlePress(1)}
+        >
+          <Image
+            source={{ uri: second }}
+            className="h-full w-full rounded-tr-lg"
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          className="h-full"
+          activeOpacity={0.9}
+          onPress={() => handlePress(2)}
+        >
+          <Image
+            source={{ uri: third }}
+            className="h-full w-full rounded-br-lg"
+            resizeMode="cover"
+          />
+          {remaining > 0 ? (
+            <View className="absolute inset-0 items-center justify-center rounded-br-lg bg-black/40">
+              <Text className="text-xl font-semibold text-white">+{remaining}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
       </View>
     </View>
+  );
+};
+
+const ZoomableImage = ({ uri }) => {
+  const pinchScale = useRef(new Animated.Value(1)).current;
+  const baseScale = useRef(new Animated.Value(1)).current;
+  const lastScale = useRef(1);
+  const lastTapRef = useRef(0);
+  const combinedScale = Animated.multiply(baseScale, pinchScale);
+
+  useEffect(() => {
+    lastScale.current = 1;
+    baseScale.setValue(1);
+    pinchScale.setValue(1);
+  }, [baseScale, pinchScale, uri]);
+
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      const next = lastScale.current > 1 ? 1 : 2.5;
+      lastScale.current = next;
+      baseScale.setValue(next);
+      pinchScale.setValue(1);
+    }
+    lastTapRef.current = now;
+  }, [baseScale, pinchScale]);
+
+  const onPinchEvent = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { scale: pinchScale } }], {
+        useNativeDriver: true,
+      }),
+    [pinchScale],
+  );
+
+  const handlePinchStateChange = useCallback(
+    ({ nativeEvent }) => {
+      if (nativeEvent.oldState === State.ACTIVE) {
+        let nextScale = lastScale.current * nativeEvent.scale;
+        nextScale = clamp(nextScale, MIN_ZOOM, MAX_ZOOM);
+        lastScale.current = nextScale;
+        baseScale.setValue(nextScale);
+        pinchScale.setValue(1);
+      }
+    },
+    [baseScale, pinchScale],
+  );
+
+  return (
+    <View style={styles.zoomWrapper}>
+      <PinchGestureHandler onGestureEvent={onPinchEvent} onHandlerStateChange={handlePinchStateChange}>
+        <Animated.View style={styles.zoomInner}>
+          <TouchableWithoutFeedback onPress={handleDoubleTap}>
+            <Animated.Image
+              source={{ uri }}
+              style={[styles.zoomImage, { transform: [{ scale: combinedScale }] }]}
+              resizeMode="contain"
+            />
+          </TouchableWithoutFeedback>
+        </Animated.View>
+      </PinchGestureHandler>
+    </View>
+  );
+};
+
+const ImageViewerModal = ({ visible, photos = [], initialIndex = 0, onClose }) => {
+  const flatListRef = useRef(null);
+  const safeIndex = Math.min(Math.max(initialIndex, 0), Math.max(photos.length - 1, 0));
+  const [currentIndex, setCurrentIndex] = useState(safeIndex);
+
+  useEffect(() => {
+    setCurrentIndex(safeIndex);
+  }, [safeIndex, visible]);
+
+  useEffect(() => {
+    if (!visible || !flatListRef.current) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      try {
+        flatListRef.current.scrollToIndex({ index: safeIndex, animated: false });
+      } catch {
+        // silence out-of-range errors
+      }
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [safeIndex, visible]);
+
+  const handleMomentumScrollEnd = useCallback((event) => {
+    const offsetX = event?.nativeEvent?.contentOffset?.x ?? 0;
+    const next = Math.round(offsetX / SCREEN_WIDTH);
+    setCurrentIndex(next);
+  }, []);
+
+  const getItemLayout = useCallback(
+    (_, index) => ({
+      length: SCREEN_WIDTH,
+      offset: SCREEN_WIDTH * index,
+      index,
+    }),
+    [],
+  );
+
+  if (!photos || photos.length === 0) {
+    return null;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <GestureHandlerRootView style={styles.viewerRoot}>
+        <SafeAreaView style={styles.viewerSafeArea}>
+          <View style={styles.viewerHeader}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Feather name="x" size={24} color="#ffffff" />
+            </TouchableOpacity>
+            <Text style={styles.viewerCounter}>
+              {currentIndex + 1} / {photos.length}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <FlatList
+            ref={flatListRef}
+            data={photos}
+            horizontal
+            pagingEnabled
+            style={styles.viewerList}
+            keyExtractor={(item, index) => `${item}-${index}`}
+            renderItem={({ item }) => <ZoomableImage uri={item} />}
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleMomentumScrollEnd}
+            getItemLayout={getItemLayout}
+            initialScrollIndex={safeIndex}
+          />
+        </SafeAreaView>
+      </GestureHandlerRootView>
+    </Modal>
   );
 };
 
@@ -163,7 +369,14 @@ export default function PostCard({ post }) {
   const authorName = getAuthorName(post);
   const createdAt = formatPostDate(post?.createdAt);
   const caption = post?.content ?? '';
-  const photos = post?.imageUrls ?? [];
+  const photos = useMemo(() => {
+    if (!Array.isArray(post?.imageUrls)) {
+      return [];
+    }
+    return post.imageUrls
+      .map((value) => getPhotoUri(value))
+      .filter(Boolean);
+  }, [post?.imageUrls]);
   const [isLiked, setIsLiked] = useState(Boolean(post?.likedByCurrentUser));
   const [likeCount, setLikeCount] = useState(post?.likeCount ?? 0);
   const [commentCount, setCommentCount] = useState(post?.commentCount ?? 0);
@@ -173,6 +386,8 @@ export default function PostCard({ post }) {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const navigation = useNavigation();
 
   const handleAuthorPress = useCallback(() => {
@@ -301,6 +516,21 @@ export default function PostCard({ post }) {
 
   const canSubmitComment = commentText.trim().length > 0 && !commentSubmitting;
 
+  const handlePhotoPress = useCallback(
+    (index) => {
+      if (!photos || photos.length === 0) {
+        return;
+      }
+      setViewerIndex(Math.min(Math.max(index, 0), photos.length - 1));
+      setViewerVisible(true);
+    },
+    [photos],
+  );
+
+  const handleCloseViewer = useCallback(() => {
+    setViewerVisible(false);
+  }, []);
+
   return (
     <View className="mt-2 bg-white dark:bg-slate-900 p-4">
       <View className="flex-row items-center justify-between">
@@ -322,7 +552,7 @@ export default function PostCard({ post }) {
 
       {caption ? <Text className="my-2 text-slate-900 dark:text-slate-100">{caption}</Text> : null}
 
-      <PhotoGrid photos={photos} />
+      <PhotoGrid photos={photos} onPhotoPress={handlePhotoPress} />
 
       <View className="mt-4 flex-row justify-around border-t border-gray-100 dark:border-slate-700 pt-2">
         <ActionButton
@@ -411,6 +641,53 @@ export default function PostCard({ post }) {
           </View>
         </View>
       </Modal>
+
+      <ImageViewerModal
+        visible={viewerVisible}
+        photos={photos}
+        initialIndex={viewerIndex}
+        onClose={handleCloseViewer}
+      />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  viewerRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  viewerSafeArea: {
+    flex: 1,
+  },
+  viewerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  viewerCounter: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  viewerList: {
+    flex: 1,
+  },
+  zoomWrapper: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomInner: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+});

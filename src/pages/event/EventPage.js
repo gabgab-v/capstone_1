@@ -16,7 +16,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
-import { Picker } from "@react-native-picker/picker";
+import SafePicker from "../../components/SafePicker";
 import { useTheme } from "../../context/ThemeContext";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
@@ -560,26 +560,22 @@ function OrganizerEventCard({
         <View style={styles.statusControl}>
           <Text style={styles.statusControlLabel}>Update status</Text>
           <View style={styles.statusPickerWrapper}>
-            <Picker
+            <SafePicker
+              options={EVENT_STATUS_OPTIONS}
               selectedValue={scheduleMeta.status}
               onValueChange={(value) => {
                 if (value !== scheduleMeta.status) {
                   onUpdateStatus?.(event, value);
                 }
               }}
-              enabled={Boolean(onUpdateStatus) && !isUpdatingStatus}
-              style={[styles.statusPicker, { color: pickerTextColor }]}
+              disabled={!onUpdateStatus || isUpdatingStatus}
+              containerStyle={styles.statusPickerInner}
+              pickerStyle={styles.statusPicker}
+              textColor={pickerTextColor}
               dropdownIconColor={pickerIconColor}
-            >
-              {EVENT_STATUS_OPTIONS.map((option) => (
-                <Picker.Item
-                  key={option.value}
-                  label={option.label}
-                  value={option.value}
-                  color={pickerTextColor}
-                />
-              ))}
-            </Picker>
+              placeholder="Select status"
+              modalTitle="Update event status"
+            />
             {isUpdatingStatus ? (
               <ActivityIndicator
                 size="small"
@@ -1225,6 +1221,11 @@ function createStyles(theme) {
       borderRadius: 12,
       backgroundColor: theme.surface,
       position: "relative",
+    },
+    statusPickerInner: {
+      borderWidth: 0,
+      borderRadius: 12,
+      backgroundColor: "transparent",
     },
     statusPicker: {
       width: "100%",

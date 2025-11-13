@@ -8,13 +8,13 @@ import {
   ActivityIndicator,
   View,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { TRAIL_TYPE_OPTIONS } from '../../constants/trailTypes';
+import SafePicker from '../../components/SafePicker';
 
 const EXPERIENCE_OPTIONS = [
   { label: 'Select...', value: '' },
@@ -64,8 +64,11 @@ export default function PreferencesSetupPage({ navigation }) {
   const pickerContainerStyle = useMemo(
     () => ({
       backgroundColor: isDarkMode ? colors.surfaceMuted : colors.surface,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 16,
     }),
-    [colors.surface, colors.surfaceMuted, isDarkMode],
+    [colors.border, colors.surface, colors.surfaceMuted, isDarkMode],
   );
   const difficultyOptions = useMemo(() => {
     const baseOptions = DIFFICULTY_OPTIONS.filter((option) => {
@@ -293,53 +296,37 @@ export default function PreferencesSetupPage({ navigation }) {
       <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
-      <View
-        className="border border-gray-300 rounded-xl overflow-hidden mb-2 dark:border-slate-600"
-        style={pickerContainerStyle}
-      >
-        <Picker
-          mode="dropdown"
+      <View className="mb-2">
+        <SafePicker
+          options={experienceOptions}
           selectedValue={experience}
           onValueChange={setExperience}
-          style={pickerStyle}
+          pickerStyle={pickerStyle}
+          containerStyle={pickerContainerStyle}
           dropdownIconColor={colors.icon}
-          enabled={!isExperienceLocked}
-        >
-          {experienceOptions.map((option) => (
-            <Picker.Item
-              key={option.value || 'placeholder'}
-              label={option.label}
-              value={option.value}
-              color={colors.textPrimary}
-            />
-          ))}
-        </Picker>
+          textColor={colors.textPrimary}
+          placeholder="Select..."
+          modalTitle="Select experience level"
+          disabled={isExperienceLocked}
+        />
       </View>
       {!!experienceHelperText && (
         <Text className="text-sm text-slate-500 dark:text-slate-400 mb-4">{experienceHelperText}</Text>
       )}
 
       <Text className="font-medium mt-4 mb-2">Preferred Difficulty</Text>
-      <View
-        className="border border-gray-300 rounded-xl overflow-hidden mb-4 dark:border-slate-600"
-        style={pickerContainerStyle}
-      >
-        <Picker
-          mode="dropdown"
+      <View className="mb-4">
+        <SafePicker
+          options={difficultyOptions}
           selectedValue={difficulty}
           onValueChange={setDifficulty}
-          style={pickerStyle}
+          pickerStyle={pickerStyle}
+          containerStyle={pickerContainerStyle}
           dropdownIconColor={colors.icon}
-        >
-          {difficultyOptions.map((option) => (
-            <Picker.Item
-              key={option.value ? `difficulty-${option.value}` : 'difficulty-placeholder'}
-              label={option.label}
-              value={option.value}
-              color={colors.textPrimary}
-            />
-          ))}
-        </Picker>
+          textColor={colors.textPrimary}
+          placeholder="Select..."
+          modalTitle="Select difficulty"
+        />
       </View>
       {!canAccessExpertDifficulty ? (
         <Text className="text-sm text-slate-500 dark:text-slate-400 -mt-2 mb-4">
@@ -348,26 +335,18 @@ export default function PreferencesSetupPage({ navigation }) {
       ) : null}
 
       <Text className="font-medium mt-4 mb-2">Preferred Trail Type</Text>
-      <View
-        className="border border-gray-300 rounded-xl overflow-hidden mb-4 dark:border-slate-600"
-        style={pickerContainerStyle}
-      >
-        <Picker
-          mode="dropdown"
+      <View className="mb-4">
+        <SafePicker
+          options={trailTypeOptions}
           selectedValue={trailType}
           onValueChange={setTrailType}
-          style={pickerStyle}
+          pickerStyle={pickerStyle}
+          containerStyle={pickerContainerStyle}
           dropdownIconColor={colors.icon}
-        >
-          {trailTypeOptions.map((option) => (
-            <Picker.Item
-              key={option.value ? `trail-${option.value}` : 'trail-placeholder'}
-              label={option.label}
-              value={option.value}
-              color={colors.textPrimary}
-            />
-          ))}
-        </Picker>
+          textColor={colors.textPrimary}
+          placeholder="Select..."
+          modalTitle="Select trail type"
+        />
       </View>
 
       <Text className="font-medium mt-4 mb-2">Preferred Duration (hours)</Text>

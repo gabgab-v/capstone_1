@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { get, post, patch } from '../lib/api';
@@ -23,6 +22,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
+import SafePicker from '../components/SafePicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { computeLineStringMeta, formatMetersToKm } from '../utils/geo';
 import { normalizeDifficultyValue } from '../utils/matchScoring';
@@ -1098,23 +1098,16 @@ export default function CreateEventPage({ route, navigation }) {
 
               <View style={styles.infoFieldFull}>
                 <Text style={styles.infoLabel}>Trail Style</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={trailType}
-                    onValueChange={(value) => setTrailType(value)}
-                    style={[styles.picker, { color: pickerTextColor }]}
-                    dropdownIconColor={pickerIconColor}
-                  >
-                    {trailTypePickerOptions.map((option) => (
-                      <Picker.Item
-                        key={option.value}
-                        label={option.label}
-                        value={option.value}
-                        color={pickerTextColor}
-                      />
-                    ))}
-                  </Picker>
-                </View>
+                <SafePicker
+                  options={trailTypePickerOptions}
+                  selectedValue={trailType}
+                  onValueChange={setTrailType}
+                  placeholder="Select trail style"
+                  containerStyle={styles.pickerContainer}
+                  dropdownIconColor={pickerIconColor}
+                  textColor={pickerTextColor}
+                  modalTitle="Select trail style"
+                />
                 <Text style={styles.helperText}>
                   This helps us match the event to hikers who prefer that terrain.
                 </Text>
@@ -1189,23 +1182,16 @@ export default function CreateEventPage({ route, navigation }) {
               </View>
               <View style={styles.pickerGroup}>
                 <Text style={styles.infoLabel}>Event status</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={status}
-                    onValueChange={(value) => setStatus(value)}
-                    style={[styles.picker, { color: pickerTextColor }]}
-                    dropdownIconColor={pickerIconColor}
-                  >
-                    {EVENT_STATUS_OPTIONS.map((option) => (
-                      <Picker.Item
-                        key={option.value}
-                        label={option.label}
-                        value={option.value}
-                        color={pickerTextColor}
-                      />
-                    ))}
-                  </Picker>
-                </View>
+                <SafePicker
+                  options={EVENT_STATUS_OPTIONS}
+                  selectedValue={status}
+                  onValueChange={setStatus}
+                  placeholder="Select status"
+                  containerStyle={styles.pickerContainer}
+                  dropdownIconColor={pickerIconColor}
+                  textColor={pickerTextColor}
+                  modalTitle="Select event status"
+                />
                 <Text style={styles.helperText}>
                   Completed or cancelled events stay hidden from the Discover page.
                 </Text>
