@@ -718,12 +718,19 @@ export default function ProfilePage({ navigation, route }) {
   }, [profile?.organizerApplication?.organizationName, profile?.role]);
 
   const ratingSummary = profile?.organizerRating ?? null;
+  const organizerReviews = useMemo(
+    () =>
+      Array.isArray(ratingSummary?.reviews)
+        ? ratingSummary.reviews.filter((review) => review && typeof review === 'object')
+        : [],
+    [ratingSummary?.reviews],
+  );
   const averageRatingLabel =
     ratingSummary && ratingSummary.averageRating != null
       ? ratingSummary.averageRating.toFixed(1)
       : null;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
-  const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
+  const hasReviews = organizerReviews.length > 0;
   const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const renderHeader = () => (
@@ -940,9 +947,9 @@ export default function ProfilePage({ navigation, route }) {
             <View className="mt-4 rounded-xl bg-white p-3 dark:bg-slate-900">
               <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Recent Feedback</Text>
               {hasReviews ? (
-                ratingSummary.reviews.map((review) => (
+                organizerReviews.map((review, index) => (
                   <View
-                    key={review.id}
+                    key={review.id ?? `review-${index}`}
                     className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 dark:bg-slate-900 dark:border-slate-700"
                   >
                     <View className="flex-row items-center justify-between">
