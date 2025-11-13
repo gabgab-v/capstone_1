@@ -38,6 +38,11 @@ const userProfileSelect = {
   preferredTrailType: true,
   preferredDurationHrs: true,
   budgetRange: true,
+  organizerApplication: {
+    select: {
+      organizationName: true,
+    },
+  },
 };
 
 const COMPLETED_BOOKING_STATUSES = ['APPROVED', 'CONFIRMED'];

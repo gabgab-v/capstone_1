@@ -691,6 +691,20 @@ export default function ProfilePage({ navigation, route }) {
     { label: 'Budget Range', value: profile.budgetRange },
   ].filter((item) => item.value);
 
+  const organizerOrganizationName = useMemo(() => {
+    if (profile?.role !== 'ORGANIZER') {
+      return null;
+    }
+    const value = profile?.organizerApplication?.organizationName;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+    return null;
+  }, [profile?.organizerApplication?.organizationName, profile?.role]);
+
   const ratingSummary = profile?.organizerRating ?? null;
   const averageRatingLabel =
     ratingSummary && ratingSummary.averageRating != null
@@ -771,6 +785,25 @@ export default function ProfilePage({ navigation, route }) {
         ) : null}
         {profile.bio ? (
           <Text className="mt-1 text-center text-sm text-gray-500 dark:text-slate-400">{profile.bio}</Text>
+        ) : null}
+
+        {profile.role === 'ORGANIZER' ? (
+          <View className="mt-4 w-full rounded-2xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-900/30">
+            <Text className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
+              Organization / Company
+            </Text>
+            <View className="mt-2 flex-row items-center">
+              <Ionicons name="business-outline" size={18} color="#047857" />
+              <Text className="ml-2 text-base font-semibold text-emerald-900 dark:text-emerald-50">
+                {organizerOrganizationName ?? 'Independent organizer'}
+              </Text>
+            </View>
+            {!organizerOrganizationName ? (
+              <Text className="mt-1 text-xs text-emerald-700 dark:text-emerald-100/80">
+                Organizer did not provide a company name in the application.
+              </Text>
+            ) : null}
+          </View>
         ) : null}
 
         <View className="mt-4 flex-row items-center justify-between rounded-2xl bg-gray-50 px-3 py-2 dark:bg-slate-900">

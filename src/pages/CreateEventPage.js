@@ -36,6 +36,7 @@ const TABS = [
 ];
 
 const DEFAULT_DIFFICULTY = 'BEGINNER';
+const GCASH_NUMBER_LENGTH = 11;
 const DIFFICULTY_LEVELS = [
   {
     value: 'BEGINNER',
@@ -83,6 +84,13 @@ function toFloatOrNull(value) {
 function toIntOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.round(number) : null;
+}
+
+function sanitizeGcashInput(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.replace(/\D+/g, '').slice(0, GCASH_NUMBER_LENGTH);
 }
 
 const EVENT_STATUS_OPTIONS = [
@@ -324,7 +332,7 @@ export default function CreateEventPage({ route, navigation }) {
   const [difficulty, setDifficulty] = useState(() =>
     resolveDifficultyValue(eventFromParams?.difficulty),
   );
-  const [gcashNumber, setGcashNumber] = useState(() => eventFromParams?.gcashNumber ?? '');
+  const [gcashNumber, setGcashNumber] = useState(() => sanitizeGcashInput(eventFromParams?.gcashNumber ?? ''));
   const { scheduleNotification } = useNotifications();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -440,7 +448,7 @@ export default function CreateEventPage({ route, navigation }) {
     );
     setPrice(Number.isFinite(Number(activeEvent.price)) ? String(activeEvent.price) : '');
     setDifficulty(resolveDifficultyValue(activeEvent.difficulty));
-    setGcashNumber(activeEvent.gcashNumber ?? '');
+    setGcashNumber(sanitizeGcashInput(activeEvent.gcashNumber ?? ''));
     setTrailType(activeEvent.trailType ?? '');
 
     setSelectedImage(activeEvent.imageUrl ? { uri: activeEvent.imageUrl } : null);
@@ -601,6 +609,10 @@ export default function CreateEventPage({ route, navigation }) {
     }
   }, []);
 
+  const handleGcashChange = useCallback((value) => {
+    setGcashNumber(sanitizeGcashInput(value));
+  }, []);
+
   const pickImage = useCallback(async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -622,7 +634,6 @@ export default function CreateEventPage({ route, navigation }) {
 
   const handleSubmit = useCallback(async () => {
     const trimmedTitle = trimOrNull(title);
-    const trimmedGcash = trimOrNull(gcashNumber);
     const normalizedTrailType = trimOrNull(trailType);
     if (!trimmedTitle) {
       Alert.alert('Missing Information', 'Please add a title for your event.');
@@ -634,8 +645,9 @@ export default function CreateEventPage({ route, navigation }) {
       setActiveTab('details');
       return;
     }
-    if (!trimmedGcash) {
-      Alert.alert('Missing Information', 'Please provide a GCash number.');
+    const normalizedGcash = sanitizeGcashInput(gcashNumber);
+    if (normalizedGcash.length !== GCASH_NUMBER_LENGTH) {
+      Alert.alert('Invalid GCash Number', 'Enter the 11-digit mobile number linked to GCash.');
       setActiveTab('details');
       return;
     }
@@ -816,7 +828,7 @@ export default function CreateEventPage({ route, navigation }) {
         elevationM: toFloatOrNull(elevationM),
         price: priceValue,
         difficulty,
-        gcashNumber: trimmedGcash,
+        gcashNumber: normalizedGcash,
         imageUrl,
         trailId: effectiveTrail.id,
         trailGeoJson,
@@ -1091,8 +1103,10 @@ export default function CreateEventPage({ route, navigation }) {
                 <TextInput
                   style={styles.input}
                   value={gcashNumber}
-                  onChangeText={setGcashNumber}
+                  onChangeText={handleGcashChange}
                   placeholder="09XXXXXXXXX"
+                  keyboardType="number-pad"
+                  maxLength={GCASH_NUMBER_LENGTH}
                 />
               </View>
 

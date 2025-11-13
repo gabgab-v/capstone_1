@@ -2,35 +2,13 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme } from '../context/ThemeContext';
-
-const isNativePickerAvailable = (() => {
-  if (Platform.OS === 'web') {
-    return true;
-  }
-  if (!UIManager?.getViewManagerConfig) {
-    return false;
-  }
-  if (Platform.OS === 'ios') {
-    return Boolean(UIManager.getViewManagerConfig('RNCPicker'));
-  }
-  if (Platform.OS === 'android') {
-    return (
-      Boolean(UIManager.getViewManagerConfig('RNCAndroidDropdownPicker')) ||
-      Boolean(UIManager.getViewManagerConfig('RNCAndroidDialogPicker'))
-    );
-  }
-  return false;
-})();
 
 function resolveOptionKey(option, index) {
   if (option?.value !== undefined && option?.value !== null) {
@@ -73,61 +51,44 @@ export default function SafePicker({
     [onValueChange],
   );
 
-  if (isNativePickerAvailable) {
-    return (
-      <View
-        style={[
-          styles.pickerContainer,
-          { borderColor: colors.border, backgroundColor: colors.surfaceMuted },
-          containerStyle,
-        ]}
-      >
-        <Picker
-          enabled={!disabled}
-          selectedValue={selectedValue}
-          onValueChange={handleChange}
-          style={[
-            styles.nativePicker,
-            { color: resolvedTextColor },
-            pickerStyle,
-          ]}
-          dropdownIconColor={resolvedIconColor}
-          testID={testID}
-        >
-          {options.map((option, index) => (
-            <Picker.Item
-              key={resolveOptionKey(option, index)}
-              label={option.label}
-              value={option.value}
-              color={option.color ?? resolvedTextColor}
-            />
-          ))}
-        </Picker>
-      </View>
-    );
-  }
+  const handleOpen = useCallback(() => {
+    if (!disabled) {
+      setIsModalVisible(true);
+    }
+  }, [disabled]);
+
+  const handleClose = useCallback(() => {
+    setIsModalVisible(false);
+  }, []);
 
   return (
     <>
       <View
         style={[
           styles.pickerContainer,
-          { borderColor: colors.border, backgroundColor: colors.surfaceMuted },
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.surfaceMuted,
+          },
           containerStyle,
+          disabled && styles.disabledContainer,
         ]}
       >
         <Pressable
-          style={styles.fallbackField}
-          onPress={() => setIsModalVisible(true)}
+          style={styles.trigger}
+          onPress={handleOpen}
           disabled={disabled}
           testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel={modalTitle ?? placeholder}
         >
           <Text
             style={[
-              styles.fallbackValue,
+              styles.triggerText,
               {
                 color: selectedOption ? resolvedTextColor : resolvedPlaceholderColor,
               },
+              pickerStyle,
             ]}
             numberOfLines={1}
           >
@@ -136,14 +97,15 @@ export default function SafePicker({
           <Icon name="chevron-down" size={18} color={resolvedIconColor} />
         </Pressable>
       </View>
+
       <Modal
         transparent
         animationType="fade"
         visible={isModalVisible}
-        onRequestClose={() => setIsModalVisible(false)}
+        onRequestClose={handleClose}
       >
         <View style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsModalVisible(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
               {modalTitle ?? placeholder}
@@ -158,7 +120,7 @@ export default function SafePicker({
                     style={styles.modalOption}
                     onPress={() => {
                       handleChange(item.value, index);
-                      setIsModalVisible(false);
+                      handleClose();
                     }}
                   >
                     <Text
@@ -192,20 +154,18 @@ const styles = StyleSheet.create({
   pickerContainer: {
     borderWidth: 1,
     borderRadius: 10,
-    overflow: 'hidden',
   },
-  nativePicker: {
-    width: '100%',
-    height: 44,
+  disabledContainer: {
+    opacity: 0.6,
   },
-  fallbackField: {
+  trigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
     minHeight: 44,
   },
-  fallbackValue: {
+  triggerText: {
     fontSize: 16,
     flex: 1,
     marginRight: 12,
