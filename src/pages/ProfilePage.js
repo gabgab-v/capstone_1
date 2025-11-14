@@ -158,6 +158,17 @@ function buildCompletionMetrics(completion) {
   return metrics;
 }
 
+function normalizeRatingValue(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function getCompletionBadge(status) {
   const normalized = typeof status === 'string' ? status.trim().toUpperCase() : '';
   if (COMPLETION_STATUS_BADGES[normalized]) {
@@ -305,13 +316,18 @@ export default function ProfilePage({ navigation, route }) {
   useEffect(() => {
     const viewerReview = profile?.organizerRating?.viewerReview;
     if (viewerReview) {
-      setRatingDraft(viewerReview.rating);
+      const normalizedRating = normalizeRatingValue(viewerReview.rating) ?? 0;
+      setRatingDraft(normalizedRating);
       setFeedbackDraft(viewerReview.feedback ?? '');
     } else {
       setRatingDraft(0);
       setFeedbackDraft('');
     }
-  }, [profile?.id, profile?.organizerRating?.viewerReview?.id]);
+  }, [
+    profile?.id,
+    profile?.organizerRating?.viewerReview?.id,
+    profile?.organizerRating?.viewerReview?.rating,
+  ]);
 
   const fetchProfile = useCallback(
     async ({ useRefresh = false } = {}) => {
@@ -518,7 +534,8 @@ export default function ProfilePage({ navigation, route }) {
       }
 
       if (result?.review) {
-        setRatingDraft(result.review.rating);
+        const normalizedRating = normalizeRatingValue(result.review.rating) ?? 0;
+        setRatingDraft(normalizedRating);
         setFeedbackDraft(result.review.feedback ?? '');
       }
 
@@ -743,17 +760,24 @@ export default function ProfilePage({ navigation, route }) {
   }, [profile?.organizerApplication?.organizationName, profile?.role]);
 
   const ratingSummary = profile?.organizerRating ?? null;
+  const averageRatingValue = useMemo(
+    () => normalizeRatingValue(ratingSummary?.averageRating),
+    [ratingSummary?.averageRating],
+  );
   const organizerReviews = useMemo(
     () =>
       Array.isArray(ratingSummary?.reviews)
-        ? ratingSummary.reviews.filter((review) => review && typeof review === 'object')
+        ? ratingSummary.reviews
+            .filter((review) => review && typeof review === 'object')
+            .map((review) => ({
+              ...review,
+              rating: normalizeRatingValue(review.rating) ?? 0,
+            }))
         : [],
     [ratingSummary?.reviews],
   );
   const averageRatingLabel =
-    ratingSummary && ratingSummary.averageRating != null
-      ? ratingSummary.averageRating.toFixed(1)
-      : null;
+    averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
   const hasReviews = organizerReviews.length > 0;
   const viewerReview = ratingSummary?.viewerReview ?? null;
@@ -900,7 +924,7 @@ export default function ProfilePage({ navigation, route }) {
               <View>
                 <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Organizer Rating</Text>
                 <View className="mt-1 flex-row items-center space-x-2">
-                  <RatingStars rating={ratingSummary?.averageRating ?? 0} size={18} />
+                  <RatingStars rating={averageRatingValue ?? 0} size={18} />
                   <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">
                     {averageRatingLabel ?? '—'}
                   </Text>
@@ -981,7 +1005,7 @@ export default function ProfilePage({ navigation, route }) {
                       <Text className="text-sm font-semibold text-gray-800 dark:text-slate-100">
                         {review.reviewer?.name ?? review.reviewer?.email ?? 'Explorer'}
                       </Text>
-                      <RatingStars rating={review.rating} size={16} />
+                      <RatingStars rating={review.rating ?? 0} size={16} />
                     </View>
                     {review.feedback ? (
                       <Text className="mt-2 text-sm text-gray-700 dark:text-slate-300">{review.feedback}</Text>
