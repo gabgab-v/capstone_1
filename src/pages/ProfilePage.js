@@ -324,6 +324,36 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
     [profile?.completedEvents],
   );
+  const organizerOrganizationName = useMemo(() => {
+    if (profile?.role !== 'ORGANIZER') {
+      return null;
+    }
+    const value = profile?.organizerApplication?.organizationName;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+    return null;
+  }, [profile?.organizerApplication?.organizationName, profile?.role]);
+  const ratingSummary = profile?.organizerRating ?? null;
+  const averageRatingValueRaw =
+    ratingSummary && ratingSummary.averageRating != null
+      ? Number(ratingSummary.averageRating)
+      : null;
+  const averageRatingValue = Number.isFinite(averageRatingValueRaw)
+    ? averageRatingValueRaw
+    : null;
+  const averageRatingLabel =
+    averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
+  const reviewCount = ratingSummary?.reviewCount ?? 0;
+  const organizerReviews = useMemo(
+    () => (Array.isArray(ratingSummary?.reviews) ? ratingSummary.reviews : []),
+    [ratingSummary?.reviews],
+  );
+  const hasReviews = organizerReviews.length > 0;
+  const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const routeUserId = route?.params?.userId;
   const viewedUserId = useMemo(() => {
@@ -758,38 +788,6 @@ function ProfilePageContent({ navigation, route }) {
     },
     { label: 'Budget Range', value: profile.budgetRange },
   ].filter((item) => item.value);
-
-  const organizerOrganizationName = useMemo(() => {
-    if (profile?.role !== 'ORGANIZER') {
-      return null;
-    }
-    const value = profile?.organizerApplication?.organizationName;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed.length > 0) {
-        return trimmed;
-      }
-    }
-    return null;
-  }, [profile?.organizerApplication?.organizationName, profile?.role]);
-
-  const ratingSummary = profile?.organizerRating ?? null;
-  const averageRatingValueRaw =
-    ratingSummary && ratingSummary.averageRating != null
-      ? Number(ratingSummary.averageRating)
-      : null;
-  const averageRatingValue = Number.isFinite(averageRatingValueRaw)
-    ? averageRatingValueRaw
-    : null;
-  const averageRatingLabel =
-    averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
-  const reviewCount = ratingSummary?.reviewCount ?? 0;
-  const organizerReviews = useMemo(
-    () => (Array.isArray(ratingSummary?.reviews) ? ratingSummary.reviews : []),
-    [ratingSummary?.reviews],
-  );
-  const hasReviews = organizerReviews.length > 0;
-  const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const renderHeader = () => (
     <View
