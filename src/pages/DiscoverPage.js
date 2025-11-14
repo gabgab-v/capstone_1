@@ -712,6 +712,7 @@ export default function DiscoverPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const navigation = useNavigation();
   const { user } = useAuth();
   const [showWeakMatches, setShowWeakMatches] = useState(() => !Boolean(user?.preferencesComplete));
@@ -888,6 +889,7 @@ export default function DiscoverPage() {
       if (useRefreshControl) {
         setRefreshing(true);
       }
+      setError(null);
 
       try {
         const data = await get("/api/events");
@@ -908,8 +910,10 @@ export default function DiscoverPage() {
               .filter(isEventDiscoverable)
           : [];
         setEvents(processed);
+        setError(null);
       } catch (err) {
         console.error("Failed to fetch events:", err);
+        setError(err?.body?.error || err?.message || "Failed to load events. Please try again.");
       } finally {
         if (showSpinner) {
           setLoading(false);
@@ -921,6 +925,10 @@ export default function DiscoverPage() {
     },
     []
   );
+
+  const handleRetryFetch = useCallback(() => {
+    fetchEvents({ showSpinner: events.length === 0 });
+  }, [events.length, fetchEvents]);
 
   useFocusEffect(
     useCallback(() => {
@@ -938,6 +946,20 @@ export default function DiscoverPage() {
     );
   }
 
+  if (error && !events.length) {
+    return (
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        <View style={styles.errorState}>
+          <Text style={styles.errorStateTitle}>We couldn't load events</Text>
+          <Text style={styles.errorStateMessage}>{error}</Text>
+          <TouchableOpacity style={styles.errorStateButton} onPress={handleRetryFetch}>
+            <Text style={styles.errorStateButtonText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!events.length) {
     return (
       <SafeAreaView edges={["top"]} style={styles.safeArea}>
@@ -950,6 +972,17 @@ export default function DiscoverPage() {
 
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
+      {error ? (
+        <View style={styles.errorBanner}>
+          <View style={styles.errorBannerTextGroup}>
+            <Text style={styles.errorBannerTitle}>Last refresh failed</Text>
+            <Text style={styles.errorBannerText}>{error}</Text>
+          </View>
+          <TouchableOpacity style={styles.errorBannerButton} onPress={handleRetryFetch}>
+            <Text style={styles.errorBannerButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <FlatList
         data={filteredEvents}
         keyExtractor={(item, index) => item.event?.id?.toString() ?? `event-${index}`}
@@ -1221,6 +1254,71 @@ function createStyles(theme, isDarkMode) {
     safeArea: { flex: 1, backgroundColor: theme.background },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     empty: { fontSize: 16, color: theme.textMuted },
+    errorState: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 32,
+    },
+    errorStateTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: theme.textPrimary,
+      marginBottom: 8,
+      textAlign: "center",
+    },
+    errorStateMessage: {
+      fontSize: 14,
+      color: theme.textSecondary,
+      textAlign: "center",
+      marginBottom: 16,
+      lineHeight: 20,
+    },
+    errorStateButton: {
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: theme.accent,
+    },
+    errorStateButtonText: {
+      color: theme.surface,
+      fontWeight: "700",
+    },
+    errorBanner: {
+      marginHorizontal: 16,
+      marginTop: 16,
+      marginBottom: 4,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: theme.dangerSurface,
+      borderWidth: 1,
+      borderColor: theme.dangerText,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    errorBannerTextGroup: { flex: 1, marginRight: 12 },
+    errorBannerTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: theme.dangerText,
+      marginBottom: 2,
+    },
+    errorBannerText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 16,
+    },
+    errorBannerButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: theme.dangerText,
+    },
+    errorBannerButtonText: {
+      color: theme.surfaceInverse,
+      fontWeight: "700",
+      fontSize: 12,
+    },
     emptyStrongMatchContainer: {
       marginHorizontal: 32,
       marginVertical: 48,

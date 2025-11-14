@@ -148,6 +148,19 @@ function formatPrice(value) {
   return `PHP ${amount.toLocaleString()}`;
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return 'Booked date pending';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return 'Booked date pending';
+  }
+  const dateLabel = date.toLocaleDateString();
+  const timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `${dateLabel} at ${timeLabel}`;
+}
+
 function getBookingStatusMeta(status) {
   const normalized = typeof status === 'string' ? status.toUpperCase() : 'PENDING';
   switch (normalized) {
