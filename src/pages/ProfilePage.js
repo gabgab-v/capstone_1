@@ -82,6 +82,74 @@ function RatingStars({ rating = 0, size = 16, editable = false, onSelect }) {
   );
 }
 
+class ProfilePageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+    this.handleRetry = this.handleRetry.bind(this);
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('ProfilePage crashed:', error, info?.componentStack);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  handleRetry() {
+    this.setState({ error: null });
+  }
+
+  render() {
+    const { error } = this.state;
+    if (error) {
+      const message =
+        error?.message || 'Something went wrong while loading this profile.';
+      return (
+        <View className="flex-1 items-center justify-center bg-white px-6 dark:bg-slate-900">
+          <Ionicons name="alert-circle" size={48} color="#dc2626" />
+          <Text className="mt-4 text-center text-base font-semibold text-gray-900 dark:text-slate-100">
+            Profile unavailable
+          </Text>
+          <Text className="mt-2 text-center text-sm text-gray-600 dark:text-slate-300">
+            {message}
+          </Text>
+          <TouchableOpacity
+            onPress={this.handleRetry}
+            className="mt-4 w-full rounded-full bg-green-600 py-2"
+            activeOpacity={0.8}
+          >
+            <Text className="text-center font-semibold text-white">Try again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export default function ProfilePage(props) {
+  const resetKey =
+    props?.route?.params?.userId ??
+    props?.route?.key ??
+    props?.route?.name ??
+    'Profile';
+
+  return (
+    <ProfilePageErrorBoundary resetKey={resetKey}>
+      <ProfilePageContent {...props} />
+    </ProfilePageErrorBoundary>
+  );
+}
+
 const COMPLETION_IMAGE_PLACEHOLDER =
   'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=600&q=60';
 
@@ -227,7 +295,7 @@ function CompletedTrailCard({ completion }) {
   );
 }
 
-export default function ProfilePage({ navigation, route }) {
+function ProfilePageContent({ navigation, route }) {
   const { user: authUser, isLoading: authLoading, refreshUser } = useAuth();
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -716,7 +784,11 @@ export default function ProfilePage({ navigation, route }) {
   const averageRatingLabel =
     averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
-  const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
+  const organizerReviews = useMemo(
+    () => (Array.isArray(ratingSummary?.reviews) ? ratingSummary.reviews : []),
+    [ratingSummary?.reviews],
+  );
+  const hasReviews = organizerReviews.length > 0;
   const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const renderHeader = () => (
@@ -932,8 +1004,8 @@ export default function ProfilePage({ navigation, route }) {
 
             <View className="mt-4 rounded-xl bg-white p-3 dark:bg-slate-900">
               <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Recent Feedback</Text>
-              {hasReviews && ratingSummary?.reviews ? (
-                ratingSummary.reviews.map((review, index) => {
+              {hasReviews ? (
+                organizerReviews.map((review, index) => {
                   if (!review) {
                     return null;
                   }
