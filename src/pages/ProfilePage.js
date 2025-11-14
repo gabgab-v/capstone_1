@@ -706,10 +706,15 @@ export default function ProfilePage({ navigation, route }) {
   }, [profile?.organizerApplication?.organizationName, profile?.role]);
 
   const ratingSummary = profile?.organizerRating ?? null;
-  const averageRatingLabel =
+  const averageRatingValueRaw =
     ratingSummary && ratingSummary.averageRating != null
-      ? ratingSummary.averageRating.toFixed(1)
+      ? Number(ratingSummary.averageRating)
       : null;
+  const averageRatingValue = Number.isFinite(averageRatingValueRaw)
+    ? averageRatingValueRaw
+    : null;
+  const averageRatingLabel =
+    averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
   const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
   const viewerReview = ratingSummary?.viewerReview ?? null;
@@ -856,7 +861,7 @@ export default function ProfilePage({ navigation, route }) {
               <View>
                 <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Organizer Rating</Text>
                 <View className="mt-1 flex-row items-center space-x-2">
-                  <RatingStars rating={ratingSummary?.averageRating ?? 0} size={18} />
+                  <RatingStars rating={averageRatingValue ?? 0} size={18} />
                   <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">
                     {averageRatingLabel ?? '—'}
                   </Text>
@@ -933,6 +938,10 @@ export default function ProfilePage({ navigation, route }) {
                     return null;
                   }
                   const key = review.id ?? `review-${index}`;
+                  const parsedReviewRating = Number(review.rating);
+                  const normalizedReviewRating = Number.isFinite(parsedReviewRating)
+                    ? parsedReviewRating
+                    : 0;
                   return (
                     <View
                       key={key}
@@ -942,7 +951,7 @@ export default function ProfilePage({ navigation, route }) {
                         <Text className="text-sm font-semibold text-gray-800 dark:text-slate-100">
                           {review.reviewer?.name ?? review.reviewer?.email ?? 'Explorer'}
                         </Text>
-                        <RatingStars rating={review.rating ?? 0} size={16} />
+                        <RatingStars rating={normalizedReviewRating} size={16} />
                       </View>
                       {review.feedback ? (
                         <Text className="mt-2 text-sm text-gray-700 dark:text-slate-300">{review.feedback}</Text>
