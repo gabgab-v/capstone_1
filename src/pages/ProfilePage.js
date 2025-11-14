@@ -90,20 +90,6 @@ const COMPLETION_STATUS_BADGES = {
   APPROVED: { label: 'Approved', background: '#E0F2FE', color: '#1D4ED8' },
 };
 
-function sanitizeRecordList(items) {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  return items.filter((item) => item && typeof item === 'object');
-}
-
-function sanitizeOptionalObject(candidate) {
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-    return null;
-  }
-  return candidate;
-}
-
 function formatCompletionDate(value) {
   if (!value) {
     return null;
@@ -156,17 +142,6 @@ function buildCompletionMetrics(completion) {
   }
 
   return metrics;
-}
-
-function normalizeRatingValue(value) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }
 
 function getCompletionBadge(status) {
@@ -278,10 +253,7 @@ export default function ProfilePage({ navigation, route }) {
     [headerTopPadding, insets.bottom],
   );
   const completedEvents = useMemo(
-    () =>
-      Array.isArray(profile?.completedEvents)
-        ? profile.completedEvents.filter((event) => event && typeof event === 'object')
-        : [],
+    () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
     [profile?.completedEvents],
   );
 
@@ -316,18 +288,13 @@ export default function ProfilePage({ navigation, route }) {
   useEffect(() => {
     const viewerReview = profile?.organizerRating?.viewerReview;
     if (viewerReview) {
-      const normalizedRating = normalizeRatingValue(viewerReview.rating) ?? 0;
-      setRatingDraft(normalizedRating);
+      setRatingDraft(viewerReview.rating);
       setFeedbackDraft(viewerReview.feedback ?? '');
     } else {
       setRatingDraft(0);
       setFeedbackDraft('');
     }
-  }, [
-    profile?.id,
-    profile?.organizerRating?.viewerReview?.id,
-    profile?.organizerRating?.viewerReview?.rating,
-  ]);
+  }, [profile?.id, profile?.organizerRating?.viewerReview?.id]);
 
   const fetchProfile = useCallback(
     async ({ useRefresh = false } = {}) => {
@@ -351,39 +318,19 @@ export default function ProfilePage({ navigation, route }) {
         const data = await get(
           `/api/users/${viewedUserId}?includePosts=true&includeCompletedEvents=true`,
         );
-        const sanitizedPosts = sanitizeRecordList(data.posts);
-        const sanitizedCompletedEvents = sanitizeRecordList(data.completedEvents);
-        const sanitizedApplication = sanitizeOptionalObject(data.organizerApplication);
-        const sanitizedRatingBase = sanitizeOptionalObject(data.organizerRating);
-        const sanitizedRating = sanitizedRatingBase
-          ? {
-              ...sanitizedRatingBase,
-              reviews: sanitizeRecordList(sanitizedRatingBase.reviews),
-              viewerReview: sanitizeOptionalObject(sanitizedRatingBase.viewerReview),
-            }
-          : null;
         const formattedProfile = {
           ...data,
           followersCount: data.followersCount ?? 0,
           followingCount: data.followingCount ?? 0,
-          postCount: data.postCount ?? sanitizedPosts.length,
-          completedEvents: sanitizedCompletedEvents,
-          organizerApplication: sanitizedApplication
-            ? {
-                ...sanitizedApplication,
-                documentUrls: Array.isArray(sanitizedApplication.documentUrls)
-                  ? sanitizedApplication.documentUrls
-                  : [],
-              }
-            : null,
-          organizerRating: sanitizedRating,
+          postCount: data.postCount ?? (Array.isArray(data.posts) ? data.posts.length : 0),
+          completedEvents: Array.isArray(data.completedEvents) ? data.completedEvents : [],
         };
 
         profileOwnerIdRef.current = formattedProfile.id;
         profileRef.current = formattedProfile;
 
         setProfile(formattedProfile);
-        setPosts(sanitizedPosts);
+        setPosts(Array.isArray(data.posts) ? data.posts : []);
       } catch (error) {
         console.error('Failed to load profile:', error);
         Alert.alert('Profile unavailable', error?.message ?? 'Unable to load this profile right now.');
@@ -534,8 +481,7 @@ export default function ProfilePage({ navigation, route }) {
       }
 
       if (result?.review) {
-        const normalizedRating = normalizeRatingValue(result.review.rating) ?? 0;
-        setRatingDraft(normalizedRating);
+        setRatingDraft(result.review.rating);
         setFeedbackDraft(result.review.feedback ?? '');
       }
 
@@ -760,26 +706,12 @@ export default function ProfilePage({ navigation, route }) {
   }, [profile?.organizerApplication?.organizationName, profile?.role]);
 
   const ratingSummary = profile?.organizerRating ?? null;
-  const averageRatingValue = useMemo(
-    () => normalizeRatingValue(ratingSummary?.averageRating),
-    [ratingSummary?.averageRating],
-  );
-  const organizerReviews = useMemo(
-    () =>
-      Array.isArray(ratingSummary?.reviews)
-        ? ratingSummary.reviews
-            .filter((review) => review && typeof review === 'object')
-            .map((review) => ({
-              ...review,
-              rating: normalizeRatingValue(review.rating) ?? 0,
-            }))
-        : [],
-    [ratingSummary?.reviews],
-  );
   const averageRatingLabel =
-    averageRatingValue != null ? averageRatingValue.toFixed(1) : null;
+    ratingSummary && ratingSummary.averageRating != null
+      ? ratingSummary.averageRating.toFixed(1)
+      : null;
   const reviewCount = ratingSummary?.reviewCount ?? 0;
-  const hasReviews = organizerReviews.length > 0;
+  const hasReviews = Boolean(ratingSummary?.reviews && ratingSummary.reviews.length > 0);
   const viewerReview = ratingSummary?.viewerReview ?? null;
 
   const renderHeader = () => (
@@ -924,7 +856,7 @@ export default function ProfilePage({ navigation, route }) {
               <View>
                 <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Organizer Rating</Text>
                 <View className="mt-1 flex-row items-center space-x-2">
-                  <RatingStars rating={averageRatingValue ?? 0} size={18} />
+                  <RatingStars rating={ratingSummary?.averageRating ?? 0} size={18} />
                   <Text className="text-base font-semibold text-gray-800 dark:text-slate-100">
                     {averageRatingLabel ?? '—'}
                   </Text>
@@ -995,28 +927,34 @@ export default function ProfilePage({ navigation, route }) {
 
             <View className="mt-4 rounded-xl bg-white p-3 dark:bg-slate-900">
               <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Recent Feedback</Text>
-              {hasReviews ? (
-                organizerReviews.map((review, index) => (
-                  <View
-                    key={review.id ?? `review-${index}`}
-                    className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 dark:bg-slate-900 dark:border-slate-700"
-                  >
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-sm font-semibold text-gray-800 dark:text-slate-100">
-                        {review.reviewer?.name ?? review.reviewer?.email ?? 'Explorer'}
+              {hasReviews && ratingSummary?.reviews ? (
+                ratingSummary.reviews.map((review, index) => {
+                  if (!review) {
+                    return null;
+                  }
+                  const key = review.id ?? `review-${index}`;
+                  return (
+                    <View
+                      key={key}
+                      className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 dark:bg-slate-900 dark:border-slate-700"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {review.reviewer?.name ?? review.reviewer?.email ?? 'Explorer'}
+                        </Text>
+                        <RatingStars rating={review.rating ?? 0} size={16} />
+                      </View>
+                      {review.feedback ? (
+                        <Text className="mt-2 text-sm text-gray-700 dark:text-slate-300">{review.feedback}</Text>
+                      ) : null}
+                      <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                        {review.createdAt
+                          ? new Date(review.createdAt).toLocaleDateString()
+                          : ''}
                       </Text>
-                      <RatingStars rating={review.rating ?? 0} size={16} />
                     </View>
-                    {review.feedback ? (
-                      <Text className="mt-2 text-sm text-gray-700 dark:text-slate-300">{review.feedback}</Text>
-                    ) : null}
-                    <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
-                      {review.createdAt
-                        ? new Date(review.createdAt).toLocaleDateString()
-                        : ''}
-                    </Text>
-                  </View>
-                ))
+                  );
+                })
               ) : (
                 <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
                   {profile.viewerCanReview
