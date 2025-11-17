@@ -227,6 +227,8 @@ export default function TrailRecorderPage() {
             </TouchableOpacity>
           )}
         </View>
+        </View>
+
         <Modal
           visible={!!savedTrail}
           animationType="slide"
