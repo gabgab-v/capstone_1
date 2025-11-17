@@ -51,6 +51,7 @@ export default function BookingPage({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const { scheduleNotification } = useNotifications();
   const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
+  const [safetyWaiverAccepted, setSafetyWaiverAccepted] = useState(false);
   const [bookingRequestKey, setBookingRequestKey] = useState(() => createIdempotencyKey());
 
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
@@ -61,9 +62,11 @@ export default function BookingPage({ route, navigation }) {
     [eventDifficulty],
   );
   const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
+  const isSafetyWaiverPending = !safetyWaiverAccepted;
 
   useEffect(() => {
     setExpertWaiverAccepted(false);
+    setSafetyWaiverAccepted(false);
     setBookingRequestKey(createIdempotencyKey());
     setDocuments({ waiver: null, medicalCertificate: null, trailPolicy: null });
     setReceipt(null);
@@ -273,6 +276,14 @@ export default function BookingPage({ route, navigation }) {
       return;
     }
 
+    if (isSafetyWaiverPending) {
+      Alert.alert(
+        "Safety Waiver Required",
+        "Please acknowledge the trail warnings and confirm that you are responsible for your health during the hike.",
+      );
+      return;
+    }
+
     if (isExpertGatePending) {
       Alert.alert(
         "Acknowledgement Needed",
@@ -308,6 +319,41 @@ export default function BookingPage({ route, navigation }) {
             ? "Upload your payment receipt so the organizer can verify your booking."
             : "This event is free, but you can still upload a receipt or note for the organizer."}
         </Text>
+      </View>
+
+      <View style={styles.safetyCard}>
+        <Text style={styles.safetyCardTitle}>Trail Safety Waiver</Text>
+        <Text style={styles.safetyCardBody}>
+          Mountain hikes can involve unpredictable weather, steep inclines, and delayed emergency
+          response times. Please review the reminders below before finalizing your booking.
+        </Text>
+        <View style={styles.safetyList}>
+          <Text style={styles.safetyListItem}>
+            - Join only if you are healthy enough for strenuous activity and have consulted a doctor
+            about any medical conditions.
+          </Text>
+          <Text style={styles.safetyListItem}>
+            - You are responsible for monitoring your hydration, medications, and overall wellbeing
+            throughout the hike.
+          </Text>
+          <Text style={styles.safetyListItem}>
+            - Inform guides of any concerns immediately and acknowledge that you participate at your
+            own risk.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.safetyWaiverToggle}
+          onPress={() => setSafetyWaiverAccepted((prev) => !prev)}
+          disabled={loading}
+          activeOpacity={0.8}
+        >
+          <View style={styles.safetyCheckbox}>
+            {safetyWaiverAccepted ? <View style={styles.safetyCheckboxInner} /> : null}
+          </View>
+          <Text style={styles.safetyWaiverText}>
+            I have read the trail warnings and accept personal responsibility for my participation.
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {isExpertDifficulty ? (
@@ -407,7 +453,7 @@ export default function BookingPage({ route, navigation }) {
       ) : null}
 
       <TouchableOpacity
-        style={[styles.confirmBtn, (loading || isExpertGatePending) && styles.disabledBtn]}
+        style={[styles.confirmBtn, (loading || isExpertGatePending || isSafetyWaiverPending) && styles.disabledBtn]}
         onPress={handleConfirmPress}
         disabled={loading}
         activeOpacity={0.9}
@@ -460,6 +506,57 @@ const styles = StyleSheet.create({
   receiptNote: {
     marginTop: 12,
     color: "#4b5563",
+  },
+  safetyCard: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: "#fffbeb",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+  },
+  safetyCardTitle: { fontSize: 16, fontWeight: "700", color: "#92400e", marginBottom: 6 },
+  safetyCardBody: {
+    fontSize: 13,
+    color: "#78350f",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  safetyList: {
+    marginBottom: 12,
+  },
+  safetyListItem: {
+    fontSize: 12,
+    color: "#92400e",
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  safetyWaiverToggle: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  safetyCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: "#b45309",
+    borderRadius: 4,
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff7ed",
+  },
+  safetyCheckboxInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: "#d97706",
+  },
+  safetyWaiverText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#78350f",
+    lineHeight: 20,
   },
   uploadBtn: {
     padding: 14,

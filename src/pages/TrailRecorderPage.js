@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -113,7 +115,12 @@ export default function TrailRecorderPage() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoider}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 16}
+      >
+        <View style={styles.container}>
         <Text style={styles.header}>Trail Recorder</Text>
 
         <View style={styles.metricRow}>
@@ -220,21 +227,21 @@ export default function TrailRecorderPage() {
             </TouchableOpacity>
           )}
         </View>
-      </View>
-      <Modal
-        visible={!!savedTrail}
-        animationType="slide"
-        transparent
-        onRequestClose={handleCloseSummary}
-      >
-        <View style={styles.summaryModalOverlay}>
-          <View style={styles.summaryCardWrapper}>
-            {savedTrail && (
-              <RecordedTrailSummary trail={savedTrail} onClose={handleCloseSummary} />
-            )}
+        <Modal
+          visible={!!savedTrail}
+          animationType="slide"
+          transparent
+          onRequestClose={handleCloseSummary}
+        >
+          <View style={styles.summaryModalOverlay}>
+            <View style={styles.summaryCardWrapper}>
+              {savedTrail && (
+                <RecordedTrailSummary trail={savedTrail} onClose={handleCloseSummary} />
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -249,6 +256,9 @@ function createStyles(theme, isDarkMode) {
     safeArea: {
       flex: 1,
       backgroundColor: theme.background,
+    },
+    keyboardAvoider: {
+      flex: 1,
     },
     container: {
       flex: 1,

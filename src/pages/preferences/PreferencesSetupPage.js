@@ -7,6 +7,8 @@ import {
   Alert,
   ActivityIndicator,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -287,12 +289,17 @@ export default function PreferencesSetupPage({ navigation }) {
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-white px-6 dark:bg-slate-900"
-      contentContainerStyle={contentContainerStyle}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+    <KeyboardAvoidingView
+      className="flex-1 bg-white dark:bg-slate-900"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
+      <ScrollView
+        className="flex-1 bg-white px-6 dark:bg-slate-900"
+        contentContainerStyle={contentContainerStyle}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
 
       <Text className="font-medium mb-2">Experience Level</Text>
@@ -395,6 +402,7 @@ export default function PreferencesSetupPage({ navigation }) {
           <Text className="text-center text-white font-semibold">Save Preferences</Text>
         )}
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -1018,20 +1019,30 @@ export default function CreateEventPage({ route, navigation }) {
   const headerSubtitle = isEditMode
     ? activeEvent?.title ?? 'Update your event details'
     : 'Plan a new adventure for hikers';
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = Platform.OS === 'ios' ? 0 : 32;
 
   if (isEditMode && loadingExisting && !activeEvent) {
     return (
-      <View style={styles.screen}>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={keyboardBehavior}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
         <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2E7D32" />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+    >
       <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
       <ScrollView style={styles.container}>
       <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
@@ -1429,7 +1440,7 @@ export default function CreateEventPage({ route, navigation }) {
         </TouchableOpacity>
       </View>
     </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

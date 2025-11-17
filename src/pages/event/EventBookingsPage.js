@@ -47,7 +47,7 @@ function getBookingStatusMeta(status) {
   }
 }
 
-function BookingItem({ booking, onUpdateStatus, actionInFlight }) {
+function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile }) {
   const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
   const statusMeta = getBookingStatusMeta(booking?.status);
   const normalizedStatus = statusMeta.normalized || "PENDING";
@@ -117,6 +117,9 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight }) {
     );
   };
 
+  const bookingUserId = booking?.user?.id ?? booking?.userId ?? null;
+  const canViewProfile = typeof onViewProfile === "function" && Boolean(bookingUserId);
+
   const actionButtons = [];
   if (!isApproved) {
     actionButtons.push(renderActionButton("Approve", "APPROVED", "approve", approving));
@@ -141,6 +144,15 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight }) {
     <View style={styles.card}>
       <Text style={styles.userName}>{booking?.user?.name || "Anonymous"}</Text>
       <Text style={styles.userEmail}>{booking?.user?.email || "No email provided"}</Text>
+      {canViewProfile ? (
+        <TouchableOpacity
+          style={styles.profileLink}
+          onPress={() => onViewProfile(bookingUserId)}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.profileLinkText}>Go to profile</Text>
+        </TouchableOpacity>
+      ) : null}
       <Text style={styles.amountLabel}>Paid: {formatAmount(booking?.totalAmount)}</Text>
       <Text style={styles.referenceLabel}>Reference: {booking?.id}</Text>
       <View style={styles.statusRow}>
@@ -173,6 +185,16 @@ export default function EventBookingsPage({ route, navigation }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionInFlight, setActionInFlight] = useState(null);
+
+  const handleViewProfile = useCallback(
+    (userId) => {
+      if (!userId) {
+        return;
+      }
+      navigation.navigate("UserProfile", { userId });
+    },
+    [navigation]
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -256,6 +278,7 @@ export default function EventBookingsPage({ route, navigation }) {
                 booking={item}
                 onUpdateStatus={handleUpdateStatus}
                 actionInFlight={actionInFlight}
+                onViewProfile={handleViewProfile}
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -283,6 +306,8 @@ const styles = StyleSheet.create({
   separator: { height: 12 },
   userName: { fontSize: 16, fontWeight: "600", color: "#111827" },
   userEmail: { fontSize: 14, color: "#4b5563", marginBottom: 6 },
+  profileLink: { alignSelf: "flex-start", marginBottom: 8 },
+  profileLinkText: { fontSize: 12, fontWeight: "600", color: "#1d4ed8" },
   amountLabel: { fontSize: 14, fontWeight: "600", color: "#047857" },
   referenceLabel: { fontSize: 12, color: "#6b7280", marginTop: 4 },
   statusRow: {

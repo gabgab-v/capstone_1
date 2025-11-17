@@ -4,6 +4,8 @@ import {
   Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   RefreshControl,
   Text,
   TextInput,
@@ -1094,7 +1096,11 @@ function ProfilePageContent({ navigation, route }) {
   );
 
   return (
-    <View className="flex-1 bg-gray-100 dark:bg-slate-950">
+    <KeyboardAvoidingView
+      className="flex-1 bg-gray-100 dark:bg-slate-950"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? headerTopPadding : 24}
+    >
       <FlatList
         data={posts}
         keyExtractor={(item, index) =>
@@ -1119,6 +1125,6 @@ function ProfilePageContent({ navigation, route }) {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2E7D32" />
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }

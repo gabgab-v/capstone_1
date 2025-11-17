@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   Platform,
   View,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -144,39 +145,45 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
             <Text className="font-bold text-white">{isSubmitting ? "Posting..." : "Post"}</Text>
           </TouchableOpacity>
         </View>
-        <View className="p-4">
-          <TextInput
-            placeholder={`What's on your mind, ${user?.name || "explorer"}?`}
-            value={caption}
-            onChangeText={setCaption}
-            multiline
-            className="text-lg"
-            placeholderTextColor={colors.textMuted}
-            style={{ color: colors.textPrimary }}
-          />
-          <TouchableOpacity
-            onPress={pickImage}
-            className="mt-4 self-start rounded-lg bg-gray-200 dark:bg-slate-700 py-2 px-4"
-            disabled={images.length >= MAX_IMAGES || isSubmitting}
-          >
-            <Text className="text-slate-900 dark:text-slate-100">{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
-          </TouchableOpacity>
-          <ScrollView horizontal className="mt-4">
-            {images.map((image, index) => (
-              <TouchableOpacity
-                key={image.uri}
-                onPress={() => handleRemoveImage(index)}
-                disabled={isSubmitting}
-                className="mr-2"
-              >
-                <Image source={{ uri: image.uri }} className="h-24 w-24 rounded-lg" />
-                <Text className="mt-1 text-center text-xs text-gray-500 dark:text-slate-400">
-                  Tap to remove
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        <KeyboardAvoidingView
+          className="flex-1"
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
+          <View className="flex-1 p-4">
+            <TextInput
+              placeholder={`What's on your mind, ${user?.name || "explorer"}?`}
+              value={caption}
+              onChangeText={setCaption}
+              multiline
+              className="text-lg"
+              placeholderTextColor={colors.textMuted}
+              style={{ color: colors.textPrimary }}
+            />
+            <TouchableOpacity
+              onPress={pickImage}
+              className="mt-4 self-start rounded-lg bg-gray-200 dark:bg-slate-700 py-2 px-4"
+              disabled={images.length >= MAX_IMAGES || isSubmitting}
+            >
+              <Text className="text-slate-900 dark:text-slate-100">{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
+            </TouchableOpacity>
+            <ScrollView horizontal className="mt-4">
+              {images.map((image, index) => (
+                <TouchableOpacity
+                  key={image.uri}
+                  onPress={() => handleRemoveImage(index)}
+                  disabled={isSubmitting}
+                  className="mr-2"
+                >
+                  <Image source={{ uri: image.uri }} className="h-24 w-24 rounded-lg" />
+                  <Text className="mt-1 text-center text-xs text-gray-500 dark:text-slate-400">
+                    Tap to remove
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

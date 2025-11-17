@@ -11,6 +11,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
@@ -253,6 +255,7 @@ function AttendeeRow({
   actionInFlight,
   onMessage,
   messagingUserId,
+  onViewProfile,
 }) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -276,11 +279,18 @@ function AttendeeRow({
     messagingUserId && bookingUserId && messagingUserId === bookingUserId,
   );
   const canMessage = Boolean(onMessage && bookingUserId && !isCurrentUser && canManage);
+  const canViewProfile = Boolean(onViewProfile && bookingUserId);
   const showPersonalDetails = Boolean(isCurrentUser || canManage);
   const attendeeEmailLabel = showPersonalDetails
     ? booking?.user?.email || 'No email provided'
     : 'Hidden for privacy';
   const displayAmount = formatPrice(booking?.totalAmount);
+  const handleProfilePress = useCallback(() => {
+    if (!canViewProfile) {
+      return;
+    }
+    onViewProfile(bookingUserId);
+  }, [bookingUserId, canViewProfile, onViewProfile]);
   const handleOpenReceipt = () => {
     if (!receiptUrl) {
       return;
@@ -364,11 +374,19 @@ function AttendeeRow({
       <View style={[styles.attendeeAvatar, { backgroundColor: avatarColor }]}>
         <Text style={styles.attendeeAvatarText}>{initials}</Text>
       </View>
-      <View style={styles.attendeeDetails}>
+      <TouchableOpacity
+        style={[styles.attendeeDetails, !canViewProfile ? styles.attendeeDetailsDisabled : null]}
+        onPress={handleProfilePress}
+        disabled={!canViewProfile}
+        activeOpacity={0.75}
+      >
         <Text style={styles.attendeeName}>{booking?.user?.name || 'Anonymous hiker'}</Text>
         <Text style={styles.attendeeEmail}>{attendeeEmailLabel}</Text>
         {isCurrentUser ? <Text style={styles.attendeeYou}>You</Text> : null}
-      </View>
+        {canViewProfile ? (
+          <Text style={styles.attendeeProfileLink}>Go to profile</Text>
+        ) : null}
+      </TouchableOpacity>
       <View style={styles.attendeeMeta}>
         <Text style={styles.attendeeAmount}>{displayAmount ?? '—'}</Text>
         <Text style={[styles.attendeeStatus, { color: statusMeta.color }]}>
@@ -749,6 +767,16 @@ export default function EventDetailsPage({ route, navigation }) {
     [navigation, user?.id],
   );
 
+  const handleNavigateToProfile = useCallback(
+    (userId) => {
+      if (!userId) {
+        return;
+      }
+      navigation.navigate('UserProfile', { userId });
+    },
+    [navigation],
+  );
+
   const handleOrganizerFollowToggle = useCallback(async () => {
     if (!organizerId || followUpdating || isOrganizer) {
       return;
@@ -932,6 +960,14 @@ export default function EventDetailsPage({ route, navigation }) {
       : `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
   }, [attendeeStats, isOrganizer]);
 
+  const canViewOrganizerProfile = Boolean(organizerId);
+  const handleViewOrganizerProfile = useCallback(() => {
+    if (!organizerId) {
+      return;
+    }
+    handleNavigateToProfile(organizerId);
+  }, [handleNavigateToProfile, organizerId]);
+
   const organizerName = useMemo(
     () =>
       getUserDisplayName(organizerProfile) ??
@@ -1013,15 +1049,21 @@ export default function EventDetailsPage({ route, navigation }) {
   const overviewText = useMemo(() => sanitizeText(event?.overview), [event?.overview]);
   const itineraryText = useMemo(() => sanitizeText(event?.itinerary), [event?.itinerary]);
   const directionsText = useMemo(() => sanitizeText(event?.directions), [event?.directions]);
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = Platform.OS === 'ios' ? 0 : 32;
 
   if (!event) {
     return (
-      <View style={styles.page}>
+      <KeyboardAvoidingView
+        style={styles.page}
+        behavior={keyboardBehavior}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
         <ScreenHeader navigation={navigation} title="Event Details" />
         <View style={styles.centerFallback}>
           <Text style={styles.placeholderText}>Event details not found.</Text>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -1047,7 +1089,11 @@ export default function EventDetailsPage({ route, navigation }) {
   const hasMapContent = Boolean(locationPoint || event.trailGeoJson || event.trail?.geoJson);
 
   return (
-    <View style={styles.page}>
+    <KeyboardAvoidingView
+      style={styles.page}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+    >
       <ScreenHeader
         navigation={navigation}
         title={event.title ?? 'Event Details'}
@@ -1222,6 +1268,7 @@ export default function EventDetailsPage({ route, navigation }) {
                       actionInFlight={bookingActionInFlight}
                       onMessage={isOrganizer ? handleMessageUser : null}
                       messagingUserId={messageTargetId}
+                      onViewProfile={handleNavigateToProfile}
                     />
                   ))
                 ) : (
@@ -1251,7 +1298,15 @@ export default function EventDetailsPage({ route, navigation }) {
           </View>
 
           <View style={styles.organizerCard}>
-            <View style={styles.organizerInfo}>
+            <TouchableOpacity
+              style={[
+                styles.organizerInfo,
+                !canViewOrganizerProfile ? styles.organizerInfoDisabled : null,
+              ]}
+              onPress={handleViewOrganizerProfile}
+              disabled={!canViewOrganizerProfile}
+              activeOpacity={0.75}
+            >
               {organizerAvatarUrl ? (
                 <Image source={{ uri: organizerAvatarUrl }} style={styles.organizerAvatar} />
               ) : (
@@ -1265,8 +1320,11 @@ export default function EventDetailsPage({ route, navigation }) {
                 {organizerFollowersLabel ? (
                   <Text style={styles.organizerFollowers}>{organizerFollowersLabel}</Text>
                 ) : null}
+                {canViewOrganizerProfile ? (
+                  <Text style={styles.organizerProfileLink}>Go to profile</Text>
+                ) : null}
               </View>
-            </View>
+            </TouchableOpacity>
             {!isOrganizer ? (
               <View style={styles.actionButtons}>
                 <TouchableOpacity
@@ -1446,7 +1504,7 @@ export default function EventDetailsPage({ route, navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1649,6 +1707,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   organizerInfo: { flexDirection: 'row', alignItems: 'center' },
+  organizerInfoDisabled: { opacity: 0.7 },
   avatarPlaceholder: {
     width: 44,
     height: 44,
@@ -1663,6 +1722,7 @@ const styles = StyleSheet.create({
   organizerName: { fontWeight: '700', fontSize: 14, color: '#1f2937' },
   organizerDate: { fontSize: 12, color: '#64748b' },
   organizerFollowers: { fontSize: 12, color: '#475569', marginTop: 2 },
+  organizerProfileLink: { fontSize: 12, color: '#2563eb', fontWeight: '600', marginTop: 4 },
   actionButtons: { flexDirection: 'row' },
   followBtn: {
     backgroundColor: '#2E7D32',
@@ -1787,8 +1847,10 @@ const styles = StyleSheet.create({
   attendeeAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   attendeeAvatarText: { fontSize: 14, fontWeight: '700', color: '#1f2937' },
   attendeeDetails: { flex: 1 },
+  attendeeDetailsDisabled: { opacity: 0.75 },
   attendeeName: { fontSize: 14, fontWeight: '600', color: '#1f2937' },
   attendeeEmail: { fontSize: 12, color: '#6b7280' },
+  attendeeProfileLink: { marginTop: 4, fontSize: 12, fontWeight: '600', color: '#2563eb' },
   attendeeMeta: { alignItems: 'flex-end' },
   attendeeActions: {
     flexDirection: 'row',

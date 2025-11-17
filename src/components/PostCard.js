@@ -15,6 +15,8 @@ import {
   TouchableWithoutFeedback,
   FlatList,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -579,67 +581,73 @@ export default function PostCard({ post }) {
         onRequestClose={handleCloseComments}
         presentationStyle="pageSheet"
       >
-        <View className="flex-1 bg-white dark:bg-slate-900">
-          <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
-            <Text className="text-lg font-semibold text-gray-900 dark:text-slate-100">Comments</Text>
-            <TouchableOpacity onPress={handleCloseComments}>
-              <Feather name="x" size={22} color="gray" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            className="flex-1 px-4 py-4"
-            contentContainerStyle={{ paddingBottom: 16 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {commentsLoading ? (
-              <View className="mt-4 items-center">
-                <ActivityIndicator size="small" color="#2E7D32" />
-              </View>
-            ) : comments.length > 0 ? (
-              comments.map((comment) => (
-                <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 dark:bg-slate-800 p-3">
-                  <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">{getAuthorName(comment)}</Text>
-                  <Text className="mt-1 text-sm text-gray-700 dark:text-slate-300">{comment.content}</Text>
-                  <Text className="mt-2 text-xs text-gray-400 dark:text-slate-500">{formatPostDate(comment.createdAt)}</Text>
-                </View>
-              ))
-            ) : (
-              <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
-                Be the first to leave a comment.
-              </Text>
-            )}
-          </ScrollView>
-
-          <View className="border-t border-gray-200 dark:border-slate-700 p-4">
-            <View className="flex-row items-end rounded-full border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 px-3">
-              <TextInput
-                className="flex-1 py-2 pr-2 text-gray-900 dark:text-slate-100"
-                placeholder="Add a comment..."
-                placeholderTextColor={colors.textMuted}
-                value={commentText}
-                onChangeText={setCommentText}
-                editable={!commentSubmitting}
-                multiline
-                maxLength={280}
-              />
-              <TouchableOpacity
-                onPress={handleSubmitComment}
-                disabled={!canSubmitComment}
-                className="pl-3"
-                style={!canSubmitComment ? { opacity: 0.5 } : undefined}
-              >
-                <Text
-                  className={`text-sm font-semibold ${
-                    canSubmitComment ? 'text-green-600' : 'text-gray-400 dark:text-slate-500'
-                  }`}
-                >
-                  {commentSubmitting ? 'Posting...' : 'Post'}
-                </Text>
+        <KeyboardAvoidingView
+          style={styles.commentsAvoidingView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 16}
+        >
+          <View className="flex-1 bg-white dark:bg-slate-900">
+            <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
+              <Text className="text-lg font-semibold text-gray-900 dark:text-slate-100">Comments</Text>
+              <TouchableOpacity onPress={handleCloseComments}>
+                <Feather name="x" size={22} color="gray" />
               </TouchableOpacity>
             </View>
+
+            <ScrollView
+              className="flex-1 px-4 py-4"
+              contentContainerStyle={{ paddingBottom: 16 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {commentsLoading ? (
+                <View className="mt-4 items-center">
+                  <ActivityIndicator size="small" color="#2E7D32" />
+                </View>
+              ) : comments.length > 0 ? (
+                comments.map((comment) => (
+                  <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 dark:bg-slate-800 p-3">
+                    <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">{getAuthorName(comment)}</Text>
+                    <Text className="mt-1 text-sm text-gray-700 dark:text-slate-300">{comment.content}</Text>
+                    <Text className="mt-2 text-xs text-gray-400 dark:text-slate-500">{formatPostDate(comment.createdAt)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
+                  Be the first to leave a comment.
+                </Text>
+              )}
+            </ScrollView>
+
+            <View className="border-t border-gray-200 dark:border-slate-700 p-4">
+              <View className="flex-row items-end rounded-full border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 px-3">
+                <TextInput
+                  className="flex-1 py-2 pr-2 text-gray-900 dark:text-slate-100"
+                  placeholder="Add a comment..."
+                  placeholderTextColor={colors.textMuted}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  editable={!commentSubmitting}
+                  multiline
+                  maxLength={280}
+                />
+                <TouchableOpacity
+                  onPress={handleSubmitComment}
+                  disabled={!canSubmitComment}
+                  className="pl-3"
+                  style={!canSubmitComment ? { opacity: 0.5 } : undefined}
+                >
+                  <Text
+                    className={`text-sm font-semibold ${
+                      canSubmitComment ? 'text-green-600' : 'text-gray-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {commentSubmitting ? 'Posting...' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <ImageViewerModal
@@ -653,6 +661,9 @@ export default function PostCard({ post }) {
 }
 
 const styles = StyleSheet.create({
+  commentsAvoidingView: {
+    flex: 1,
+  },
   viewerRoot: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.95)',

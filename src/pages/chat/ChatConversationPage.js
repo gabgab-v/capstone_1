@@ -117,6 +117,7 @@ export default function ChatConversationPage({ route, navigation }) {
     primaryPeer?.email && primaryPeer?.name && primaryPeer.email !== primaryPeer.name
       ? primaryPeer.email
       : null;
+  const primaryPeerId = primaryPeer?.id ?? null;
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -268,6 +269,14 @@ export default function ChatConversationPage({ route, navigation }) {
   }, [fetchingMore, handleLoadOlder, nextCursor]);
 
   const canSend = input.trim().length > 0 && !sending;
+  const canOpenPeerProfile = Boolean(primaryPeerId);
+
+  const handleViewPeerProfile = useCallback(() => {
+    if (!primaryPeerId) {
+      return;
+    }
+    navigation.navigate('UserProfile', { userId: primaryPeerId });
+  }, [navigation, primaryPeerId]);
 
   if (!conversationId) {
     return (
@@ -291,7 +300,14 @@ export default function ChatConversationPage({ route, navigation }) {
         >
           <Icon name="chevron-left" size={24} color={iconColor} />
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
+        <TouchableOpacity
+          style={[styles.headerInfo, !canOpenPeerProfile ? styles.headerInfoDisabled : null]}
+          onPress={handleViewPeerProfile}
+          disabled={!canOpenPeerProfile}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Open profile"
+        >
           <Text style={styles.headerTitle} numberOfLines={1}>
             {headerTitle}
           </Text>
@@ -300,7 +316,20 @@ export default function ChatConversationPage({ route, navigation }) {
               {headerSubtitle}
             </Text>
           ) : null}
-        </View>
+          {canOpenPeerProfile ? (
+            <Text style={styles.headerLink}>View profile</Text>
+          ) : null}
+        </TouchableOpacity>
+        {canOpenPeerProfile ? (
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={handleViewPeerProfile}
+            activeOpacity={0.85}
+            accessibilityLabel="Go to profile"
+          >
+            <Icon name="user" size={18} color={iconColor} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {loading ? (
@@ -374,6 +403,9 @@ function createStyles(theme) {
     headerInfo: {
       flex: 1,
     },
+    headerInfoDisabled: {
+      opacity: 0.6,
+    },
     headerTitle: {
       fontSize: 18,
       fontWeight: '700',
@@ -383,6 +415,15 @@ function createStyles(theme) {
       marginTop: 2,
       fontSize: 12,
       color: theme.textSecondary,
+    },
+    headerLink: {
+      marginTop: 2,
+      fontSize: 12,
+      color: theme.accent ?? '#2E7D32',
+    },
+    profileButton: {
+      padding: 8,
+      marginLeft: 4,
     },
     loader: {
       flex: 1,

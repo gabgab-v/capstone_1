@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -298,8 +300,12 @@ export default function ApplyExpertPage({ navigation }) {
   ]);
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 32}
+    >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Expert Experience Verification</Text>
         <Text style={styles.subtitle}>
           Provide proof of your summit achievements so admins can verify you as an expert hiker.
@@ -443,7 +449,7 @@ export default function ApplyExpertPage({ navigation }) {
           <Text style={styles.cancelButtonText}>Go back</Text>
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
