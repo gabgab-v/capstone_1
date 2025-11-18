@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,19 +8,31 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { get, put, patch, BASE_URL } from "../../lib/api";
+import { del, get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
 import SafePicker from "../../components/SafePicker";
 import { useTheme } from "../../context/ThemeContext";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
+const TAB_BOOKINGS = "bookings";
+const TAB_HOSTING = "hosting";
+const BOOKING_STATUS_FILTER_OPTIONS = [
+  { value: "ALL", label: "All statuses" },
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "CONFIRMED", label: "Confirmed" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "DECLINED", label: "Declined" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
 
 function useEventStyles() {
   const theme = useTheme();
@@ -117,6 +129,8 @@ const EVENT_STATUS_OPTIONS = [
   { value: "COMPLETED", label: "Completed" },
   { value: "CANCELLED", label: "Cancelled" },
 ];
+
+const EVENT_STATUS_FILTER_OPTIONS = [{ value: "ALL", label: "All statuses" }, ...EVENT_STATUS_OPTIONS];
 
 const EVENT_STATUS_BADGES = {
   PUBLISHED: { label: "Published", background: "#DCFCE7", color: "#166534" },
@@ -437,7 +451,9 @@ function OrganizerEventCard({
   onViewBookings,
   onEditEvent,
   onUpdateStatus,
+  onDeleteEvent,
   isUpdatingStatus,
+  isDeleting,
 }) {
   const { styles, colors } = useEventStyles();
   const pickerTextColor = colors?.textPrimary ?? "#1F2937";
@@ -667,6 +683,21 @@ function OrganizerEventCard({
               Manage Bookings
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              styles.secondaryButtonDanger,
+              isDeleting ? styles.secondaryButtonDisabled : null,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => onDeleteEvent?.(event)}
+            disabled={!event?.id || isDeleting}
+          >
+            <Icon name="trash-2" size={16} color="#fff" />
+            <Text style={[styles.secondaryButtonText, styles.secondaryButtonTextAlt]}>
+              {isDeleting ? "Deleting..." : "Delete Event"}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -674,7 +705,7 @@ function OrganizerEventCard({
 }
 
 export default function EventsPage({ navigation }) {
-  const { styles } = useEventStyles();
+  const { styles, colors } = useEventStyles();
   const [user, setUser] = useState(null);
   const [bookedEvents, setBookedEvents] = useState([]);
   const [createdEvents, setCreatedEvents] = useState([]);
@@ -683,6 +714,11 @@ export default function EventsPage({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+  const [activeTab, setActiveTab] = useState(TAB_BOOKINGS);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [bookingStatusFilter, setBookingStatusFilter] = useState("ALL");
+  const [hostStatusFilter, setHostStatusFilter] = useState("ALL");
+  const [deletingEventId, setDeletingEventId] = useState(null);
 
   const hasLoadedRef = useRef(false);
   const insets = useSafeAreaInsets();
@@ -700,6 +736,13 @@ export default function EventsPage({ navigation }) {
     }),
     [insets.bottom, insets.top]
   );
+  const isOrganizer = user?.role === "ORGANIZER";
+
+  useEffect(() => {
+    if (!isOrganizer) {
+      setActiveTab((current) => (current === TAB_HOSTING ? TAB_BOOKINGS : current));
+    }
+  }, [isOrganizer]);
 
   const sortedBookings = useMemo(() => {
     return [...bookedEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
@@ -708,6 +751,48 @@ export default function EventsPage({ navigation }) {
   const sortedCreatedEvents = useMemo(() => {
     return [...createdEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
   }, [createdEvents]);
+
+  const filteredBookings = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return sortedBookings.filter((booking) => {
+      const normalizedStatus = (booking?.status || "").toUpperCase();
+      const matchesStatus = bookingStatusFilter === "ALL" || normalizedStatus === bookingStatusFilter;
+      if (!matchesStatus) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const event = booking?.event ?? {};
+      const haystack = [
+        event.title,
+        event.overview,
+        event.locationName,
+        event.trail?.name,
+      ]
+        .filter((value) => typeof value === "string" && value.trim().length)
+        .map((value) => value.toLowerCase());
+      return haystack.some((value) => value.includes(query));
+    });
+  }, [sortedBookings, searchQuery, bookingStatusFilter]);
+
+  const filteredHostedEvents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return sortedCreatedEvents.filter((event) => {
+      const normalizedStatus = (event?.status || "").toUpperCase();
+      const matchesStatus = hostStatusFilter === "ALL" || normalizedStatus === hostStatusFilter;
+      if (!matchesStatus) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [event?.title, event?.overview, event?.locationName, event?.trail?.name]
+        .filter((value) => typeof value === "string" && value.trim().length)
+        .map((value) => value.toLowerCase());
+      return haystack.some((value) => value.includes(query));
+    });
+  }, [sortedCreatedEvents, searchQuery, hostStatusFilter]);
 
   const fetchData = useCallback(
     async ({ showSpinner = false, useRefreshControl = false } = {}) => {
@@ -919,6 +1004,92 @@ export default function EventsPage({ navigation }) {
     [navigation, fetchData]
   );
 
+  const deleteHostedEvent = useCallback(async (eventId) => {
+    if (!eventId) {
+      return;
+    }
+    setDeletingEventId(eventId);
+    try {
+      await del(`/api/events/${eventId}`);
+      setCreatedEvents((prev) => prev.filter((event) => event?.id !== eventId));
+      setEventAttendees((prev) => {
+        const current = prev && typeof prev === "object" ? prev : {};
+        const next = { ...current };
+        delete next[eventId];
+        return next;
+      });
+      Alert.alert("Event deleted", "The event has been removed from your hosted list.");
+    } catch (error) {
+      console.error(`Failed to delete event ${eventId}:`, error);
+      const message =
+        error?.body?.error ||
+        error?.message ||
+        "We couldn't delete the event right now. Please try again.";
+      Alert.alert("Deletion failed", message);
+    } finally {
+      setDeletingEventId(null);
+    }
+  }, []);
+
+  const handleDeleteHostedEvent = useCallback(
+    (event) => {
+      if (!event?.id) {
+        return;
+      }
+      const title =
+        typeof event.title === "string" && event.title.trim().length
+          ? event.title.trim()
+          : "this event";
+      Alert.alert(
+        "Delete event?",
+        `This will permanently remove "${title}". This action cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => deleteHostedEvent(event.id),
+          },
+        ]
+      );
+    },
+    [deleteHostedEvent]
+  );
+
+  const handleStatusFilterChange = useCallback(
+    (value) => {
+      if (activeTab === TAB_BOOKINGS) {
+        setBookingStatusFilter(value);
+      } else {
+        setHostStatusFilter(value);
+      }
+    },
+    [activeTab]
+  );
+
+  const pickerTextColor = colors?.textPrimary ?? "#1F2937";
+  const pickerIconColor = colors?.icon ?? "#1D4ED8";
+  const placeholderColor = colors?.textMuted ?? "#94A3B8";
+  const statusFilterOptions =
+    activeTab === TAB_BOOKINGS ? BOOKING_STATUS_FILTER_OPTIONS : EVENT_STATUS_FILTER_OPTIONS;
+  const statusFilterValue = activeTab === TAB_BOOKINGS ? bookingStatusFilter : hostStatusFilter;
+  const searchPlaceholder =
+    activeTab === TAB_BOOKINGS
+      ? "Search bookings by event or location"
+      : "Search hosted events";
+  const bookingsCountLabel =
+    filteredBookings.length === sortedBookings.length
+      ? `${sortedBookings.length} total`
+      : `${filteredBookings.length} of ${sortedBookings.length}`;
+  const hostedCountLabel =
+    filteredHostedEvents.length === sortedCreatedEvents.length
+      ? `${sortedCreatedEvents.length} total`
+      : `${filteredHostedEvents.length} of ${sortedCreatedEvents.length}`;
+  const showFilteredBookingsEmptyState =
+    sortedBookings.length > 0 && filteredBookings.length === 0;
+  const showFilteredHostedEmptyState =
+    sortedCreatedEvents.length > 0 && filteredHostedEvents.length === 0;
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -973,41 +1144,127 @@ export default function EventsPage({ navigation }) {
           />
         }
       >
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>My Bookings</Text>
-          <Text style={styles.sectionMeta}>{sortedBookings.length} total</Text>
+      <View style={styles.filtersSection}>
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === TAB_BOOKINGS ? styles.tabButtonActive : null]}
+            onPress={() => setActiveTab(TAB_BOOKINGS)}
+            activeOpacity={0.85}
+          >
+            <Text
+              style={[
+                styles.tabButtonLabel,
+                activeTab === TAB_BOOKINGS ? styles.tabButtonLabelActive : null,
+              ]}
+            >
+              My Bookings
+            </Text>
+          </TouchableOpacity>
+          {isOrganizer ? (
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === TAB_HOSTING ? styles.tabButtonActive : null]}
+              onPress={() => setActiveTab(TAB_HOSTING)}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.tabButtonLabel,
+                  activeTab === TAB_HOSTING ? styles.tabButtonLabelActive : null,
+                ]}
+              >
+                Events I Host
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {sortedBookings.length ? (
-          sortedBookings.map((booking) => (
-            <BookingCard
-              key={booking?.id || booking?.eventId}
-              booking={booking}
-              onOpenEvent={handleOpenEvent}
-              onCancelBooking={handleCancelBooking}
-              isCancelling={cancellingBookingId === (booking?.id || null)}
+        <View style={styles.filterCard}>
+          <View style={styles.searchInputWrapper}>
+            <Icon name="search" size={16} color={placeholderColor} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={searchPlaceholder}
+              placeholderTextColor={placeholderColor}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
             />
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No bookings yet</Text>
-            <Text style={styles.emptyText}>
-              Explore new adventures in Discover and lock in your spot once you find an event you love.
-            </Text>
+            {searchQuery.trim().length ? (
+              <TouchableOpacity
+                onPress={() => setSearchQuery("")}
+                style={styles.clearSearchButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="x-circle" size={16} color={placeholderColor} />
+              </TouchableOpacity>
+            ) : null}
           </View>
-        )}
+
+          <View style={styles.filterRow}>
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>Status filter</Text>
+              <SafePicker
+                options={statusFilterOptions}
+                selectedValue={statusFilterValue}
+                onValueChange={handleStatusFilterChange}
+                containerStyle={styles.filterPickerContainer}
+                pickerStyle={styles.filterPicker}
+                textColor={pickerTextColor}
+                dropdownIconColor={pickerIconColor}
+                placeholder="Select status"
+                modalTitle="Filter by status"
+              />
+            </View>
+          </View>
+        </View>
       </View>
 
-      {user?.role === "ORGANIZER" ? (
+      {activeTab === TAB_BOOKINGS ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Bookings</Text>
+            <Text style={styles.sectionMeta}>{bookingsCountLabel}</Text>
+          </View>
+
+          {filteredBookings.length ? (
+            filteredBookings.map((booking) => (
+              <BookingCard
+                key={booking?.id || booking?.eventId}
+                booking={booking}
+                onOpenEvent={handleOpenEvent}
+                onCancelBooking={handleCancelBooking}
+                isCancelling={cancellingBookingId === (booking?.id || null)}
+              />
+            ))
+          ) : showFilteredBookingsEmptyState ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No bookings match your filters</Text>
+              <Text style={styles.emptyText}>
+                Try clearing the search field or selecting a different status.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No bookings yet</Text>
+              <Text style={styles.emptyText}>
+                Explore new adventures in Discover and lock in your spot once you find an event you love.
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      {activeTab === TAB_HOSTING && isOrganizer ? (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Events I Host</Text>
-            <Text style={styles.sectionMeta}>{sortedCreatedEvents.length} total</Text>
+            <Text style={styles.sectionMeta}>{hostedCountLabel}</Text>
           </View>
 
-          {sortedCreatedEvents.length ? (
-            sortedCreatedEvents.map((event) => (
+          {filteredHostedEvents.length ? (
+            filteredHostedEvents.map((event) => (
               <OrganizerEventCard
                 key={event?.id}
                 event={event}
@@ -1016,9 +1273,18 @@ export default function EventsPage({ navigation }) {
                 onViewBookings={handleViewBookings}
                 onEditEvent={handleEditEvent}
                 onUpdateStatus={handleChangeStatus}
+                onDeleteEvent={handleDeleteHostedEvent}
                 isUpdatingStatus={statusUpdatingId === event.id}
+                isDeleting={deletingEventId === event.id}
               />
             ))
+          ) : showFilteredHostedEmptyState ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No events match your filters</Text>
+              <Text style={styles.emptyText}>
+                Update your search or switch to another status to keep managing events.
+              </Text>
+            </View>
           ) : (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No events yet</Text>
@@ -1039,6 +1305,66 @@ function createStyles(theme) {
     safeArea: { flex: 1, backgroundColor: theme.background },
     container: { flex: 1, backgroundColor: theme.surface },
     contentContainer: { padding: 16, paddingBottom: 32 },
+    filtersSection: { marginBottom: 30 },
+    tabBar: {
+      flexDirection: "row",
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 999,
+      padding: 4,
+      marginBottom: 16,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 999,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    tabButtonActive: {
+      backgroundColor: theme.surface,
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    tabButtonLabel: { fontSize: 14, fontWeight: "600", color: theme.textSecondary },
+    tabButtonLabelActive: { color: theme.textPrimary },
+    filterCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 18,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    searchInputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+    },
+    searchIcon: { marginRight: 8 },
+    searchInput: { flex: 1, fontSize: 14, color: theme.textPrimary },
+    clearSearchButton: { marginLeft: 8 },
+    filterRow: { flexDirection: "row", flexWrap: "wrap" },
+    filterGroup: { flex: 1, minWidth: "48%" },
+    filterLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      color: theme.textMuted,
+      marginBottom: 6,
+    },
+    filterPickerContainer: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      backgroundColor: theme.surface,
+    },
+    filterPicker: { width: "100%", height: 44, color: theme.textPrimary },
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.surface },
     section: { marginBottom: 30 },
     sectionHeader: {
@@ -1327,6 +1653,8 @@ function createStyles(theme) {
       marginBottom: 12,
     },
     secondaryButtonAlt: { backgroundColor: theme.accent, borderColor: theme.accent },
+    secondaryButtonDanger: { backgroundColor: theme.dangerText, borderColor: theme.dangerText },
+    secondaryButtonDisabled: { opacity: 0.6 },
     secondaryButtonText: { marginLeft: 8, color: theme.accent, fontSize: 13, fontWeight: "600" },
     secondaryButtonTextAlt: { color: theme.textInverse },
   });

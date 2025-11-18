@@ -15,7 +15,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
 
-import { get, post } from '../../lib/api';
+import { del, get, post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ensureAvatarUri } from '../../utils/media';
@@ -49,11 +49,14 @@ function getSenderInitials(sender) {
   return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
 }
 
-function MessageBubble({ message, isSelf, styles }) {
+function MessageBubble({ message, isSelf, styles, canDelete, onLongPress, isDeleting }) {
   const bubbleStyles = [
     styles.messageBubble,
     isSelf ? styles.messageBubbleSelf : styles.messageBubblePeer,
   ];
+  if (isDeleting) {
+    bubbleStyles.push(styles.messageBubbleDeleting);
+  }
   if (!isSelf) {
     bubbleStyles.push(styles.messageBubblePeerWithAvatar);
   }
@@ -79,12 +82,22 @@ function MessageBubble({ message, isSelf, styles }) {
           )}
         </View>
       ) : null}
-      <View style={bubbleStyles}>
+      <TouchableOpacity
+        activeOpacity={canDelete ? 0.7 : 1}
+        onLongPress={canDelete ? () => onLongPress?.(message) : undefined}
+        delayLongPress={250}
+        style={bubbleStyles}
+      >
         <Text style={textStyles}>{message.body}</Text>
         <Text style={[styles.messageMeta, isSelf ? styles.messageMetaSelf : styles.messageMetaPeer]}>
           {formatTimestamp(message.createdAt)}
         </Text>
-      </View>
+        {isDeleting ? (
+          <View style={styles.messageDeletingOverlay}>
+            <ActivityIndicator size="small" color="#ffffff" />
+          </View>
+        ) : null}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -125,6 +138,7 @@ export default function ChatConversationPage({ route, navigation }) {
   const [sending, setSending] = useState(false);
   const [nextCursor, setNextCursor] = useState(null);
   const [fetchingMore, setFetchingMore] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState(null);
 
   const listRef = useRef(null);
   const pollingRef = useRef(null);
@@ -241,11 +255,61 @@ export default function ChatConversationPage({ route, navigation }) {
     }
   }, [conversationId, input]);
 
+  const deleteMessage = useCallback(
+    async (messageId) => {
+      if (!conversationId || !messageId) {
+        return;
+      }
+      setDeletingMessageId(messageId);
+      try {
+        await del(`/api/chats/${conversationId}/messages/${messageId}`);
+        setMessages((previous) => previous.filter((message) => message.id !== messageId));
+      } catch (error) {
+        console.error('Failed to delete message:', error);
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          'Unable to delete this message right now.';
+        Alert.alert('Delete failed', message);
+      } finally {
+        setDeletingMessageId(null);
+      }
+    },
+    [conversationId],
+  );
+
+  const handleMessageLongPress = useCallback(
+    (message) => {
+      if (!message?.id || message?.sender?.id !== user?.id) {
+        return;
+      }
+      Alert.alert('Delete message?', 'This will permanently remove the message.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteMessage(message.id),
+        },
+      ]);
+    },
+    [deleteMessage, user?.id],
+  );
+
   const renderMessage = useCallback(
-    ({ item }) => (
-      <MessageBubble message={item} isSelf={item?.sender?.id === user?.id} styles={styles} />
-    ),
-    [styles, user?.id],
+    ({ item }) => {
+      const isSelf = item?.sender?.id === user?.id;
+      return (
+        <MessageBubble
+          message={item}
+          isSelf={isSelf}
+          styles={styles}
+          canDelete={isSelf}
+          onLongPress={handleMessageLongPress}
+          isDeleting={deletingMessageId === item?.id}
+        />
+      );
+    },
+    [deletingMessageId, handleMessageLongPress, styles, user?.id],
   );
 
   const listHeader = useMemo(() => {
@@ -525,6 +589,20 @@ function createStyles(theme) {
     },
     messageBubblePeerWithAvatar: {
       marginLeft: 4,
+    },
+    messageBubbleDeleting: {
+      opacity: 0.6,
+    },
+    messageDeletingOverlay: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: 'rgba(0,0,0,0.25)',
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     messageText: {
       fontSize: 15,

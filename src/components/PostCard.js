@@ -23,6 +23,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { del, get, post as apiPost } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { ensureAvatarUri, resolveImageUrl } from '../utils/media';
 
@@ -368,6 +369,7 @@ function formatPostDate(value) {
 
 export default function PostCard({ post }) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const authorName = getAuthorName(post);
   const createdAt = formatPostDate(post?.createdAt);
   const caption = post?.content ?? '';
@@ -388,6 +390,7 @@ export default function PostCard({ post }) {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState(null);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   const navigation = useNavigation();
@@ -493,6 +496,63 @@ export default function PostCard({ post }) {
       setCommentSubmitting(false);
     }
   }, [apiPost, commentSubmitting, commentText, post?.id]);
+
+  const handleDeleteComment = useCallback(
+    async (commentId) => {
+      if (!post?.id || !commentId) {
+        return;
+      }
+      setDeletingCommentId(commentId);
+      try {
+        const response = await del(`/api/posts/${post.id}/comments/${commentId}`);
+        setComments((current) => current.filter((comment) => comment.id !== commentId));
+        if (typeof response?.commentCount === 'number') {
+          setCommentCount(Math.max(0, response.commentCount));
+        } else {
+          setCommentCount((count) => Math.max(0, count - 1));
+        }
+      } catch (error) {
+        console.error('Failed to delete comment:', error);
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          'Unable to delete this comment right now.';
+        Alert.alert('Delete failed', message);
+      } finally {
+        setDeletingCommentId(null);
+      }
+    },
+    [post?.id],
+  );
+
+  const handleConfirmDeleteComment = useCallback(
+    (commentId) => {
+      if (!commentId) {
+        return;
+      }
+      Alert.alert('Delete comment?', 'This action cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeleteComment(commentId),
+        },
+      ]);
+    },
+    [handleDeleteComment],
+  );
+
+  const canDeleteComment = useCallback(
+    (comment) => {
+      if (!user?.id) {
+        return false;
+      }
+      const commentAuthorId = comment?.author?.id;
+      const postAuthorId = post?.author?.id;
+      return user.id === commentAuthorId || user.id === postAuthorId;
+    },
+    [post?.author?.id, user?.id],
+  );
 
   const handleShare = useCallback(async () => {
     try {
@@ -604,13 +664,36 @@ export default function PostCard({ post }) {
                   <ActivityIndicator size="small" color="#2E7D32" />
                 </View>
               ) : comments.length > 0 ? (
-                comments.map((comment) => (
-                  <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 dark:bg-slate-800 p-3">
-                    <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">{getAuthorName(comment)}</Text>
-                    <Text className="mt-1 text-sm text-gray-700 dark:text-slate-300">{comment.content}</Text>
-                    <Text className="mt-2 text-xs text-gray-400 dark:text-slate-500">{formatPostDate(comment.createdAt)}</Text>
-                  </View>
-                ))
+                comments.map((comment) => {
+                  const allowDelete = canDeleteComment(comment);
+                  const isDeleting = deletingCommentId === comment.id;
+                  return (
+                    <View key={comment.id} className="mb-4 rounded-lg bg-gray-50 dark:bg-slate-800 p-3">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                          {getAuthorName(comment)}
+                        </Text>
+                        {allowDelete ? (
+                          <TouchableOpacity
+                            onPress={() => handleConfirmDeleteComment(comment.id)}
+                            disabled={isDeleting}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            {isDeleting ? (
+                              <ActivityIndicator size="small" color="#dc2626" />
+                            ) : (
+                              <Feather name="trash-2" size={16} color="#dc2626" />
+                            )}
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <Text className="mt-1 text-sm text-gray-700 dark:text-slate-300">{comment.content}</Text>
+                      <Text className="mt-2 text-xs text-gray-400 dark:text-slate-500">
+                        {formatPostDate(comment.createdAt)}
+                      </Text>
+                    </View>
+                  );
+                })
               ) : (
                 <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
                   Be the first to leave a comment.
