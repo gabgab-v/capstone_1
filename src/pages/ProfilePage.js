@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -314,32 +315,42 @@ function ConnectionsModal({
           </View>
 
           <View className="flex-1">
-            <FlatList
-              data={users}
-              keyExtractor={(item, index) => (item?.id ? String(item.id) : `connection-${index}`)}
-              renderItem={renderItem}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingBottom: 24 }}
-              showsVerticalScrollIndicator={false}
-              refreshing={loading}
-              onRefresh={onRefresh}
-              ListEmptyComponent={
-                loading ? (
-                  <View className="items-center justify-center py-12">
-                    <ActivityIndicator size="small" color="#059669" />
-                  </View>
-                ) : (
-                  <View className="items-center px-4 py-12">
-                    <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
-                      {emptyTitle}
-                    </Text>
-                    <Text className="mt-2 text-center text-sm text-gray-500 dark:text-slate-400">
-                      {emptyDescription}
-                    </Text>
-                  </View>
-                )
-              }
-            />
+            {loading ? (
+              <View className="items-center justify-center py-12">
+                <ActivityIndicator size="small" color="#059669" />
+              </View>
+            ) : users.length ? (
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
+                }
+                contentContainerStyle={{ paddingBottom: 24 }}
+              >
+                {users.map((item, index) => (
+                  <View key={item?.id ?? `connection-${index}`}>{renderItem({ item })}</View>
+                ))}
+              </ScrollView>
+            ) : (
+              <ScrollView
+                contentContainerStyle={{ paddingBottom: 24 }}
+                refreshControl={
+                  <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
+                }
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View className="items-center px-4 py-12">
+                  <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
+                    {emptyTitle}
+                  </Text>
+                  <Text className="mt-2 text-center text-sm text-gray-500 dark:text-slate-400">
+                    {emptyDescription}
+                  </Text>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
       </View>
