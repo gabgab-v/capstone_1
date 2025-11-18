@@ -56,8 +56,13 @@ export default function ConnectionsListPage({ navigation, route }) {
       setError(null);
 
       try {
-        const query = debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : '';
-        const data = await get(`/api/users/${userId}/connections?kind=${type}${query}`);
+        const params = new URLSearchParams();
+        params.append('kind', type);
+        params.append('limit', '200');
+        if (debouncedSearch) {
+          params.append('q', debouncedSearch);
+        }
+        const data = await get(`/api/users/${userId}/connections?${params.toString()}`);
         setConnections(Array.isArray(data?.users) ? data.users : []);
         const total =
           typeof data?.totalCount === 'number'
