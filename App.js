@@ -29,6 +29,7 @@ import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
 import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
+import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -75,6 +76,7 @@ function AppNavigator() {
           <Stack.Screen name="ApplyOrganizer" component={ApplyOrganizerPage} />
           <Stack.Screen name="ApplyExpert" component={ApplyExpertPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />
+          <Stack.Screen name="ConnectionsList" component={ConnectionsListPage} />
         </>
       ) : (
         <>

@@ -8,7 +8,6 @@ import {
   Modal,
   Platform,
   RefreshControl,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -88,20 +87,6 @@ function RatingStars({ rating = 0, size = 16, editable = false, onSelect }) {
   );
 }
 
-function useDebouncedValue(value, delay = 300) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => clearTimeout(handle);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
 class ProfilePageErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -154,201 +139,6 @@ class ProfilePageErrorBoundary extends React.Component {
 
     return this.props.children;
   }
-}
-
-function ConnectionsModal({
-  visible,
-  type = 'followers',
-  users = [],
-  loading = false,
-  query = '',
-  onQueryChange,
-  onClose,
-  onSelectUser,
-  onRefresh,
-  bottomInset = 0,
-  onTypeChange,
-  totalCount = 0,
-}) {
-  const title = type === 'following' ? 'Following' : 'Followers';
-  const placeholder =
-    type === 'following' ? 'Search people you follow' : 'Search followers';
-  const emptyTitle =
-    type === 'following' ? 'Not following anyone yet' : 'No followers yet';
-  const emptyDescription =
-    type === 'following'
-      ? 'Start following other hikers to see them here.'
-      : 'When hikers follow this profile, they will appear here.';
-
-  const connectionOptions = [
-    { key: 'followers', label: 'Followers' },
-    { key: 'following', label: 'Following' },
-  ];
-  const filteredCount = users.length;
-  const totalLabel =
-    type === 'following'
-      ? `${totalCount} following`
-      : `${totalCount} follower${totalCount === 1 ? '' : 's'}`;
-  const filteredLabel =
-    filteredCount !== totalCount
-      ? `Showing ${filteredCount} result${filteredCount === 1 ? '' : 's'}`
-      : null;
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View className="flex-1 bg-black/40">
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-        <View
-          className="w-full rounded-t-3xl bg-white px-4 pt-4 pb-4 dark:bg-slate-900"
-          style={{ maxHeight: '80%', paddingBottom: Math.max(bottomInset, 16) }}
-        >
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-lg font-semibold text-gray-900 dark:text-slate-100">
-              {title}
-            </Text>
-            <TouchableOpacity
-              onPress={onClose}
-              className="rounded-full bg-gray-100 p-2 dark:bg-slate-800"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close" size={18} color="#059669" />
-            </TouchableOpacity>
-        </View>
-
-        <View className="mb-3 flex-row rounded-full bg-gray-100 p-1 dark:bg-slate-800">
-            {connectionOptions.map((option) => {
-              const isActive = type === option.key;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  onPress={() => onTypeChange?.(option.key)}
-                  activeOpacity={0.85}
-                  className={`flex-1 items-center rounded-full py-2 ${
-                    isActive ? 'bg-white dark:bg-slate-900' : ''
-                  }`}
-                  style={
-                    isActive
-                      ? {
-                          shadowColor: '#000',
-                          shadowOpacity: 0.12,
-                          shadowRadius: 6,
-                          shadowOffset: { width: 0, height: 2 },
-                          elevation: 2,
-                        }
-                      : null
-                  }
-                >
-                  <Text
-                    className={`text-sm font-semibold ${
-                      isActive ? 'text-gray-900 dark:text-slate-100' : 'text-gray-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View className="mb-2 flex-row items-center justify-between px-1">
-            <Text className="text-xs font-semibold text-gray-600 dark:text-slate-300">
-              {totalLabel}
-            </Text>
-            {filteredLabel ? (
-              <Text className="text-[11px] text-gray-400 dark:text-slate-500">{filteredLabel}</Text>
-            ) : null}
-          </View>
-
-          <View className="mb-3 flex-row items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-slate-800">
-            <Ionicons name="search" size={16} color="#6b7280" />
-            <TextInput
-              className="ml-2 flex-1 text-sm text-gray-900 dark:text-slate-100"
-              placeholder={placeholder}
-              placeholderTextColor="#94a3b8"
-              value={query}
-              onChangeText={onQueryChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {query ? (
-              <TouchableOpacity
-                onPress={() => onQueryChange?.('')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close-circle" size={16} color="#9ca3af" />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          <View className="flex-1">
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
-              }
-              contentContainerStyle={{ paddingBottom: 24 }}
-            >
-              {loading ? (
-                <View className="items-center justify-center py-12">
-                  <ActivityIndicator size="small" color="#059669" />
-                </View>
-              ) : users.length ? (
-                users.map((item, index) => {
-                  const displayName = item?.name ?? item?.email ?? 'Explorer';
-                  const subtitle =
-                    item?.bio ??
-                    (item?.role === 'ORGANIZER' ? 'Organizer' : 'Hiker in the community');
-                  const avatarUri = ensureAvatarUri(
-                    item?.avatarUrl,
-                    item?.id ?? item?.email ?? `user-${index}`,
-                  );
-                  return (
-                    <TouchableOpacity
-                      key={item?.id ?? `connection-${index}`}
-                      onPress={() => onSelectUser?.(item)}
-                      activeOpacity={0.85}
-                      className="mb-3 flex-row items-center rounded-2xl bg-gray-50 p-3 dark:bg-slate-800/70"
-                    >
-                      <Image
-                        source={{ uri: avatarUri }}
-                        className="h-12 w-12 rounded-full bg-gray-200 dark:bg-slate-700"
-                      />
-                      <View className="ml-3 flex-1">
-                        <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
-                          {displayName}
-                        </Text>
-                        <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400" numberOfLines={2}>
-                          {subtitle || 'Explorer'}
-                        </Text>
-                      </View>
-                      {item?.role === 'ORGANIZER' ? (
-                        <View className="rounded-full bg-emerald-100 px-3 py-1 dark:bg-emerald-500/20">
-                          <Text className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-200">
-                            Organizer
-                          </Text>
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                  );
-                })
-              ) : (
-                <View className="items-center px-4 py-12">
-                  <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
-                    {emptyTitle}
-                  </Text>
-                  <Text className="mt-2 text-center text-sm text-gray-500 dark:text-slate-400">
-                    {emptyDescription}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 }
 
 export default function ProfilePage(props) {
@@ -523,13 +313,6 @@ function ProfilePageContent({ navigation, route }) {
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
-  const [connectionsVisible, setConnectionsVisible] = useState(false);
-  const [connectionsType, setConnectionsType] = useState('followers');
-  const [connectionsUsers, setConnectionsUsers] = useState([]);
-  const [connectionsLoading, setConnectionsLoading] = useState(false);
-  const [connectionsSearch, setConnectionsSearch] = useState('');
-  const [connectionsTotalCount, setConnectionsTotalCount] = useState(0);
-  const [connectionsRequestKey, setConnectionsRequestKey] = useState(0);
   const [trailPreview, setTrailPreview] = useState(null);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
@@ -543,7 +326,6 @@ function ProfilePageContent({ navigation, route }) {
     () => ({ top: headerTopPadding, bottom: insets.bottom }),
     [headerTopPadding, insets.bottom],
   );
-  const debouncedConnectionsQuery = useDebouncedValue(connectionsSearch, 350);
   const completedEvents = useMemo(
     () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
     [profile?.completedEvents],
@@ -621,75 +403,6 @@ function ProfilePageContent({ navigation, route }) {
       setFeedbackDraft('');
     }
   }, [profile?.id, profile?.organizerRating?.viewerReview?.id]);
-
-  useEffect(() => {
-    if (!connectionsVisible) {
-      setConnectionsUsers([]);
-      return;
-    }
-    setConnectionsUsers([]);
-    setConnectionsTotalCount(0);
-  }, [connectionsVisible, connectionsType]);
-
-  useEffect(() => {
-    if (!connectionsVisible || !profile?.id) {
-      return;
-    }
-
-    let isActive = true;
-    setConnectionsLoading(true);
-
-    const queryParam =
-      debouncedConnectionsQuery && debouncedConnectionsQuery.trim().length
-        ? `&q=${encodeURIComponent(debouncedConnectionsQuery.trim())}`
-        : '';
-
-    const kindParam = connectionsType === 'following' ? 'following' : 'followers';
-
-    const fetchConnections = async () => {
-      try {
-        const data = await get(
-          `/api/users/${profile.id}/connections?kind=${kindParam}${queryParam}`,
-        );
-        if (!isActive) {
-          return;
-        }
-        setConnectionsUsers(Array.isArray(data?.users) ? data.users : []);
-        if (typeof data?.totalCount === 'number') {
-          setConnectionsTotalCount(Math.max(0, data.totalCount));
-        } else if (typeof data?.count === 'number') {
-          setConnectionsTotalCount(Math.max(0, data.count));
-        } else {
-          setConnectionsTotalCount(0);
-        }
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-        console.error('Failed to load connections:', error);
-        Alert.alert(
-          'Unable to load connections',
-          error?.message ?? 'Please try again later.',
-        );
-      } finally {
-        if (isActive) {
-          setConnectionsLoading(false);
-        }
-      }
-    };
-
-    fetchConnections();
-
-    return () => {
-      isActive = false;
-    };
-  }, [
-    connectionsVisible,
-    connectionsType,
-    profile?.id,
-    debouncedConnectionsQuery,
-    connectionsRequestKey,
-  ]);
 
   const fetchProfile = useCallback(
     async ({ useRefresh = false } = {}) => {
@@ -839,48 +552,13 @@ function ProfilePageContent({ navigation, route }) {
         return;
       }
       const normalized = type === 'following' ? 'following' : 'followers';
-      setConnectionsType(normalized);
-      setConnectionsSearch('');
-      setConnectionsVisible(true);
+      navigation.navigate('ConnectionsList', {
+        userId: profile.id,
+        initialType: normalized,
+        profileName: profile.name ?? profile.email ?? 'Profile',
+      });
     },
-    [profile?.id],
-  );
-
-  const handleCloseConnections = useCallback(() => {
-    setConnectionsVisible(false);
-    setConnectionsSearch('');
-    setConnectionsLoading(false);
-    setConnectionsUsers([]);
-    setConnectionsTotalCount(0);
-  }, []);
-
-  const handleConnectionsTypeChange = useCallback((nextType) => {
-    setConnectionsType((current) => {
-      const normalized = nextType === 'following' ? 'following' : 'followers';
-      return current === normalized ? current : normalized;
-    });
-  }, []);
-
-  const handleConnectionsRefresh = useCallback(() => {
-    if (!connectionsVisible) {
-      return;
-    }
-    setConnectionsRequestKey((key) => key + 1);
-  }, [connectionsVisible]);
-
-  const handleConnectionsUserPress = useCallback(
-    (user) => {
-      if (!user?.id) {
-        return;
-      }
-      setConnectionsVisible(false);
-      setConnectionsSearch('');
-      if (user.id === profile?.id) {
-        return;
-      }
-      navigation.push('Profile', { userId: user.id });
-    },
-    [navigation, profile?.id],
+    [navigation, profile?.email, profile?.id, profile?.name],
   );
 
   const handleTrailRecordingPress = useCallback((trail) => {
@@ -1519,20 +1197,6 @@ function ProfilePageContent({ navigation, route }) {
           }
         />
       </KeyboardAvoidingView>
-      <ConnectionsModal
-        visible={connectionsVisible}
-        type={connectionsType}
-        users={connectionsUsers}
-        loading={connectionsLoading}
-        query={connectionsSearch}
-        onQueryChange={setConnectionsSearch}
-        onClose={handleCloseConnections}
-        onSelectUser={handleConnectionsUserPress}
-        onRefresh={handleConnectionsRefresh}
-        bottomInset={insets.bottom}
-        onTypeChange={handleConnectionsTypeChange}
-        totalCount={connectionsTotalCount}
-      />
       <Modal visible={!!trailPreview} transparent animationType="slide" onRequestClose={handleCloseTrailPreview}>
         <View className="flex-1 items-center justify-center bg-black/70 p-4">
           {trailPreview ? (
