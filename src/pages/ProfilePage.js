@@ -22,6 +22,7 @@ import { decode } from 'base64-arraybuffer';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
+import TrailRecordingCard from '../components/TrailRecordingCard';
 import { get, post, patch, del as deleteRequest } from '../lib/api';
 import { ensureAvatarUri } from '../utils/media';
 import { supabase } from '../lib/supabase';
@@ -192,41 +193,6 @@ function ConnectionsModal({
       ? `Showing ${filteredCount} result${filteredCount === 1 ? '' : 's'}`
       : null;
 
-  const renderItem = ({ item }) => {
-    const displayName = item?.name ?? item?.email ?? 'Explorer';
-    const subtitle =
-      item?.bio ??
-      (item?.role === 'ORGANIZER' ? 'Organizer' : 'Hiker in the community');
-    const avatarUri = ensureAvatarUri(item?.avatarUrl, item?.id ?? item?.email ?? 'user');
-    return (
-      <TouchableOpacity
-        onPress={() => onSelectUser?.(item)}
-        activeOpacity={0.85}
-        className="mb-3 flex-row items-center rounded-2xl bg-gray-50 p-3 dark:bg-slate-800/70"
-      >
-        <Image
-          source={{ uri: avatarUri }}
-          className="h-12 w-12 rounded-full bg-gray-200 dark:bg-slate-700"
-        />
-        <View className="ml-3 flex-1">
-          <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
-            {displayName}
-          </Text>
-          <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400" numberOfLines={2}>
-            {subtitle || 'Explorer'}
-          </Text>
-        </View>
-        {item?.role === 'ORGANIZER' ? (
-          <View className="rounded-full bg-emerald-100 px-3 py-1 dark:bg-emerald-500/20">
-            <Text className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-200">
-              Organizer
-            </Text>
-          </View>
-        ) : null}
-      </TouchableOpacity>
-    );
-  };
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View className="flex-1 bg-black/40">
@@ -315,32 +281,58 @@ function ConnectionsModal({
           </View>
 
           <View className="flex-1">
-            {loading ? (
-              <View className="items-center justify-center py-12">
-                <ActivityIndicator size="small" color="#059669" />
-              </View>
-            ) : users.length ? (
-              <ScrollView
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
-                }
-                contentContainerStyle={{ paddingBottom: 24 }}
-              >
-                {users.map((item, index) => (
-                  <View key={item?.id ?? `connection-${index}`}>{renderItem({ item })}</View>
-                ))}
-              </ScrollView>
-            ) : (
-              <ScrollView
-                contentContainerStyle={{ paddingBottom: 24 }}
-                refreshControl={
-                  <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
-                }
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#059669" />
+              }
+              contentContainerStyle={{ paddingBottom: 24 }}
+            >
+              {loading ? (
+                <View className="items-center justify-center py-12">
+                  <ActivityIndicator size="small" color="#059669" />
+                </View>
+              ) : users.length ? (
+                users.map((item, index) => {
+                  const displayName = item?.name ?? item?.email ?? 'Explorer';
+                  const subtitle =
+                    item?.bio ??
+                    (item?.role === 'ORGANIZER' ? 'Organizer' : 'Hiker in the community');
+                  const avatarUri = ensureAvatarUri(
+                    item?.avatarUrl,
+                    item?.id ?? item?.email ?? `user-${index}`,
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={item?.id ?? `connection-${index}`}
+                      onPress={() => onSelectUser?.(item)}
+                      activeOpacity={0.85}
+                      className="mb-3 flex-row items-center rounded-2xl bg-gray-50 p-3 dark:bg-slate-800/70"
+                    >
+                      <Image
+                        source={{ uri: avatarUri }}
+                        className="h-12 w-12 rounded-full bg-gray-200 dark:bg-slate-700"
+                      />
+                      <View className="ml-3 flex-1">
+                        <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
+                          {displayName}
+                        </Text>
+                        <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400" numberOfLines={2}>
+                          {subtitle || 'Explorer'}
+                        </Text>
+                      </View>
+                      {item?.role === 'ORGANIZER' ? (
+                        <View className="rounded-full bg-emerald-100 px-3 py-1 dark:bg-emerald-500/20">
+                          <Text className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-200">
+                            Organizer
+                          </Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
                 <View className="items-center px-4 py-12">
                   <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
                     {emptyTitle}
@@ -349,8 +341,8 @@ function ConnectionsModal({
                     {emptyDescription}
                   </Text>
                 </View>
-              </ScrollView>
-            )}
+              )}
+            </ScrollView>
           </View>
         </View>
       </View>
@@ -554,6 +546,10 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
     [profile?.completedEvents],
   );
+  const trailRecordings = useMemo(
+    () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
+    [profile?.trailRecordings],
+  );
   const organizerOrganizationName = useMemo(() => {
     if (profile?.role !== 'ORGANIZER') {
       return null;
@@ -713,7 +709,7 @@ function ProfilePageContent({ navigation, route }) {
 
       try {
         const data = await get(
-          `/api/users/${viewedUserId}?includePosts=true&includeCompletedEvents=true`,
+          `/api/users/${viewedUserId}?includePosts=true&includeCompletedEvents=true&includeTrailRecordings=true`,
         );
         const formattedProfile = {
           ...data,
@@ -721,6 +717,7 @@ function ProfilePageContent({ navigation, route }) {
           followingCount: data.followingCount ?? 0,
           postCount: data.postCount ?? (Array.isArray(data.posts) ? data.posts.length : 0),
           completedEvents: Array.isArray(data.completedEvents) ? data.completedEvents : [],
+          trailRecordings: Array.isArray(data.trailRecordings) ? data.trailRecordings : [],
         };
 
         profileOwnerIdRef.current = formattedProfile.id;
@@ -1428,6 +1425,28 @@ function ProfilePageContent({ navigation, route }) {
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
               Organizer-marked completions will appear here once this hiker finishes an event.
+            </Text>
+          )}
+        </View>
+
+        <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:bg-slate-900 dark:border-slate-700">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Trail Recordings</Text>
+            {trailRecordings.length ? (
+              <Text className="text-xs text-gray-500 dark:text-slate-400">
+                {trailRecordings.length === 1 ? '1 recording' : `${trailRecordings.length} recordings`}
+              </Text>
+            ) : null}
+          </View>
+          {trailRecordings.length ? (
+            trailRecordings.map((trail) => (
+              <TrailRecordingCard key={trail.id ?? `${trail.startedAt}`} trail={trail} canShare={isOwnProfile} />
+            ))
+          ) : (
+            <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+              {isOwnProfile
+                ? 'Record a trail to see it here and share it with your followers.'
+                : 'Trail recordings will appear here once this hiker shares them.'}
             </Text>
           )}
         </View>

@@ -1,7 +1,15 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapboxGL, { MAPBOX_ACCESS_TOKEN } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
+import {
+  buildTrailShareMessage,
+  computeTrailDurationMs,
+  formatTrailAverageSpeed,
+  formatTrailDistance,
+  formatTrailDuration,
+  publishTrailRecordingPost,
+} from '../utils/trailSharing';
 
 function ensureLineString(trail) {
   if (!trail) {
@@ -39,55 +47,9 @@ function ensureLineString(trail) {
   };
 }
 
-function formatDistance(meters) {
-  if (!Number.isFinite(meters) || meters <= 0) {
-    return '0.00 km';
-  }
-  return `${(meters / 1000).toFixed(2)} km`;
-}
-
-function computeDurationMs(startedAt, endedAt) {
-  if (!startedAt) {
-    return 0;
-  }
-  const start = new Date(startedAt).getTime();
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return 0;
-  }
-  return end - start;
-}
-
-function formatDuration(ms) {
-  if (!Number.isFinite(ms) || ms <= 0) {
-    return '00:00:00';
-  }
-
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600)
-    .toString()
-    .padStart(2, '0');
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-    .toString()
-    .padStart(2, '0');
-  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
-}
-
-function formatAverageSpeed(distanceMeters, durationMs) {
-  if (!Number.isFinite(distanceMeters) || !Number.isFinite(durationMs) || durationMs <= 0) {
-    return '0.0 km/h';
-  }
-  const hours = durationMs / 3600000;
-  if (hours <= 0) {
-    return '0.0 km/h';
-  }
-  const speed = distanceMeters / 1000 / hours;
-  return `${speed.toFixed(1)} km/h`;
-}
-
 export default function RecordedTrailSummary({ trail, onClose }) {
   const cameraRef = useRef(null);
+  const [posting, setPosting] = useState(false);
 
   const lineString = useMemo(() => ensureLineString(trail), [trail]);
   const trailMeta = useMemo(() => computeLineStringMeta(lineString), [lineString]);
@@ -102,9 +64,42 @@ export default function RecordedTrailSummary({ trail, onClose }) {
   }, [trail?.samples, lineString]);
 
   const durationMs = useMemo(
-    () => computeDurationMs(trail?.startedAt, trail?.endedAt),
+    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt),
     [trail?.startedAt, trail?.endedAt],
   );
+
+  const handleShareToFeed = useCallback(async () => {
+    if (!trail || posting) {
+      return;
+    }
+    setPosting(true);
+    try {
+      await publishTrailRecordingPost(trail);
+      Alert.alert('Trail shared', 'Your recording was posted to your feed.');
+    } catch (error) {
+      console.error('Failed to post trail recording:', error);
+      const message = error?.message ?? 'Unable to share this recording right now.';
+      Alert.alert('Share failed', message);
+    } finally {
+      setPosting(false);
+    }
+  }, [posting, trail]);
+
+  const handleShareExternally = useCallback(async () => {
+    if (!trail) {
+      return;
+    }
+    try {
+      const message = buildTrailShareMessage(trail);
+      await Share.share({ message });
+    } catch (error) {
+      if (error?.message && error.message.includes('canceled')) {
+        return;
+      }
+      console.error('Failed to open share sheet:', error);
+      Alert.alert('Share unavailable', 'Unable to open the share sheet right now.');
+    }
+  }, [trail]);
 
   useEffect(() => {
     if (!cameraRef.current || !trailMeta?.bounds) {
@@ -215,16 +210,16 @@ export default function RecordedTrailSummary({ trail, onClose }) {
       <View style={styles.metrics}>
         <View style={styles.metric}>
           <Text style={styles.metricLabel}>Distance</Text>
-          <Text style={styles.metricValue}>{formatDistance(trail?.totalDistanceMeters)}</Text>
+          <Text style={styles.metricValue}>{formatTrailDistance(trail?.totalDistanceMeters)}</Text>
         </View>
         <View style={styles.metric}>
           <Text style={styles.metricLabel}>Duration</Text>
-          <Text style={styles.metricValue}>{formatDuration(durationMs)}</Text>
+          <Text style={styles.metricValue}>{formatTrailDuration(durationMs)}</Text>
         </View>
         <View style={styles.metric}>
           <Text style={styles.metricLabel}>Avg speed</Text>
           <Text style={styles.metricValue}>
-            {formatAverageSpeed(trail?.totalDistanceMeters, durationMs)}
+            {formatTrailAverageSpeed(trail?.totalDistanceMeters, durationMs)}
           </Text>
         </View>
       </View>
@@ -240,6 +235,21 @@ export default function RecordedTrailSummary({ trail, onClose }) {
             Finished {new Date(trail.endedAt).toLocaleString()}
           </Text>
         )}
+      </View>
+      <View style={styles.shareActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionPrimary, posting && styles.actionDisabled]}
+          onPress={handleShareToFeed}
+          disabled={posting}
+        >
+          <Text style={styles.actionButtonText}>{posting ? 'Posting...' : 'Post to Feed'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionSecondary]}
+          onPress={handleShareExternally}
+        >
+          <Text style={styles.actionButtonText}>Share Externally</Text>
+        </TouchableOpacity>
       </View>
       <TouchableOpacity style={styles.closeButton} onPress={onClose}>
         <Text style={styles.closeButtonText}>Done</Text>
@@ -316,6 +326,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#cbd5f5',
     marginBottom: 4,
+  },
+  shareActions: {
+    marginBottom: 16,
+  },
+  actionButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  actionPrimary: {
+    backgroundColor: '#2563eb',
+  },
+  actionSecondary: {
+    backgroundColor: '#0ea5e9',
+  },
+  actionDisabled: {
+    opacity: 0.7,
+  },
+  actionButtonText: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontWeight: '600',
   },
   closeButton: {
     backgroundColor: '#22c55e',

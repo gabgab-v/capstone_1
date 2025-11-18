@@ -63,6 +63,34 @@ function shouldIncludeCompletedEvents(searchParams) {
   return ['1', 'true', 'yes'].includes(value.toLowerCase());
 }
 
+function shouldIncludeTrailRecordings(searchParams) {
+  const value = searchParams.get('includeTrailRecordings');
+  if (value === null) {
+    return false;
+  }
+  return ['1', 'true', 'yes'].includes(value.toLowerCase());
+}
+
+function mapTrailRecording(trail) {
+  if (!trail) {
+    return null;
+  }
+  return {
+    id: trail.id,
+    label: trail.label ?? null,
+    startedAt: trail.startedAt,
+    endedAt: trail.endedAt,
+    totalDistanceMeters:
+      typeof trail.totalDistanceMeters === 'number'
+        ? trail.totalDistanceMeters
+        : trail.totalDistanceMeters == null
+          ? null
+          : Number(trail.totalDistanceMeters),
+    createdAt: trail.createdAt,
+    updatedAt: trail.updatedAt,
+  };
+}
+
 export async function GET(request, { params }) {
   try {
     const authUser = await getUserFromToken(request);
@@ -90,13 +118,15 @@ export async function GET(request, { params }) {
 
     const includePosts = shouldIncludePosts(request.nextUrl.searchParams);
     const includeCompletedEvents = shouldIncludeCompletedEvents(request.nextUrl.searchParams);
+    const includeTrailRecordings = shouldIncludeTrailRecordings(request.nextUrl.searchParams);
 
-    const [followersCount, followingCount, postCount, isFollowing, posts] = await Promise.all([
-      prisma.follow.count({
-        where: { followingId: targetUserId },
-      }),
-      prisma.follow.count({
-        where: { followerId: targetUserId },
+    const [followersCount, followingCount, postCount, isFollowing, posts, trailRecordings] =
+      await Promise.all([
+        prisma.follow.count({
+          where: { followingId: targetUserId },
+        }),
+        prisma.follow.count({
+          where: { followerId: targetUserId },
       }),
       prisma.post.count({
         where: { userId: targetUserId },
@@ -113,25 +143,41 @@ export async function GET(request, { params }) {
               },
             })
             .then((follow) => Boolean(follow)),
-      includePosts
-        ? prisma.post
-            .findMany({
-              where: { userId: targetUserId },
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    avatarUrl: true,
+        includePosts
+          ? prisma.post
+              .findMany({
+                where: { userId: targetUserId },
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      avatarUrl: true,
+                    },
                   },
                 },
+                orderBy: { createdAt: 'desc' },
+              })
+              .then((data) => data.map(mapPost))
+          : Promise.resolve([]),
+        includeTrailRecordings
+          ? prisma.trail.findMany({
+              where: { userId: targetUserId },
+              orderBy: { startedAt: 'desc' },
+              take: 10,
+              select: {
+                id: true,
+                label: true,
+                startedAt: true,
+                endedAt: true,
+                totalDistanceMeters: true,
+                createdAt: true,
+                updatedAt: true,
               },
-              orderBy: { createdAt: 'desc' },
             })
-            .then((data) => data.map(mapPost))
-        : Promise.resolve([]),
-    ]);
+          : Promise.resolve([]),
+      ]);
 
     const response = {
       ...user,
@@ -212,6 +258,10 @@ export async function GET(request, { params }) {
     if (includePosts) {
       response.posts = posts;
     }
+
+    response.trailRecordings = includeTrailRecordings
+      ? trailRecordings.map(mapTrailRecording).filter(Boolean)
+      : [];
 
     if (includeCompletedEvents) {
       const completedBookings = await prisma.booking.findMany({
