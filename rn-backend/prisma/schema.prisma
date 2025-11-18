@@ -141,6 +141,7 @@ model Trail {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   events              Event[]
+  posts               Post[]
 
   @@index([userId, startedAt])
 }
