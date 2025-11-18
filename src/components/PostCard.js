@@ -22,10 +22,18 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, PinchGestureHandler, State } from 'react-native-gesture-handler';
+import MapboxGL, { MAPBOX_ACCESS_TOKEN } from '../lib/mapbox';
 import { del, get, post as apiPost } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { ensureAvatarUri, resolveImageUrl } from '../utils/media';
+import { computeLineStringMeta } from '../utils/geo';
+import {
+  computeTrailDurationMs,
+  formatTrailAverageSpeed,
+  formatTrailDistance,
+  formatTrailDuration,
+} from '../utils/trailSharing';
 
 const ActionButton = ({
   iconName,
@@ -65,6 +73,103 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+
+function ensureLineStringFromTrail(trail) {
+  if (!trail) {
+    return null;
+  }
+  const geoJson = trail.geoJson;
+  if (geoJson && geoJson.type === 'LineString' && Array.isArray(geoJson.coordinates)) {
+    return geoJson;
+  }
+  return null;
+}
+
+const TrailMapAttachment = ({ trail }) => {
+  if (!trail) {
+    return null;
+  }
+  const cameraRef = useRef(null);
+  const lineString = useMemo(() => ensureLineStringFromTrail(trail), [trail]);
+  const trailMeta = useMemo(() => computeLineStringMeta(lineString), [lineString]);
+  const durationMs = useMemo(
+    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt),
+    [trail?.endedAt, trail?.startedAt],
+  );
+
+  useEffect(() => {
+    if (!cameraRef.current || !trailMeta?.bounds) {
+      return;
+    }
+    cameraRef.current.fitBounds(trailMeta.bounds.northEast, trailMeta.bounds.southWest, 30, 400);
+  }, [trailMeta?.bounds]);
+
+  const hasMapToken = MAPBOX_ACCESS_TOKEN && MAPBOX_ACCESS_TOKEN !== 'YOUR_MAPBOX_ACCESS_TOKEN';
+
+  const renderMap = () => {
+    if (!hasMapToken) {
+      return (
+        <View className="h-48 items-center justify-center bg-slate-800/40 px-4">
+          <Text className="text-center text-sm text-slate-200">
+            Add a Mapbox token to preview shared trails.
+          </Text>
+        </View>
+      );
+    }
+
+    if (!lineString) {
+      return (
+        <View className="h-48 items-center justify-center bg-slate-800/40 px-4">
+          <Text className="text-center text-sm text-slate-200">
+            Trail geometry unavailable. Record at least two points to preview the path.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <MapboxGL.MapView style={{ flex: 1 }} styleURL={MapboxGL.StyleURL.Outdoors} logoEnabled={false}>
+        <MapboxGL.Camera
+          ref={cameraRef}
+          centerCoordinate={trailMeta?.center}
+          zoomLevel={trailMeta?.approxZoom ?? 12}
+          animationMode="flyTo"
+          animationDuration={400}
+        />
+        <MapboxGL.ShapeSource id={`post-trail-${trail.id}`} shape={lineString}>
+          <MapboxGL.LineLayer
+            id={`post-trail-line-${trail.id}`}
+            style={{ lineColor: '#22c55e', lineWidth: 4, lineCap: 'round', lineJoin: 'round' }}
+          />
+        </MapboxGL.ShapeSource>
+      </MapboxGL.MapView>
+    );
+  };
+
+  return (
+    <View className="mt-3 overflow-hidden rounded-2xl border border-gray-200 dark:border-slate-700">
+      <View style={{ height: 200 }}>{renderMap()}</View>
+      <View className="flex-row justify-between bg-slate-900/90 px-4 py-3">
+        <View>
+          <Text className="text-[11px] uppercase text-slate-300">Distance</Text>
+          <Text className="text-base font-semibold text-white">
+            {formatTrailDistance(trail?.totalDistanceMeters)}
+          </Text>
+        </View>
+        <View>
+          <Text className="text-[11px] uppercase text-slate-300">Duration</Text>
+          <Text className="text-base font-semibold text-white">{formatTrailDuration(durationMs)}</Text>
+        </View>
+        <View>
+          <Text className="text-[11px] uppercase text-slate-300">Avg speed</Text>
+          <Text className="text-base font-semibold text-white">
+            {formatTrailAverageSpeed(trail?.totalDistanceMeters, durationMs)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+};
 
 const PhotoGrid = ({ photos, onPhotoPress }) => {
   if (!photos || photos.length === 0) {
@@ -381,6 +486,7 @@ export default function PostCard({ post }) {
       .map((value) => getPhotoUri(value))
       .filter(Boolean);
   }, [post?.imageUrls]);
+  const trailAttachment = post?.trail ?? null;
   const [isLiked, setIsLiked] = useState(Boolean(post?.likedByCurrentUser));
   const [likeCount, setLikeCount] = useState(post?.likeCount ?? 0);
   const [commentCount, setCommentCount] = useState(post?.commentCount ?? 0);
@@ -613,6 +719,8 @@ export default function PostCard({ post }) {
       </View>
 
       {caption ? <Text className="my-2 text-slate-900 dark:text-slate-100">{caption}</Text> : null}
+
+      {trailAttachment ? <TrailMapAttachment trail={trailAttachment} /> : null}
 
       <PhotoGrid photos={photos} onPhotoPress={handlePhotoPress} />
 

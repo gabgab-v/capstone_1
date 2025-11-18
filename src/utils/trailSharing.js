@@ -84,5 +84,6 @@ export async function publishTrailRecordingPost(trail) {
   return post('/api/posts', {
     content,
     imageUrls: [],
+    trailId: trail.id,
   });
 }

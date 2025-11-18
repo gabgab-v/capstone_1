@@ -22,6 +22,7 @@ import { decode } from 'base64-arraybuffer';
 
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
+import RecordedTrailSummary from '../components/RecordedTrailSummary';
 import TrailRecordingCard from '../components/TrailRecordingCard';
 import { get, post, patch, del as deleteRequest } from '../lib/api';
 import { ensureAvatarUri } from '../utils/media';
@@ -529,6 +530,7 @@ function ProfilePageContent({ navigation, route }) {
   const [connectionsSearch, setConnectionsSearch] = useState('');
   const [connectionsTotalCount, setConnectionsTotalCount] = useState(0);
   const [connectionsRequestKey, setConnectionsRequestKey] = useState(0);
+  const [trailPreview, setTrailPreview] = useState(null);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -880,6 +882,17 @@ function ProfilePageContent({ navigation, route }) {
     },
     [navigation, profile?.id],
   );
+
+  const handleTrailRecordingPress = useCallback((trail) => {
+    if (!trail) {
+      return;
+    }
+    setTrailPreview(trail);
+  }, []);
+
+  const handleCloseTrailPreview = useCallback(() => {
+    setTrailPreview(null);
+  }, []);
 
   const handleRatingSelect = useCallback(
     (value) => {
@@ -1440,7 +1453,12 @@ function ProfilePageContent({ navigation, route }) {
           </View>
           {trailRecordings.length ? (
             trailRecordings.map((trail) => (
-              <TrailRecordingCard key={trail.id ?? `${trail.startedAt}`} trail={trail} canShare={isOwnProfile} />
+              <TrailRecordingCard
+                key={trail.id ?? `${trail.startedAt}`}
+                trail={trail}
+                canShare={isOwnProfile}
+                onPress={handleTrailRecordingPress}
+              />
             ))
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
@@ -1515,6 +1533,13 @@ function ProfilePageContent({ navigation, route }) {
         onTypeChange={handleConnectionsTypeChange}
         totalCount={connectionsTotalCount}
       />
+      <Modal visible={!!trailPreview} transparent animationType="slide" onRequestClose={handleCloseTrailPreview}>
+        <View className="flex-1 items-center justify-center bg-black/70 p-4">
+          {trailPreview ? (
+            <RecordedTrailSummary trail={trailPreview} onClose={handleCloseTrailPreview} />
+          ) : null}
+        </View>
+      </Modal>
     </>
   );
 }

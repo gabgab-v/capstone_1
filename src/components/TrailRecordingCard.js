@@ -10,7 +10,7 @@ import {
   publishTrailRecordingPost,
 } from '../utils/trailSharing';
 
-export default function TrailRecordingCard({ trail, canShare = false }) {
+export default function TrailRecordingCard({ trail, canShare = false, onPress }) {
   if (!trail) {
     return null;
   }
@@ -67,40 +67,62 @@ export default function TrailRecordingCard({ trail, canShare = false }) {
     }
   }, [trail]);
 
+  const handlePress = useCallback(() => {
+    if (onPress) {
+      onPress(trail);
+    }
+  }, [onPress, trail]);
+
   return (
     <View className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-      <View className="flex-row items-center justify-between">
-        <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-slate-100">
-          {trail.label ?? 'Untitled Trail'}
-        </Text>
-        <View className="ml-2 flex-row items-center rounded-full bg-emerald-100 px-2 py-0.5 dark:bg-emerald-500/20">
-          <Ionicons name="map-outline" size={14} color="#047857" />
-          <Text className="ml-1 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
-            {distanceLabel}
+      <TouchableOpacity
+        activeOpacity={onPress ? 0.85 : 1}
+        disabled={!onPress}
+        onPress={handlePress}
+      >
+        <View className="flex-row items-center justify-between">
+          <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-slate-100">
+            {trail.label ?? 'Untitled Trail'}
           </Text>
+          <View className="ml-2 flex-row items-center rounded-full bg-emerald-100 px-2 py-0.5 dark:bg-emerald-500/20">
+            <Ionicons name="map-outline" size={14} color="#047857" />
+            <Text className="ml-1 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+              {distanceLabel}
+            </Text>
+          </View>
         </View>
-      </View>
-      {startLabel ? (
-        <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400">Recorded {startLabel}</Text>
-      ) : null}
-      <View className="mt-3 flex-row">
-        <View className="flex-1">
-          <Text className="text-[11px] font-semibold uppercase text-gray-400 dark:text-slate-500">
-            Duration
+        {startLabel ? (
+          <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            Recorded {startLabel}
           </Text>
-          <Text className="mt-1 text-sm font-semibold text-gray-900 dark:text-slate-100">
-            {durationLabel}
-          </Text>
+        ) : null}
+        <View className="mt-3 flex-row">
+          <View className="flex-1">
+            <Text className="text-[11px] font-semibold uppercase text-gray-400 dark:text-slate-500">
+              Duration
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-gray-900 dark:text-slate-100">
+              {durationLabel}
+            </Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-[11px] font-semibold uppercase text-gray-400 dark:text-slate-500">
+              Avg Speed
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-gray-900 dark:text-slate-100">
+              {speedLabel}
+            </Text>
+          </View>
         </View>
-        <View className="flex-1">
-          <Text className="text-[11px] font-semibold uppercase text-gray-400 dark:text-slate-500">
-            Avg Speed
-          </Text>
-          <Text className="mt-1 text-sm font-semibold text-gray-900 dark:text-slate-100">
-            {speedLabel}
-          </Text>
-        </View>
-      </View>
+        {onPress ? (
+          <View className="mt-3 flex-row items-center">
+            <Ionicons name="eye-outline" size={14} color="#2563eb" />
+            <Text className="ml-2 text-xs font-semibold text-blue-600 dark:text-blue-300">
+              Tap to view the map
+            </Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
       {canShare ? (
         <View className="mt-4 flex-row space-x-2">
           <TouchableOpacity

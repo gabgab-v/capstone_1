@@ -88,6 +88,8 @@ function mapTrailRecording(trail) {
           : Number(trail.totalDistanceMeters),
     createdAt: trail.createdAt,
     updatedAt: trail.updatedAt,
+    geoJson: trail.geoJson ?? null,
+    samples: trail.samples ?? null,
   };
 }
 
@@ -174,6 +176,8 @@ export async function GET(request, { params }) {
                 totalDistanceMeters: true,
                 createdAt: true,
                 updatedAt: true,
+                geoJson: true,
+                samples: true,
               },
             })
           : Promise.resolve([]),

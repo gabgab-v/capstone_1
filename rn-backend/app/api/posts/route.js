@@ -20,6 +20,14 @@ function sanitizeImageUrls(value) {
     .map((item) => item.trim());
 }
 
+function sanitizeTrailId(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
 function buildPostInclude(currentUserId) {
   const include = {
     user: {
@@ -28,6 +36,18 @@ function buildPostInclude(currentUserId) {
         name: true,
         email: true,
         avatarUrl: true,
+      },
+    },
+    trail: {
+      select: {
+        id: true,
+        label: true,
+        startedAt: true,
+        endedAt: true,
+        totalDistanceMeters: true,
+        geoJson: true,
+        createdAt: true,
+        updatedAt: true,
       },
     },
     _count: {
@@ -48,6 +68,27 @@ function buildPostInclude(currentUserId) {
   return include;
 }
 
+function mapTrail(trail) {
+  if (!trail) {
+    return null;
+  }
+  return {
+    id: trail.id,
+    label: trail.label ?? null,
+    startedAt: trail.startedAt,
+    endedAt: trail.endedAt ?? null,
+    totalDistanceMeters:
+      typeof trail.totalDistanceMeters === 'number'
+        ? trail.totalDistanceMeters
+        : trail.totalDistanceMeters == null
+          ? null
+          : Number(trail.totalDistanceMeters),
+    geoJson: trail.geoJson ?? null,
+    createdAt: trail.createdAt,
+    updatedAt: trail.updatedAt,
+  };
+}
+
 function mapPost(post) {
   if (!post) {
     return null;
@@ -61,6 +102,7 @@ function mapPost(post) {
     likeCount: _count?.likes ?? 0,
     commentCount: _count?.comments ?? 0,
     likedByCurrentUser: Array.isArray(likes) ? likes.length > 0 : false,
+    trail: mapTrail(post.trail),
     author: user
       ? {
           id: user.id,
@@ -105,6 +147,7 @@ export async function POST(request) {
     const payload = await request.json();
     const content = sanitizeContent(payload?.content);
     const imageUrls = sanitizeImageUrls(payload?.imageUrls);
+    const trailId = sanitizeTrailId(payload?.trailId);
 
     if (!content && imageUrls.length === 0) {
       return NextResponse.json(
@@ -113,11 +156,27 @@ export async function POST(request) {
       );
     }
 
+    let selectedTrailId = null;
+    if (trailId) {
+      const trail = await prisma.trail.findFirst({
+        where: { id: trailId, userId: authUser.id },
+        select: { id: true },
+      });
+      if (!trail) {
+        return NextResponse.json(
+          { error: 'Trail not found or not owned by this user.' },
+          { status: 404 },
+        );
+      }
+      selectedTrailId = trail.id;
+    }
+
     const post = await prisma.post.create({
       data: {
         content,
         imageUrls,
         userId: authUser.id,
+        trailId: selectedTrailId,
       },
     });
 
