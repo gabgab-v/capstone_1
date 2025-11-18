@@ -16,7 +16,6 @@ function sanitizeUrl(value) {
     return null;
   }
   try {
-    // eslint-disable-next-line no-new
     new URL(sanitized);
     return sanitized;
   } catch {

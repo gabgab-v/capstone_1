@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
 import {
   appendUnreadCounts,
-  buildConversationPayload,
   eventSelect,
   isChatEligibleStatus,
   messageInclude,

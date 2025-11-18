@@ -5,7 +5,6 @@ import {
   participantUserSelect,
   messageInclude,
   eventSelect,
-  buildConversationPayload,
   appendUnreadCounts,
 } from '@/lib/conversations';
 
