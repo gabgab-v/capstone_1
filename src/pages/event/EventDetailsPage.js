@@ -253,8 +253,6 @@ function AttendeeRow({
   canManage,
   onUpdateStatus,
   actionInFlight,
-  onMessage,
-  messagingUserId,
   onViewProfile,
 }) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
@@ -275,10 +273,6 @@ function AttendeeRow({
   );
   const disableActions = approving || rejecting || pending;
   const bookingUserId = booking?.user?.id ?? booking?.userId ?? null;
-  const isMessaging = Boolean(
-    messagingUserId && bookingUserId && messagingUserId === bookingUserId,
-  );
-  const canMessage = Boolean(onMessage && bookingUserId && !isCurrentUser && canManage);
   const canViewProfile = Boolean(onViewProfile && bookingUserId);
   const showPersonalDetails = Boolean(isCurrentUser || canManage);
   const attendeeEmailLabel = showPersonalDetails
@@ -392,23 +386,6 @@ function AttendeeRow({
         <Text style={[styles.attendeeStatus, { color: statusMeta.color }]}>
           {statusMeta.label}
         </Text>
-        {canMessage ? (
-          <TouchableOpacity
-            onPress={() => onMessage?.(booking?.user)}
-            disabled={isMessaging}
-            activeOpacity={0.7}
-            style={[
-              styles.attendeeMessageButton,
-              isMessaging ? styles.attendeeMessageButtonDisabled : null,
-            ]}
-          >
-            {isMessaging ? (
-              <ActivityIndicator size="small" color="#1f2937" />
-            ) : (
-              <Text style={styles.attendeeMessageButtonText}>Message</Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
         {receiptUrl ? (
           <TouchableOpacity onPress={handleOpenReceipt}>
             <Text style={styles.receiptLink}>View receipt</Text>
@@ -448,6 +425,7 @@ export default function EventDetailsPage({ route, navigation }) {
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(false);
+  const [eventChatLoading, setEventChatLoading] = useState(false);
 
   const organizerId = useMemo(
     () => event?.organizer?.id ?? event?.organizerId ?? null,
@@ -473,22 +451,38 @@ export default function EventDetailsPage({ route, navigation }) {
   }, [attendees, user?.id]);
 
   const viewerBooking = viewerBookingFromAttendees ?? viewerBookingFromRoute;
-
-  const viewerHasActiveBooking = useMemo(() => {
+  const viewerBookingStatus = useMemo(() => {
     if (!viewerBooking || !viewerBooking.status) {
-      return false;
+      return null;
     }
-    const normalizedStatus =
+    const normalized =
       typeof viewerBooking.status === 'string'
         ? viewerBooking.status.trim().toUpperCase()
         : String(viewerBooking.status ?? '').trim().toUpperCase();
-    if (!normalizedStatus) {
-      return false;
-    }
-    return !INACTIVE_BOOKING_STATUSES.has(normalizedStatus);
+    return normalized || null;
   }, [viewerBooking]);
 
+  const viewerHasActiveBooking = useMemo(() => {
+    if (!viewerBookingStatus) {
+      return false;
+    }
+    return !INACTIVE_BOOKING_STATUSES.has(viewerBookingStatus);
+  }, [viewerBookingStatus]);
+
   const viewerCanBook = Boolean(event?.id && user?.id && !isOrganizer && !viewerHasActiveBooking);
+
+  const viewerCanAccessEventChat = useMemo(() => {
+    if (!event?.id || !user?.id) {
+      return false;
+    }
+    if (isOrganizer) {
+      return true;
+    }
+    if (!viewerBookingStatus) {
+      return false;
+    }
+    return APPROVED_BOOKING_STATUSES.has(viewerBookingStatus);
+  }, [event?.id, isOrganizer, user?.id, viewerBookingStatus]);
 
   const preferenceVector = useMemo(() => {
     if (!user?.preferencesComplete) {
@@ -766,6 +760,34 @@ export default function EventDetailsPage({ route, navigation }) {
     },
     [navigation, user?.id],
   );
+
+  const handleOpenEventChat = useCallback(async () => {
+    if (!event?.id) {
+      return;
+    }
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to chat with attendees.');
+      return;
+    }
+    setEventChatLoading(true);
+    try {
+      const conversation = await get(`/api/events/${event.id}/conversation`);
+      navigation.navigate('ChatConversation', {
+        conversationId: conversation.id,
+        peers: conversation.peers ?? [],
+        initialConversation: conversation,
+      });
+    } catch (error) {
+      console.error('Unable to open event chat:', error);
+      const message =
+        error?.body?.error ||
+        error?.message ||
+        'We could not open the group chat right now.';
+      Alert.alert('Chat unavailable', message);
+    } finally {
+      setEventChatLoading(false);
+    }
+  }, [event?.id, navigation, user?.id]);
 
   const handleNavigateToProfile = useCallback(
     (userId) => {
@@ -1248,6 +1270,23 @@ export default function EventDetailsPage({ route, navigation }) {
                     Confirmed attendees are visible to everyone once the organizer approves them.
                   </Text>
                 )}
+                {viewerCanAccessEventChat ? (
+                  <TouchableOpacity
+                    style={[styles.eventChatButton, (!viewerCanAccessEventChat || eventChatLoading) && styles.eventChatButtonDisabled]}
+                    onPress={handleOpenEventChat}
+                    disabled={!viewerCanAccessEventChat || eventChatLoading}
+                    activeOpacity={0.85}
+                  >
+                    {eventChatLoading ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.eventChatButtonText}>Open event chat</Text>
+                    )}
+                    <Text style={styles.eventChatButtonSubtext}>
+                      Chat with the organizer and confirmed hikers
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 {attendeesLoading ? (
                   <View style={styles.attendeeLoading}>
                     <ActivityIndicator size="small" color="#2E7D32" />
@@ -1257,7 +1296,7 @@ export default function EventDetailsPage({ route, navigation }) {
                   <Text style={styles.attendeeError}>{attendeesError}</Text>
                 ) : attendees.length ? (
                   attendees.map((booking, index) => (
-                    <AttendeeRow
+                  <AttendeeRow
                       key={booking?.id || index}
                       booking={booking}
                       index={index}
@@ -1266,8 +1305,6 @@ export default function EventDetailsPage({ route, navigation }) {
                       canManage={isOrganizer}
                       onUpdateStatus={handleUpdateBookingStatus}
                       actionInFlight={bookingActionInFlight}
-                      onMessage={isOrganizer ? handleMessageUser : null}
-                      messagingUserId={messageTargetId}
                       onViewProfile={handleNavigateToProfile}
                     />
                   ))
@@ -1858,22 +1895,25 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     marginTop: 8,
   },
-  attendeeMessageButton: {
-    marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#16A34A',
-    backgroundColor: '#DCFCE7',
+  eventChatButton: {
+    marginBottom: 16,
+    backgroundColor: '#047857',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
-  attendeeMessageButtonDisabled: {
-    opacity: 0.7,
+  eventChatButtonDisabled: {
+    opacity: 0.6,
   },
-  attendeeMessageButtonText: {
+  eventChatButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  eventChatButtonSubtext: {
+    marginTop: 4,
     fontSize: 12,
-    fontWeight: '600',
-    color: '#166534',
+    color: '#d1fae5',
   },
   attendeeActionButton: {
     paddingHorizontal: 12,

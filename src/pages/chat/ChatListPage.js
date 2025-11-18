@@ -58,20 +58,31 @@ function formatTimestamp(value) {
 }
 
 function ConversationItem({ conversation, currentUserId, onPress }) {
+  const isEventChat = Boolean(conversation?.event?.id);
   const primaryPeer = conversation?.peers?.[0] ?? null;
-  const title = primaryPeer?.name || primaryPeer?.email || 'Conversation';
+  const title = isEventChat
+    ? conversation?.event?.title || 'Event chat'
+    : primaryPeer?.name || primaryPeer?.email || 'Conversation';
   const lastMessage = conversation?.lastMessage ?? null;
   const previewPrefix = lastMessage?.sender?.id === currentUserId ? 'You: ' : '';
   const previewBody = lastMessage?.body || 'No messages yet.';
   const preview = `${previewPrefix}${previewBody}`.trim();
   const timestamp = formatTimestamp(lastMessage?.createdAt || conversation?.updatedAt);
   const unreadCount = conversation?.unreadCount ?? 0;
-  const avatarUri = getPeerAvatarUri(primaryPeer);
+  const avatarUri = isEventChat ? null : getPeerAvatarUri(primaryPeer);
 
   return (
     <TouchableOpacity style={styles.itemContainer} onPress={onPress} activeOpacity={0.85}>
-      <View style={[styles.avatar, avatarUri ? styles.avatarWithImage : null]}>
-        {avatarUri ? (
+      <View
+        style={[
+          styles.avatar,
+          avatarUri ? styles.avatarWithImage : null,
+          isEventChat ? styles.avatarEvent : null,
+        ]}
+      >
+        {isEventChat ? (
+          <Icon name="users" size={20} color="#065f46" />
+        ) : avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
         ) : (
           <Text style={styles.avatarText}>{getPeerInitials(primaryPeer)}</Text>
@@ -84,6 +95,11 @@ function ConversationItem({ conversation, currentUserId, onPress }) {
           </Text>
           <Text style={styles.itemTimestamp}>{timestamp}</Text>
         </View>
+        {isEventChat ? (
+          <View style={styles.eventBadge}>
+            <Text style={styles.eventBadgeText}>Event chat</Text>
+          </View>
+        ) : null}
         <View style={styles.itemFooter}>
           <Text
             style={[styles.itemPreview, unreadCount > 0 ? styles.itemPreviewUnread : null]}
@@ -275,6 +291,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  avatarEvent: {
+    backgroundColor: '#E0F2FE',
+  },
   avatarWithImage: {
     backgroundColor: '#E5E7EB',
     overflow: 'hidden',
@@ -296,6 +315,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  eventBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#DBEAFE',
+    marginBottom: 4,
+  },
+  eventBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1D4ED8',
   },
   itemTitle: {
     fontSize: 16,

@@ -1,103 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
-
-const participantUserSelect = {
-  id: true,
-  name: true,
-  email: true,
-  avatarUrl: true,
-};
-
-const messageInclude = {
-  sender: {
-    select: participantUserSelect,
-  },
-};
-
-const eventSelect = {
-  id: true,
-  title: true,
-  organizerId: true,
-};
-
-function buildConversationPayload(conversation, currentUserId) {
-  const participants = conversation.participants.map((participant) => ({
-    id: participant.id,
-    userId: participant.userId,
-    lastReadAt: participant.lastReadAt,
-    createdAt: participant.createdAt,
-    user: participant.user
-      ? {
-          id: participant.user.id,
-          name: participant.user.name,
-          email: participant.user.email,
-          avatarUrl: participant.user.avatarUrl,
-        }
-      : null,
-    isSelf: participant.userId === currentUserId,
-  }));
-
-  const peers = participants.filter((participant) => !participant.isSelf).map((participant) => participant.user);
-
-  const lastMessageRecord = Array.isArray(conversation.messages) ? conversation.messages[0] : null;
-  const lastMessage = lastMessageRecord
-    ? {
-        id: lastMessageRecord.id,
-        body: lastMessageRecord.body,
-        createdAt: lastMessageRecord.createdAt,
-        sender: lastMessageRecord.sender
-          ? {
-              id: lastMessageRecord.sender.id,
-              name: lastMessageRecord.sender.name,
-              email: lastMessageRecord.sender.email,
-              avatarUrl: lastMessageRecord.sender.avatarUrl,
-            }
-          : null,
-      }
-    : null;
-
-  return {
-    id: conversation.id,
-    event: conversation.event
-      ? {
-          id: conversation.event.id,
-          title: conversation.event.title,
-          organizerId: conversation.event.organizerId,
-        }
-      : null,
-    createdAt: conversation.createdAt,
-    updatedAt: conversation.updatedAt,
-    participants,
-    peers,
-    lastMessage,
-  };
-}
-
-async function appendUnreadCounts(conversations, currentUserId) {
-  return Promise.all(
-    conversations.map(async (conversation) => {
-      const payload = buildConversationPayload(conversation, currentUserId);
-      const selfParticipant = conversation.participants.find((participant) => participant.userId === currentUserId);
-
-      if (!selfParticipant) {
-        return { ...payload, unreadCount: 0 };
-      }
-
-      const unreadCount = await prisma.message.count({
-        where: {
-          conversationId: conversation.id,
-          senderId: { not: currentUserId },
-          createdAt: {
-            gt: selfParticipant.lastReadAt ?? new Date(0),
-          },
-        },
-      });
-
-      return { ...payload, unreadCount };
-    }),
-  );
-}
+import {
+  participantUserSelect,
+  messageInclude,
+  eventSelect,
+  buildConversationPayload,
+  appendUnreadCounts,
+} from '@/lib/conversations';
 
 export async function GET(request) {
   try {

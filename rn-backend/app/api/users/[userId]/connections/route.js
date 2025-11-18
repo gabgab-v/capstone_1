@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 const CONNECTION_USER_SELECT = {
   id: true,
   name: true,
@@ -77,18 +79,24 @@ export async function GET(request, { params }) {
     const limit = parseLimit(searchParams);
     const query = (searchParams.get('q') ?? '').trim();
 
+    const baseWhere = buildWhere(kind, targetUserId, null);
     const where = buildWhere(kind, targetUserId, query);
     const include =
       kind === 'followers'
         ? { follower: { select: CONNECTION_USER_SELECT } }
         : { following: { select: CONNECTION_USER_SELECT } };
 
-    const records = await prisma.follow.findMany({
-      where,
-      include,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    const [records, totalCount] = await Promise.all([
+      prisma.follow.findMany({
+        where,
+        include,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+      prisma.follow.count({
+        where: baseWhere,
+      }),
+    ]);
 
     const users = records
       .map((record) =>
@@ -125,6 +133,7 @@ export async function GET(request, { params }) {
     return NextResponse.json({
       kind,
       count: payload.length,
+      totalCount,
       users: payload,
     });
   } catch (error) {

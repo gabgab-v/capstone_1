@@ -165,6 +165,7 @@ function ConnectionsModal({
   onRefresh,
   bottomInset = 0,
   onTypeChange,
+  totalCount = 0,
 }) {
   const title = type === 'following' ? 'Following' : 'Followers';
   const placeholder =
@@ -180,6 +181,15 @@ function ConnectionsModal({
     { key: 'followers', label: 'Followers' },
     { key: 'following', label: 'Following' },
   ];
+  const filteredCount = users.length;
+  const totalLabel =
+    type === 'following'
+      ? `${totalCount} following`
+      : `${totalCount} follower${totalCount === 1 ? '' : 's'}`;
+  const filteredLabel =
+    filteredCount !== totalCount
+      ? `Showing ${filteredCount} result${filteredCount === 1 ? '' : 's'}`
+      : null;
 
   const renderItem = ({ item }) => {
     const displayName = item?.name ?? item?.email ?? 'Explorer';
@@ -235,9 +245,9 @@ function ConnectionsModal({
             >
               <Ionicons name="close" size={18} color="#059669" />
             </TouchableOpacity>
-          </View>
+        </View>
 
-          <View className="mb-3 flex-row rounded-full bg-gray-100 p-1 dark:bg-slate-800">
+        <View className="mb-3 flex-row rounded-full bg-gray-100 p-1 dark:bg-slate-800">
             {connectionOptions.map((option) => {
               const isActive = type === option.key;
               return (
@@ -270,6 +280,15 @@ function ConnectionsModal({
                 </TouchableOpacity>
               );
             })}
+          </View>
+
+          <View className="mb-2 flex-row items-center justify-between px-1">
+            <Text className="text-xs font-semibold text-gray-600 dark:text-slate-300">
+              {totalLabel}
+            </Text>
+            {filteredLabel ? (
+              <Text className="text-[11px] text-gray-400 dark:text-slate-500">{filteredLabel}</Text>
+            ) : null}
           </View>
 
           <View className="mb-3 flex-row items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-slate-800">
@@ -505,6 +524,7 @@ function ProfilePageContent({ navigation, route }) {
   const [connectionsUsers, setConnectionsUsers] = useState([]);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const [connectionsSearch, setConnectionsSearch] = useState('');
+  const [connectionsTotalCount, setConnectionsTotalCount] = useState(0);
   const [connectionsRequestKey, setConnectionsRequestKey] = useState(0);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
@@ -599,6 +619,7 @@ function ProfilePageContent({ navigation, route }) {
       return;
     }
     setConnectionsUsers([]);
+    setConnectionsTotalCount(0);
   }, [connectionsVisible, connectionsType]);
 
   useEffect(() => {
@@ -625,6 +646,13 @@ function ProfilePageContent({ navigation, route }) {
           return;
         }
         setConnectionsUsers(Array.isArray(data?.users) ? data.users : []);
+        if (typeof data?.totalCount === 'number') {
+          setConnectionsTotalCount(Math.max(0, data.totalCount));
+        } else if (typeof data?.count === 'number') {
+          setConnectionsTotalCount(Math.max(0, data.count));
+        } else {
+          setConnectionsTotalCount(0);
+        }
       } catch (error) {
         if (!isActive) {
           return;
@@ -813,6 +841,7 @@ function ProfilePageContent({ navigation, route }) {
     setConnectionsSearch('');
     setConnectionsLoading(false);
     setConnectionsUsers([]);
+    setConnectionsTotalCount(0);
   }, []);
 
   const handleConnectionsTypeChange = useCallback((nextType) => {
@@ -1454,6 +1483,7 @@ function ProfilePageContent({ navigation, route }) {
         onRefresh={handleConnectionsRefresh}
         bottomInset={insets.bottom}
         onTypeChange={handleConnectionsTypeChange}
+        totalCount={connectionsTotalCount}
       />
     </>
   );
