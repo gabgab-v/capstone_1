@@ -256,7 +256,9 @@ function AttendeeRow({
   onViewProfile,
 }) {
   const initials = getAttendeeInitials(booking?.user?.name, booking?.user?.email);
+  const displayName = sanitizeText(booking?.user?.name) ?? 'Anonymous hiker';
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const avatarUri = sanitizeText(booking?.user?.avatarUrl);
   const receiptUrl = showReceiptLink ? resolveReceiptUrl(booking?.paymentUrl) : null;
   const statusMeta = getBookingStatusMeta(booking?.status);
   const normalizedStatus = statusMeta.normalized || 'PENDING';
@@ -366,7 +368,11 @@ function AttendeeRow({
   return (
     <View style={styles.attendeeRow}>
       <View style={[styles.attendeeAvatar, { backgroundColor: avatarColor }]}>
-        <Text style={styles.attendeeAvatarText}>{initials}</Text>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.attendeeAvatarImage} />
+        ) : (
+          <Text style={styles.attendeeAvatarText}>{initials}</Text>
+        )}
       </View>
       <TouchableOpacity
         style={[styles.attendeeDetails, !canViewProfile ? styles.attendeeDetailsDisabled : null]}
@@ -374,7 +380,7 @@ function AttendeeRow({
         disabled={!canViewProfile}
         activeOpacity={0.75}
       >
-        <Text style={styles.attendeeName}>{booking?.user?.name || 'Anonymous hiker'}</Text>
+        <Text style={styles.attendeeName}>{displayName}</Text>
         <Text style={styles.attendeeEmail}>{attendeeEmailLabel}</Text>
         {isCurrentUser ? <Text style={styles.attendeeYou}>You</Text> : null}
         {canViewProfile ? (
@@ -1881,7 +1887,16 @@ const styles = StyleSheet.create({
   attendeeError: { color: '#b91c1c', fontSize: 13 },
   attendeeEmpty: { color: '#6b7280', fontSize: 13 },
   attendeeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  attendeeAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  attendeeAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  attendeeAvatarImage: { width: '100%', height: '100%' },
   attendeeAvatarText: { fontSize: 14, fontWeight: '700', color: '#1f2937' },
   attendeeDetails: { flex: 1 },
   attendeeDetailsDisabled: { opacity: 0.75 },

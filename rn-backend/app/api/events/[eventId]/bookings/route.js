@@ -107,6 +107,7 @@ export async function GET(request, { params }) {
             id: true,
             name: true,
             email: true,
+            avatarUrl: true,
           },
         },
       },
@@ -127,8 +128,10 @@ export async function GET(request, { params }) {
         return PUBLIC_BOOKING_STATUSES.has(normalizedStatus);
       })
       .map((booking) => {
+        const normalizedStatus = (booking.status || "").toUpperCase();
         const canViewReceipt = isOrganizer || booking.userId === currentUserId;
-        const canViewPersonalData = canViewReceipt;
+        const canViewPersonalData =
+          canViewReceipt || PUBLIC_BOOKING_STATUSES.has(normalizedStatus);
         const { paymentUrl, totalAmount, userId, user: bookingUser } = booking;
 
         const safeUser = canViewPersonalData
@@ -137,6 +140,7 @@ export async function GET(request, { params }) {
               id: null,
               name: buildPublicDisplayName(bookingUser),
               email: null,
+              avatarUrl: null,
             };
 
         return {
@@ -145,7 +149,7 @@ export async function GET(request, { params }) {
           createdAt: booking.createdAt,
           status: booking.status,
           userId: canViewPersonalData ? userId : null,
-          totalAmount: canViewPersonalData ? totalAmount : null,
+          totalAmount: canViewReceipt ? totalAmount : null,
           paymentUrl: canViewReceipt ? paymentUrl : null,
           user: safeUser,
         };
