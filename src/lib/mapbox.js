@@ -53,6 +53,7 @@ const tokenFromEnv = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 const tokenFromConfig =
   Constants.expoConfig?.extra?.mapboxAccessToken ?? Constants.manifest?.extra?.mapboxAccessToken;
 const resolvedToken = tokenFromEnv || tokenFromConfig || '';
+const hasValidToken = Boolean(resolvedToken && resolvedToken !== 'YOUR_MAPBOX_ACCESS_TOKEN');
 
 function createStubComponent(message) {
   const Placeholder = ({ style }) => (
@@ -92,7 +93,7 @@ const fallbackMessage = mapboxLoadError
 
 const MapboxGL = MapboxModule && hasNativeSupport ? MapboxModule : createStubComponent(fallbackMessage);
 
-if (!resolvedToken || resolvedToken === 'YOUR_MAPBOX_ACCESS_TOKEN') {
+if (!hasValidToken) {
   console.warn('[Mapbox] Access token missing. Set EXPO_PUBLIC_MAPBOX_TOKEN or expo.extra.mapboxAccessToken.');
 } else {
   MapboxGL.setAccessToken(resolvedToken);
@@ -111,6 +112,7 @@ export const mapboxStatus = {
     (!hasNativeSupport
       ? 'RNMGLMapView is not linked in this build. Use a custom dev client or remove Mapbox features.'
       : null),
+  tokenConfigured: hasValidToken,
 };
 
 export const MAPBOX_ACCESS_TOKEN = resolvedToken;

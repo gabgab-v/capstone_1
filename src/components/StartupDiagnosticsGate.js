@@ -24,7 +24,15 @@ export default function StartupDiagnosticsGate({ children }) {
       });
     }
 
-    if (!mapboxStatus.isAvailable) {
+    if (!mapboxStatus.tokenConfigured) {
+      warnings.push({
+        id: 'mapbox-token',
+        title: 'Mapbox access token missing',
+        detail:
+          'Set EXPO_PUBLIC_MAPBOX_TOKEN or expo.extra.mapboxAccessToken to enable trail and event maps.',
+        hints: ['Store the token in app.json or your build env vars and reload the app.'],
+      });
+    } else if (!mapboxStatus.isAvailable) {
       warnings.push({
         id: 'mapbox',
         title: 'Mapbox native module unavailable',

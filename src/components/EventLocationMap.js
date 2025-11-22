@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN } from '../lib/mapbox';
+import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 
 function toNumber(value) {
@@ -171,11 +171,22 @@ export default function EventLocationMap({ event, style }) {
     );
   }, [combinedBounds]);
 
-  if (!MAPBOX_ACCESS_TOKEN || MAPBOX_ACCESS_TOKEN === 'YOUR_MAPBOX_ACCESS_TOKEN') {
+  if (!mapboxStatus.tokenConfigured) {
     return (
       <View style={[styles.fallbackContainer, style]}>
         <Text style={styles.fallbackText}>
           Map preview unavailable. Add a Mapbox access token to enable event directions.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!mapboxStatus.isAvailable) {
+    return (
+      <View style={[styles.fallbackContainer, style]}>
+        <Text style={styles.fallbackText}>
+          Map preview unavailable in this build.
+          {mapboxStatus.missingReason ? ` ${mapboxStatus.missingReason}` : ' Install the @rnmapbox/maps native module to enable it.'}
         </Text>
       </View>
     );

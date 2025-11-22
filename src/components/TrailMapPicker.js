@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN } from '../lib/mapbox';
+import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 
 function buildFeatureCollection(features) {
@@ -78,11 +78,22 @@ export default function TrailMapPicker({
     }
   };
 
-  if (!MAPBOX_ACCESS_TOKEN || MAPBOX_ACCESS_TOKEN === 'YOUR_MAPBOX_ACCESS_TOKEN') {
+  if (!mapboxStatus.tokenConfigured) {
     return (
       <View style={[styles.fallbackContainer, style]}>
         <Text style={styles.fallbackText}>
           Add a Mapbox access token to preview and pick a location on the map.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!mapboxStatus.isAvailable) {
+    return (
+      <View style={[styles.fallbackContainer, style]}>
+        <Text style={styles.fallbackText}>
+          Map rendering is unavailable in this build.
+          {mapboxStatus.missingReason ? ` ${mapboxStatus.missingReason}` : ' Install @rnmapbox/maps in a dev client to enable it.'}
         </Text>
       </View>
     );

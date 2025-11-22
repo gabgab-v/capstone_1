@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN } from '../lib/mapbox';
+import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 import {
   buildTrailShareMessage,
@@ -109,11 +109,22 @@ export default function RecordedTrailSummary({ trail, onClose }) {
   }, [trailMeta?.bounds]);
 
   const renderMap = () => {
-    if (!MAPBOX_ACCESS_TOKEN || MAPBOX_ACCESS_TOKEN === 'YOUR_MAPBOX_ACCESS_TOKEN') {
+    if (!mapboxStatus.tokenConfigured) {
       return (
         <View style={styles.mapFallback}>
           <Text style={styles.mapFallbackText}>
             Add a Mapbox access token to preview the recorded trail map.
+          </Text>
+        </View>
+      );
+    }
+
+    if (!mapboxStatus.isAvailable) {
+      return (
+        <View style={styles.mapFallback}>
+          <Text style={styles.mapFallbackText}>
+            Map previews are disabled in this build.
+            {mapboxStatus.missingReason ? ` ${mapboxStatus.missingReason}` : ' Install @rnmapbox/maps to enable them.'}
           </Text>
         </View>
       );
