@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
   SafeAreaView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -72,6 +74,33 @@ function buildPreviewTrail(entry) {
     totalDistanceMeters: entry.totalDistanceMeters,
     samples: convertPointsToSamples(entry.points),
     isOfflineOnly: true,
+  };
+}
+
+function buildTrailFeature(entry) {
+  if (!entry) {
+    return null;
+  }
+  const samples = convertPointsToSamples(entry.points);
+  if (!samples.length) {
+    return null;
+  }
+  const coordinates = samples.map((sample) => [sample.lng, sample.lat]);
+  if (coordinates.length < 2) {
+    return null;
+  }
+  return {
+    type: 'Feature',
+    properties: {
+      label: entry.label || 'Offline trail',
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt,
+      totalDistanceMeters: entry.totalDistanceMeters ?? null,
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates,
+    },
   };
 }
 
@@ -179,6 +208,25 @@ export default function TrailRecorderPage({ navigation, route }) {
     const preview = buildPreviewTrail(entry);
     if (preview) {
       setSavedTrail(preview);
+    }
+  };
+
+  const handleExportOfflineTrail = async (entry) => {
+    const feature = buildTrailFeature(entry);
+    if (!feature) {
+      Alert.alert('No trail data', 'This recording does not have enough points to export yet.');
+      return;
+    }
+    try {
+      await Share.share({
+        title: entry.label || 'Offline trail',
+        message: JSON.stringify(feature, null, 2),
+      });
+    } catch (error) {
+      if (error?.message && error.message.includes('canceled')) {
+        return;
+      }
+      Alert.alert('Export failed', error?.message || 'Unable to export this recording right now.');
     }
   };
 
@@ -361,6 +409,12 @@ export default function TrailRecorderPage({ navigation, route }) {
                     <Text style={styles.offlineButtonText}>Preview</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    style={[styles.offlineButton, styles.offlineExportButton]}
+                    onPress={() => handleExportOfflineTrail(trail)}
+                  >
+                    <Text style={styles.offlineButtonText}>Export</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     style={[styles.offlineButton, styles.offlineDiscardButton]}
                     onPress={() => discardPendingTrail(trail.id)}
                   >
@@ -391,6 +445,12 @@ export default function TrailRecorderPage({ navigation, route }) {
           {!isAuthenticatedUser && pendingCount > 0 && (
             <Text style={styles.offlineItemWarning}>
               Log into your account to upload these saved recordings.
+            </Text>
+          )}
+          {pendingCount > 0 && (
+            <Text style={styles.offlineTip}>
+              Tip: Use the Export button to copy the recorded route as GeoJSON. Paste it into your preferred
+              map tool once you have a connection.
             </Text>
           )}
         </View>
@@ -681,6 +741,9 @@ function createStyles(theme, isDarkMode) {
     offlinePreviewButton: {
       backgroundColor: '#0f172a',
     },
+    offlineExportButton: {
+      backgroundColor: '#2563eb',
+    },
     offlineDiscardButton: {
       backgroundColor: '#991b1b',
     },
@@ -691,6 +754,11 @@ function createStyles(theme, isDarkMode) {
     syncButton: {
       marginTop: 8,
       backgroundColor: '#334155',
+    },
+    offlineTip: {
+      color: theme.textMuted,
+      fontSize: 12,
+      marginTop: 8,
     },
   });
 }

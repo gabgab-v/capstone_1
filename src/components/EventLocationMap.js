@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
+import MapboxGL, { mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 
 function toNumber(value) {
@@ -170,6 +170,16 @@ export default function EventLocationMap({ event, style }) {
       CAMERA_DURATION,
     );
   }, [combinedBounds]);
+
+  if (!mapboxStatus.isEnabled) {
+    return (
+      <View style={[styles.fallbackContainer, style]}>
+        <Text style={styles.fallbackText}>
+          Map preview disabled for this build. Event locations will be available once maps are enabled again.
+        </Text>
+      </View>
+    );
+  }
 
   if (!mapboxStatus.tokenConfigured) {
     return (

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
+import MapboxGL, { mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 
 function buildFeatureCollection(features) {
@@ -77,6 +77,17 @@ export default function TrailMapPicker({
       onSelectLocation?.({ lng: coords[0], lat: coords[1] });
     }
   };
+
+  if (!mapboxStatus.isEnabled) {
+    return (
+      <View style={[styles.fallbackContainer, style]}>
+        <Text style={styles.fallbackText}>
+          Map previews are disabled in this build. Trail points will still be recorded and can be exported
+          when you enable maps later.
+        </Text>
+      </View>
+    );
+  }
 
   if (!mapboxStatus.tokenConfigured) {
     return (

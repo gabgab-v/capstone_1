@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import './global.css';
 import './src/setupErrorTracking';
+import './global.css';
 import React, { useMemo } from 'react';
 import 'react-native-url-polyfill/auto';
 import { ActivityIndicator, View } from 'react-native';

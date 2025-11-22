@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
+import MapboxGL, { mapboxStatus } from '../lib/mapbox';
 import { computeLineStringMeta } from '../utils/geo';
 import {
   buildTrailShareMessage,
@@ -101,6 +101,36 @@ export default function RecordedTrailSummary({ trail, onClose }) {
     }
   }, [trail]);
 
+  const handleExportGeometry = useCallback(async () => {
+    if (!lineString) {
+      Alert.alert('No trail data', 'There are not enough recorded points to export this route.');
+      return;
+    }
+    try {
+      const feature = {
+        type: 'Feature',
+        properties: {
+          label: trail?.label ?? 'Recorded trail',
+          startedAt: trail?.startedAt,
+          endedAt: trail?.endedAt,
+          totalDistanceMeters: trail?.totalDistanceMeters ?? null,
+        },
+        geometry: lineString,
+      };
+      const payload = JSON.stringify(feature, null, 2);
+      await Share.share({
+        title: 'Trail GeoJSON',
+        message: payload,
+      });
+    } catch (error) {
+      if (error?.message && error.message.includes('canceled')) {
+        return;
+      }
+      console.error('Failed to export trail data:', error);
+      Alert.alert('Export failed', error?.message || 'Unable to export this trail right now.');
+    }
+  }, [lineString, trail?.endedAt, trail?.label, trail?.startedAt, trail?.totalDistanceMeters]);
+
   useEffect(() => {
     if (!cameraRef.current || !trailMeta?.bounds) {
       return;
@@ -108,13 +138,48 @@ export default function RecordedTrailSummary({ trail, onClose }) {
     cameraRef.current.fitBounds(trailMeta.bounds.northEast, trailMeta.bounds.southWest, 40, 600);
   }, [trailMeta?.bounds]);
 
+  const renderGeometryExportCard = () => {
+    if (!lineString || !pointCount) {
+      return null;
+    }
+    const previewCoordinates = lineString.coordinates.slice(0, 4);
+    return (
+      <View style={styles.exportCard}>
+        <Text style={styles.exportTitle}>Offline trail data saved</Text>
+        <Text style={styles.exportSubtitle}>Points recorded: {pointCount}</Text>
+        <View style={styles.exportPreviewBox}>
+          <Text style={styles.exportPreviewText}>
+            {JSON.stringify(previewCoordinates, null, 2)}
+            {lineString.coordinates.length > previewCoordinates.length ? '\n…' : ''}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.exportButton} onPress={handleExportGeometry}>
+          <Text style={styles.exportButtonText}>Share GeoJSON</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const renderMap = () => {
+    if (!mapboxStatus.isEnabled) {
+      return (
+        <View style={styles.mapFallback}>
+          <Text style={styles.mapFallbackText}>
+            Map previews are disabled in this build. Your recording is still saved and can be exported to
+            another mapping tool once you re-enable maps or regain connectivity.
+          </Text>
+          {renderGeometryExportCard()}
+        </View>
+      );
+    }
+
     if (!mapboxStatus.tokenConfigured) {
       return (
         <View style={styles.mapFallback}>
           <Text style={styles.mapFallbackText}>
             Add a Mapbox access token to preview the recorded trail map.
           </Text>
+          {renderGeometryExportCard()}
         </View>
       );
     }
@@ -126,6 +191,7 @@ export default function RecordedTrailSummary({ trail, onClose }) {
             Map previews are disabled in this build.
             {mapboxStatus.missingReason ? ` ${mapboxStatus.missingReason}` : ' Install @rnmapbox/maps to enable them.'}
           </Text>
+          {renderGeometryExportCard()}
         </View>
       );
     }
@@ -136,6 +202,7 @@ export default function RecordedTrailSummary({ trail, onClose }) {
           <Text style={styles.mapFallbackText}>
             Trail points unavailable. Record at least two points to view the route.
           </Text>
+          {renderGeometryExportCard()}
         </View>
       );
     }
@@ -310,6 +377,51 @@ const styles = StyleSheet.create({
     color: '#d1d5db',
     textAlign: 'center',
     fontSize: 14,
+  },
+  exportCard: {
+    marginTop: 16,
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#334155',
+    padding: 12,
+    backgroundColor: '#111827',
+  },
+  exportTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#f8fafc',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  exportSubtitle: {
+    fontSize: 12,
+    color: '#cbd5f5',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  exportPreviewBox: {
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: '#0f172a',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#1e293b',
+    marginBottom: 8,
+  },
+  exportPreviewText: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  exportButton: {
+    backgroundColor: '#22c55e',
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  exportButtonText: {
+    color: '#022c22',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   metrics: {
     flexDirection: 'row',

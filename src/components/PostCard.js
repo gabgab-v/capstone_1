@@ -22,7 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView, PinchGestureHandler, State } from 'react-native-gesture-handler';
-import MapboxGL, { MAPBOX_ACCESS_TOKEN, mapboxStatus } from '../lib/mapbox';
+import MapboxGL, { mapboxStatus } from '../lib/mapbox';
 import { del, get, patch, post as apiPost } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -109,6 +109,17 @@ const TrailMapAttachment = ({ trail }) => {
   const hasMapToken = mapboxStatus.tokenConfigured;
 
   const renderMap = () => {
+    if (!mapboxStatus.isEnabled) {
+      return (
+        <View className="h-48 items-center justify-center bg-slate-800/40 px-4">
+          <Text className="text-center text-sm text-slate-200">
+            Map previews are disabled in this build. Trail stats remain available and you can export the route
+            data later.
+          </Text>
+        </View>
+      );
+    }
+
     if (!hasMapToken) {
       return (
         <View className="h-48 items-center justify-center bg-slate-800/40 px-4">
