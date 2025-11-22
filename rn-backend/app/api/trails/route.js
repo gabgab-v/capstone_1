@@ -58,6 +58,7 @@ export async function GET(request) {
         geoJson: true,
         createdAt: true,
         updatedAt: true,
+        originTrailId: true,
       },
     });
 

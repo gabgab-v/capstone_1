@@ -10,7 +10,13 @@ import {
   publishTrailRecordingPost,
 } from '../utils/trailSharing';
 
-export default function TrailRecordingCard({ trail, canShare = false, onPress }) {
+export default function TrailRecordingCard({
+  trail,
+  canShare = false,
+  onPress,
+  onRename,
+  onShareWithOrganizers,
+}) {
   if (!trail) {
     return null;
   }
@@ -73,6 +79,20 @@ export default function TrailRecordingCard({ trail, canShare = false, onPress })
     }
   }, [onPress, trail]);
 
+  const handleRenamePress = useCallback(() => {
+    if (onRename) {
+      onRename(trail);
+    }
+  }, [onRename, trail]);
+
+  const handleShareWithOrganizersPress = useCallback(() => {
+    if (onShareWithOrganizers) {
+      onShareWithOrganizers(trail);
+    }
+  }, [onShareWithOrganizers, trail]);
+
+  const showManageActions = canShare && (onRename || onShareWithOrganizers);
+
   return (
     <View className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
       <TouchableOpacity
@@ -123,6 +143,30 @@ export default function TrailRecordingCard({ trail, canShare = false, onPress })
           </View>
         ) : null}
       </TouchableOpacity>
+      {showManageActions ? (
+        <View className="mt-4 flex-row space-x-2">
+          {onRename ? (
+            <TouchableOpacity
+              onPress={handleRenamePress}
+              className="flex-1 rounded-full border border-emerald-500 bg-white py-2 dark:border-emerald-400 dark:bg-slate-900"
+            >
+              <Text className="text-center text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+                Name Trail
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          {onShareWithOrganizers ? (
+            <TouchableOpacity
+              onPress={handleShareWithOrganizersPress}
+              className="flex-1 rounded-full bg-emerald-600 py-2 dark:bg-emerald-500/80"
+            >
+              <Text className="text-center text-sm font-semibold text-white">
+                Share w/ organizers
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
       {canShare ? (
         <View className="mt-4 flex-row space-x-2">
           <TouchableOpacity

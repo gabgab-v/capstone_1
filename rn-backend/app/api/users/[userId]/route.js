@@ -78,6 +78,7 @@ function mapTrailRecording(trail) {
   return {
     id: trail.id,
     label: trail.label ?? null,
+    originTrailId: trail.originTrailId ?? null,
     startedAt: trail.startedAt,
     endedAt: trail.endedAt,
     totalDistanceMeters:
@@ -171,6 +172,7 @@ export async function GET(request, { params }) {
               select: {
                 id: true,
                 label: true,
+                originTrailId: true,
                 startedAt: true,
                 endedAt: true,
                 totalDistanceMeters: true,

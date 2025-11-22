@@ -138,6 +138,9 @@ model Trail {
   totalDistanceMeters Float    @default(0)
   geoJson             Json
   samples             Json?
+  originTrail         Trail?   @relation("TrailCopies", fields: [originTrailId], references: [id])
+  originTrailId       String?
+  sharedCopies        Trail[]  @relation("TrailCopies")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   events              Event[]

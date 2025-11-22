@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -314,6 +315,16 @@ function ProfilePageContent({ navigation, route }) {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
   const [trailPreview, setTrailPreview] = useState(null);
+  const [editingTrail, setEditingTrail] = useState(null);
+  const [trailLabelDraft, setTrailLabelDraft] = useState('');
+  const [savingTrailLabel, setSavingTrailLabel] = useState(false);
+  const [sharingTrail, setSharingTrail] = useState(null);
+  const [organizerOptions, setOrganizerOptions] = useState([]);
+  const [organizerOptionsLoading, setOrganizerOptionsLoading] = useState(false);
+  const [organizerOptionsError, setOrganizerOptionsError] = useState(null);
+  const [organizerOptionsLoaded, setOrganizerOptionsLoaded] = useState(false);
+  const [selectedOrganizerIds, setSelectedOrganizerIds] = useState(() => new Set());
+  const [shareSubmitting, setShareSubmitting] = useState(false);
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -334,6 +345,224 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
   );
+  const organizerFollowerOptions = useMemo(
+    () =>
+      organizerOptions.filter((option) =>
+        Array.isArray(option.connectionTypes)
+          ? option.connectionTypes.includes('followers')
+          : false,
+      ),
+    [organizerOptions],
+  );
+  const organizerFollowingOptions = useMemo(
+    () =>
+      organizerOptions.filter((option) =>
+        Array.isArray(option.connectionTypes)
+          ? option.connectionTypes.includes('following')
+          : false,
+      ),
+    [organizerOptions],
+  );
+  const handleStartRenameTrail = useCallback((trail) => {
+    if (!trail) {
+      return;
+    }
+    setEditingTrail(trail);
+    setTrailLabelDraft(trail.label ?? '');
+  }, []);
+
+  const handleDismissRenameTrail = useCallback(() => {
+    setEditingTrail(null);
+    setTrailLabelDraft('');
+  }, []);
+
+  const handleSaveTrailLabel = useCallback(async () => {
+    if (!editingTrail) {
+      return;
+    }
+    const trimmed = trailLabelDraft.trim();
+    const payload = { label: trimmed.length > 0 ? trimmed : null };
+    setSavingTrailLabel(true);
+    try {
+      const updated = await patch(`/api/trails/${editingTrail.id}`, payload);
+      setProfile((current) => {
+        if (!current) {
+          return current;
+        }
+        const nextRecordings = Array.isArray(current.trailRecordings)
+          ? current.trailRecordings.map((trail) =>
+              trail.id === editingTrail.id
+                ? { ...trail, label: updated?.label ?? payload.label }
+                : trail,
+            )
+          : current.trailRecordings;
+        return { ...current, trailRecordings: nextRecordings };
+      });
+      setEditingTrail(null);
+      setTrailLabelDraft('');
+      Alert.alert('Trail updated', 'Your recording name was saved.');
+    } catch (error) {
+      console.error('Failed to rename trail:', error);
+      const message =
+        error?.body?.error || error?.message || 'Unable to update this trail right now.';
+      Alert.alert('Rename failed', message);
+    } finally {
+      setSavingTrailLabel(false);
+    }
+  }, [editingTrail, trailLabelDraft]);
+
+  const loadOrganizerConnections = useCallback(async () => {
+    setOrganizerOptionsLoading(true);
+    setOrganizerOptionsError(null);
+    try {
+      const [followersResponse, followingResponse] = await Promise.all([
+        get('/api/users/me/connections?kind=followers&limit=200'),
+        get('/api/users/me/connections?kind=following&limit=200'),
+      ]);
+      const map = new Map();
+
+      const ingest = (response, connectionType) => {
+        if (!response || !Array.isArray(response.users)) {
+          return;
+        }
+        response.users.forEach((user) => {
+          if (!user || user.role !== 'ORGANIZER') {
+            return;
+          }
+          const existing =
+            map.get(user.id) ||
+            {
+              id: user.id,
+              name: user.name ?? user.email ?? 'Organizer',
+              email: user.email ?? null,
+              connectionTypes: new Set(),
+            };
+          existing.name = user.name ?? existing.name;
+          existing.email = user.email ?? existing.email;
+          existing.connectionTypes.add(connectionType);
+          map.set(user.id, existing);
+        });
+      };
+
+      ingest(followersResponse, 'followers');
+      ingest(followingResponse, 'following');
+
+      const normalized = Array.from(map.values()).map((record) => ({
+        id: record.id,
+        name: record.name,
+        email: record.email,
+        connectionTypes: Array.from(record.connectionTypes),
+      }));
+
+      normalized.sort((a, b) => {
+        const aName = (a.name ?? '').toLowerCase();
+        const bName = (b.name ?? '').toLowerCase();
+        if (aName < bName) return -1;
+        if (aName > bName) return 1;
+        return 0;
+      });
+
+      setOrganizerOptions(normalized);
+      setOrganizerOptionsLoaded(true);
+    } catch (error) {
+      console.error('Failed to load organizer connections:', error);
+      setOrganizerOptionsError(
+        error?.body?.error ||
+          error?.message ||
+          'Unable to load organizer connections right now.',
+      );
+    } finally {
+      setOrganizerOptionsLoading(false);
+    }
+  }, []);
+
+  const handleOpenShareModal = useCallback(
+    (trail) => {
+      if (!trail) {
+        return;
+      }
+      setSharingTrail(trail);
+      setSelectedOrganizerIds(new Set());
+      if (!organizerOptionsLoaded && !organizerOptionsLoading) {
+        loadOrganizerConnections();
+      }
+    },
+    [loadOrganizerConnections, organizerOptionsLoaded, organizerOptionsLoading],
+  );
+
+  const handleCloseShareModal = useCallback(() => {
+    setSharingTrail(null);
+    setSelectedOrganizerIds(new Set());
+  }, []);
+
+  const handleToggleOrganizerSelection = useCallback((userId) => {
+    if (!userId) {
+      return;
+    }
+    setSelectedOrganizerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectOrganizerFollowers = useCallback(() => {
+    setSelectedOrganizerIds(new Set(organizerFollowerOptions.map((option) => option.id)));
+  }, [organizerFollowerOptions]);
+
+  const handleSelectOrganizerFollowing = useCallback(() => {
+    setSelectedOrganizerIds(new Set(organizerFollowingOptions.map((option) => option.id)));
+  }, [organizerFollowingOptions]);
+
+  const handleSelectAllOrganizers = useCallback(() => {
+    setSelectedOrganizerIds(new Set(organizerOptions.map((option) => option.id)));
+  }, [organizerOptions]);
+
+  const handleClearOrganizerSelection = useCallback(() => {
+    setSelectedOrganizerIds(new Set());
+  }, []);
+
+  const shareSelectionCount = selectedOrganizerIds.size;
+
+  const handleShareTrailWithOrganizers = useCallback(async () => {
+    if (!sharingTrail || shareSelectionCount === 0) {
+      return;
+    }
+    setShareSubmitting(true);
+    try {
+      const payload = { recipientUserIds: Array.from(selectedOrganizerIds) };
+      const response = await post(`/api/trails/${sharingTrail.id}/share`, payload);
+      const sharedCount = Number(response?.sharedCount ?? 0);
+      const skipped = Number(response?.skipped ?? 0);
+      let message;
+      if (sharedCount > 0) {
+        message = `Shared with ${sharedCount} organizer${sharedCount === 1 ? '' : 's'}.`;
+        if (skipped > 0) {
+          message += ` ${skipped === 1 ? 'One organizer' : `${skipped} organizers`} already had this trail.`;
+        }
+      } else {
+        message =
+          response?.message ||
+          (skipped > 0
+            ? 'Those organizers already have this trail.'
+            : 'No organizers were updated.');
+      }
+      Alert.alert('Trail shared', message);
+      handleCloseShareModal();
+    } catch (error) {
+      console.error('Failed to share trail:', error);
+      const message =
+        error?.body?.error || error?.message || 'Unable to share this trail right now.';
+      Alert.alert('Share failed', message);
+    } finally {
+      setShareSubmitting(false);
+    }
+  }, [handleCloseShareModal, post, selectedOrganizerIds, shareSelectionCount, sharingTrail]);
+
   const organizerOrganizationName = useMemo(() => {
     if (profile?.role !== 'ORGANIZER') {
       return null;
@@ -1136,6 +1365,10 @@ function ProfilePageContent({ navigation, route }) {
                 trail={trail}
                 canShare={isOwnProfile}
                 onPress={handleTrailRecordingPress}
+                onRename={isOwnProfile ? handleStartRenameTrail : undefined}
+                onShareWithOrganizers={
+                  isOwnProfile ? handleOpenShareModal : undefined
+                }
               />
             ))
           ) : (
@@ -1202,6 +1435,225 @@ function ProfilePageContent({ navigation, route }) {
           {trailPreview ? (
             <RecordedTrailSummary trail={trailPreview} onClose={handleCloseTrailPreview} />
           ) : null}
+        </View>
+      </Modal>
+      <Modal
+        visible={!!editingTrail}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDismissRenameTrail}
+      >
+        <View className="flex-1 items-center justify-center bg-black/60 px-4">
+          <View className="w-full rounded-2xl bg-white p-4 dark:bg-slate-900">
+            <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
+              Name this trail
+            </Text>
+            <Text className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              Give your recording a memorable name so organizers know what it covers.
+            </Text>
+            <TextInput
+              value={trailLabelDraft}
+              onChangeText={setTrailLabelDraft}
+              placeholder="e.g. Mt. Pulag Summit Route"
+              className="mt-4 rounded-xl border border-gray-200 px-3 py-2 text-base text-gray-900 dark:border-slate-700 dark:text-slate-100"
+            />
+            <View className="mt-4 flex-row space-x-3">
+              <TouchableOpacity
+                onPress={handleDismissRenameTrail}
+                className="flex-1 rounded-full border border-gray-300 py-2 dark:border-slate-600"
+              >
+                <Text className="text-center font-semibold text-gray-700 dark:text-slate-100">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveTrailLabel}
+                disabled={savingTrailLabel}
+                className={`flex-1 rounded-full py-2 ${
+                  savingTrailLabel ? 'bg-emerald-600/70' : 'bg-emerald-600'
+                }`}
+              >
+                <Text className="text-center font-semibold text-white">
+                  {savingTrailLabel ? 'Saving...' : 'Save name'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={!!sharingTrail}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseShareModal}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70 px-4">
+          <View
+            className="w-full rounded-2xl bg-white p-4 dark:bg-slate-900"
+            style={{ maxHeight: 640 }}
+          >
+            <Text className="text-base font-semibold text-gray-900 dark:text-slate-50">
+              Share trail with organizers
+            </Text>
+            <Text className="mt-1 text-sm text-gray-600 dark:text-slate-400">
+              {sharingTrail?.label ?? 'Untitled Trail'}
+            </Text>
+            {organizerOptionsLoading ? (
+              <View className="mt-4 flex-row items-center justify-center">
+                <ActivityIndicator color="#059669" />
+                <Text className="ml-2 text-sm text-gray-600 dark:text-slate-300">
+                  Loading organizer connections...
+                </Text>
+              </View>
+            ) : null}
+            {organizerOptionsError ? (
+              <View className="mt-3 rounded-xl border border-red-300 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                <Text className="text-sm text-red-700 dark:text-red-200">
+                  {organizerOptionsError}
+                </Text>
+                <TouchableOpacity
+                  onPress={loadOrganizerConnections}
+                  className="mt-2 rounded-full bg-red-600/90 py-2"
+                >
+                  <Text className="text-center text-sm font-semibold text-white">Try again</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {!organizerOptionsLoading && !organizerOptionsError ? (
+              organizerOptions.length === 0 ? (
+                <Text className="mt-4 text-sm text-gray-500 dark:text-slate-400">
+                  You are not connected with any organizers yet. Follow organizers or let them
+                  follow you to share recordings directly.
+                </Text>
+              ) : (
+                <>
+                  <View className="mt-4 space-y-2">
+                    <TouchableOpacity
+                      onPress={handleSelectAllOrganizers}
+                      className="rounded-full border border-emerald-500 px-3 py-2 dark:border-emerald-400"
+                    >
+                      <Text className="text-center text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+                        Select all organizers ({organizerOptions.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleSelectOrganizerFollowers}
+                      disabled={organizerFollowerOptions.length === 0}
+                      className={`rounded-full border px-3 py-2 ${
+                        organizerFollowerOptions.length === 0
+                          ? 'border-gray-300 opacity-50 dark:border-slate-700'
+                          : 'border-blue-500 dark:border-blue-400'
+                      }`}
+                    >
+                      <Text
+                        className={`text-center text-sm font-semibold ${
+                          organizerFollowerOptions.length === 0
+                            ? 'text-gray-500 dark:text-slate-500'
+                            : 'text-blue-600 dark:text-blue-300'
+                        }`}
+                      >
+                        Select organizer followers ({organizerFollowerOptions.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleSelectOrganizerFollowing}
+                      disabled={organizerFollowingOptions.length === 0}
+                      className={`rounded-full border px-3 py-2 ${
+                        organizerFollowingOptions.length === 0
+                          ? 'border-gray-300 opacity-50 dark:border-slate-700'
+                          : 'border-blue-500 dark:border-blue-400'
+                      }`}
+                    >
+                      <Text
+                        className={`text-center text-sm font-semibold ${
+                          organizerFollowingOptions.length === 0
+                            ? 'text-gray-500 dark:text-slate-500'
+                            : 'text-blue-600 dark:text-blue-300'
+                        }`}
+                      >
+                        Select organizers you follow ({organizerFollowingOptions.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleClearOrganizerSelection}
+                      className="rounded-full border border-gray-200 px-3 py-2 dark:border-slate-700"
+                    >
+                      <Text className="text-center text-sm font-semibold text-gray-600 dark:text-slate-300">
+                        Clear selection
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView style={{ maxHeight: 320 }} className="mt-4">
+                    {organizerOptions.map((option) => {
+                      const selected = selectedOrganizerIds.has(option.id);
+                      const connectionLabel = Array.isArray(option.connectionTypes)
+                        ? option.connectionTypes
+                            .map((type) => (type === 'followers' ? 'Follower' : 'Following'))
+                            .join(' • ')
+                        : null;
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          onPress={() => handleToggleOrganizerSelection(option.id)}
+                          className="mb-2 flex-row items-center justify-between rounded-xl border border-gray-100 px-3 py-2 dark:border-slate-700"
+                        >
+                          <View className="flex-1 pr-3">
+                            <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
+                              {option.name ?? 'Organizer'}
+                            </Text>
+                            {option.email ? (
+                              <Text className="text-xs text-gray-500 dark:text-slate-400">
+                                {option.email}
+                              </Text>
+                            ) : null}
+                            {connectionLabel ? (
+                              <Text className="text-[11px] uppercase text-gray-400 dark:text-slate-500">
+                                {connectionLabel}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View
+                            className={`h-7 w-7 items-center justify-center rounded-full ${
+                              selected ? 'bg-emerald-600' : 'bg-gray-200 dark:bg-slate-700'
+                            }`}
+                          >
+                            {selected ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              )
+            ) : null}
+            <View className="mt-4 flex-row space-x-3">
+              <TouchableOpacity
+                onPress={handleCloseShareModal}
+                className="flex-1 rounded-full border border-gray-300 py-2 dark:border-slate-600"
+              >
+                <Text className="text-center font-semibold text-gray-700 dark:text-slate-100">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleShareTrailWithOrganizers}
+                disabled={shareSelectionCount === 0 || shareSubmitting}
+                className={`flex-1 rounded-full py-2 ${
+                  shareSelectionCount === 0 || shareSubmitting
+                    ? 'bg-emerald-600/60'
+                    : 'bg-emerald-600'
+                }`}
+              >
+                <Text className="text-center font-semibold text-white">
+                  {shareSubmitting
+                    ? 'Sharing...'
+                    : shareSelectionCount === 0
+                      ? 'Select organizers'
+                      : `Share (${shareSelectionCount})`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </>
