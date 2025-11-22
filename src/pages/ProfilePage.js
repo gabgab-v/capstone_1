@@ -345,6 +345,28 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
   );
+  const filteredTrailRecordings = useMemo(() => {
+    if (!trailSearchQuery.trim()) {
+      return trailRecordings;
+    }
+    const query = trailSearchQuery.trim().toLowerCase();
+    return trailRecordings.filter((trail) => {
+      const candidates = [
+        trail?.label,
+        trail?.startedAt ? new Date(trail.startedAt).toLocaleDateString() : null,
+        trail?.startedAt ? new Date(trail.startedAt).toLocaleString() : null,
+      ]
+        .filter(Boolean)
+        .map((value) => value.toLowerCase());
+      const distanceLabel = trail?.totalDistanceMeters
+        ? `${(trail.totalDistanceMeters / 1000).toFixed(2)} km`
+        : null;
+      if (distanceLabel) {
+        candidates.push(distanceLabel.toLowerCase());
+      }
+      return candidates.some((candidate) => candidate.includes(query));
+    });
+  }, [trailRecordings, trailSearchQuery]);
   const organizerFollowerOptions = useMemo(
     () =>
       organizerOptions.filter((option) =>
@@ -1359,18 +1381,47 @@ function ProfilePageContent({ navigation, route }) {
             ) : null}
           </View>
           {trailRecordings.length ? (
-            trailRecordings.map((trail) => (
-              <TrailRecordingCard
-                key={trail.id ?? `${trail.startedAt}`}
-                trail={trail}
-                canShare={isOwnProfile}
-                onPress={handleTrailRecordingPress}
-                onRename={isOwnProfile ? handleStartRenameTrail : undefined}
-                onShareWithOrganizers={
-                  isOwnProfile ? handleOpenShareModal : undefined
-                }
-              />
-            ))
+            <>
+              <View
+                className={`mt-3 flex-row items-center rounded-full border px-3 ${
+                  trailSearchFocused ? 'border-emerald-500' : 'border-gray-200 dark:border-slate-700'
+                } bg-white dark:bg-slate-800`}
+              >
+                <Ionicons name="search" size={16} color="#6b7280" />
+                <TextInput
+                  placeholder="Search trail name or date"
+                  placeholderTextColor="#94a3b8"
+                  value={trailSearchQuery}
+                  onChangeText={setTrailSearchQuery}
+                  onFocus={() => setTrailSearchFocused(true)}
+                  onBlur={() => setTrailSearchFocused(false)}
+                  className="ml-2 flex-1 py-2 text-sm text-gray-900 dark:text-slate-100"
+                />
+                {trailSearchQuery.length ? (
+                  <TouchableOpacity onPress={() => setTrailSearchQuery('')}>
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <ScrollView className="mt-4" style={{ maxHeight: 360 }}>
+                {filteredTrailRecordings.length ? (
+                  filteredTrailRecordings.map((trail) => (
+                    <TrailRecordingCard
+                      key={trail.id ?? `${trail.startedAt}`}
+                      trail={trail}
+                      canShare={isOwnProfile}
+                      onPress={handleTrailRecordingPress}
+                      onRename={isOwnProfile ? handleStartRenameTrail : undefined}
+                      onShareWithOrganizers={isOwnProfile ? handleOpenShareModal : undefined}
+                    />
+                  ))
+                ) : (
+                  <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+                    No recordings match your search.
+                  </Text>
+                )}
+              </ScrollView>
+            </>
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
               {isOwnProfile
@@ -1659,3 +1710,5 @@ function ProfilePageContent({ navigation, route }) {
     </>
   );
 }
+  const [trailSearchQuery, setTrailSearchQuery] = useState('');
+  const [trailSearchFocused, setTrailSearchFocused] = useState(false);
