@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import haversine from 'haversine-distance';
-import { post } from '../lib/api';
+import { ApiError, post } from '../lib/api';
+import { useTrailSync } from '../context/TrailSyncContext';
 
 const DEFAULT_WATCH_OPTIONS = {
   accuracy: Location.Accuracy.Highest,
@@ -29,6 +30,7 @@ export function useTrailRecorder() {
   const startTimeRef = useRef(null);
   const pointsRef = useRef([]);
   const distanceRef = useRef(0);
+  const { queueOfflineTrail } = useTrailSync();
 
   const [status, setStatus] = useState('idle');
   const [points, setPoints] = useState([]);
@@ -193,18 +195,50 @@ export function useTrailRecorder() {
 
     setIsSaving(true);
 
+    const endedAtIso = new Date().toISOString();
+    const payload = {
+      label: label || null,
+      startedAt: startedIso,
+      endedAt: endedAtIso,
+      points: recordedPoints,
+      totalDistanceMeters: Math.round(distanceRef.current * 100) / 100,
+    };
+
     try {
-      const endedAtIso = new Date().toISOString();
-      const savedTrail = await post('/api/trails', {
-        label: label || null,
-        startedAt: startedIso,
-        endedAt: endedAtIso,
-        points: recordedPoints,
-        totalDistanceMeters: Math.round(distanceRef.current * 100) / 100,
-      });
+      const savedTrail = await post('/api/trails', payload);
       reset();
       return savedTrail;
     } catch (saveError) {
+      if (saveError instanceof ApiError && saveError.status === 0) {
+        try {
+          const offlineEntry = await queueOfflineTrail(payload);
+          reset();
+          setError(
+            'No connection detected. The recording was stored offline and will sync automatically.',
+          );
+          return {
+            id: offlineEntry.id,
+            label: payload.label,
+            startedAt: payload.startedAt,
+            endedAt: payload.endedAt,
+            totalDistanceMeters: payload.totalDistanceMeters,
+            samples: payload.points.map((point) => ({
+              lat: point.lat,
+              lng: point.lng,
+              accuracy: point.accuracy ?? null,
+              at: point.at,
+            })),
+            isOfflineOnly: true,
+          };
+        } catch (storageError) {
+          console.error('Failed to store trail offline:', storageError);
+          setError(
+            'Unable to store this recording offline. Please keep the app open until you regain connection.',
+          );
+          setStatus('paused');
+          return null;
+        }
+      }
       console.error('Failed to save trail:', saveError);
       setError('Failed to save the recorded trail.');
       setStatus('paused');
@@ -212,7 +246,7 @@ export function useTrailRecorder() {
     } finally {
       setIsSaving(false);
     }
-  }, [clearWatcher, reset, status]);
+  }, [clearWatcher, queueOfflineTrail, reset, status]);
 
   return {
     status,

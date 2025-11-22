@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { TrailSyncProvider } from './src/context/TrailSyncContext';
 
 // Import all your page components
 import LoginPage from './src/pages/LoginPage';
@@ -121,7 +122,9 @@ export default function App() {
       <ThemeProvider>
         <NotificationProvider>
           <AuthProvider>
-            <ThemedNavigation />
+            <TrailSyncProvider>
+              <ThemedNavigation />
+            </TrailSyncProvider>
           </AuthProvider>
         </NotificationProvider>
       </ThemeProvider>

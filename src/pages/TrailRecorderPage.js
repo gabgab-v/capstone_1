@@ -13,6 +13,7 @@ import {
 import { useTrailRecorder } from '../hooks/useTrailRecorder';
 import RecordedTrailSummary from '../components/RecordedTrailSummary';
 import { useTheme } from '../context/ThemeContext';
+import { useTrailSync } from '../context/TrailSyncContext';
 
 function formatDistance(meters) {
   if (!Number.isFinite(meters)) {
@@ -38,6 +39,40 @@ function formatDuration(ms) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function convertPointsToSamples(points) {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+  return points
+    .map((point) => {
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
+        return null;
+      }
+      return {
+        lat: point.lat,
+        lng: point.lng,
+        accuracy: Number.isFinite(point.accuracy) ? point.accuracy : null,
+        at: point.at,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPreviewTrail(entry) {
+  if (!entry) {
+    return null;
+  }
+  return {
+    id: entry.id,
+    label: entry.label,
+    startedAt: entry.startedAt,
+    endedAt: entry.endedAt,
+    totalDistanceMeters: entry.totalDistanceMeters,
+    samples: convertPointsToSamples(entry.points),
+    isOfflineOnly: true,
+  };
+}
+
 export default function TrailRecorderPage() {
   const [label, setLabel] = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -55,6 +90,14 @@ export default function TrailRecorderPage() {
     isSaving,
     error,
   } = useTrailRecorder();
+  const {
+    pendingTrails,
+    isOnline,
+    isSyncing: isSyncingPending,
+    syncPendingTrails,
+    discardPendingTrail,
+    lastSyncError,
+  } = useTrailSync();
   const { isDarkMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
 
@@ -113,6 +156,13 @@ export default function TrailRecorderPage() {
     setSavedTrail(null);
   };
 
+  const handlePreviewOfflineTrail = (entry) => {
+    const preview = buildPreviewTrail(entry);
+    if (preview) {
+      setSavedTrail(preview);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -164,6 +214,11 @@ export default function TrailRecorderPage() {
         />
 
         {error && <Text style={styles.errorText}>{error}</Text>}
+        {!isOnline && (
+          <Text style={styles.offlineNotice}>
+            Offline mode detected. New recordings will be queued until you reconnect.
+          </Text>
+        )}
 
         <View style={styles.buttons}>
           {isIdle && (
@@ -227,6 +282,61 @@ export default function TrailRecorderPage() {
             </TouchableOpacity>
           )}
         </View>
+        </View>
+
+        <View style={styles.offlinePanel}>
+          <View style={styles.offlineHeader}>
+            <Text style={styles.offlineTitle}>Offline recordings</Text>
+            <Text style={[styles.statusBadge, isOnline ? styles.onlineBadge : styles.offlineBadge]}>
+              {isOnline ? 'Online' : 'Offline'}
+            </Text>
+          </View>
+          {pendingTrails.length === 0 ? (
+            <Text style={styles.offlineEmpty}>No pending recordings saved on this device.</Text>
+          ) : (
+            pendingTrails.map((trail) => (
+              <View key={trail.id} style={styles.offlineItem}>
+                <View style={styles.offlineItemInfo}>
+                  <Text style={styles.offlineItemTitle}>{trail.label || 'Untitled Trail'}</Text>
+                  <Text style={styles.offlineItemMeta}>
+                    {formatDistance(trail.totalDistanceMeters)} •{' '}
+                    {trail.startedAt ? new Date(trail.startedAt).toLocaleString() : 'Pending'}
+                  </Text>
+                  {trail.errorMessage && (
+                    <Text style={styles.offlineItemWarning}>{trail.errorMessage}</Text>
+                  )}
+                </View>
+                <View style={styles.offlineActions}>
+                  <TouchableOpacity
+                    style={[styles.offlineButton, styles.firstOfflineButton, styles.offlinePreviewButton]}
+                    onPress={() => handlePreviewOfflineTrail(trail)}
+                  >
+                    <Text style={styles.offlineButtonText}>Preview</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.offlineButton, styles.offlineDiscardButton]}
+                    onPress={() => discardPendingTrail(trail.id)}
+                  >
+                    <Text style={styles.offlineButtonText}>Discard</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+          <TouchableOpacity
+            style={[
+              styles.button,
+              styles.syncButton,
+              (isSyncingPending || pendingTrails.length === 0) && styles.buttonDisabled,
+            ]}
+            onPress={syncPendingTrails}
+            disabled={isSyncingPending || pendingTrails.length === 0}
+          >
+            <Text style={styles.buttonText}>
+              {isSyncingPending ? 'Syncing...' : 'Sync pending recordings'}
+            </Text>
+          </TouchableOpacity>
+          {lastSyncError && <Text style={styles.offlineItemWarning}>{lastSyncError}</Text>}
         </View>
 
         <Modal
@@ -361,6 +471,11 @@ function createStyles(theme, isDarkMode) {
       marginBottom: 12,
       fontSize: 14,
     },
+    offlineNotice: {
+      color: theme.warningText,
+      marginBottom: 12,
+      fontSize: 13,
+    },
     buttons: {
       marginTop: 'auto',
     },
@@ -399,6 +514,100 @@ function createStyles(theme, isDarkMode) {
     summaryCardWrapper: {
       width: '100%',
       maxWidth: 420,
+    },
+    offlinePanel: {
+      marginHorizontal: 20,
+      marginTop: 24,
+      marginBottom: 32,
+      padding: 16,
+      borderRadius: 12,
+      backgroundColor: theme.surfaceElevated,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+    },
+    offlineHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    offlineTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    statusBadge: {
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+    },
+    onlineBadge: {
+      backgroundColor: '#10b981',
+      color: '#022c22',
+    },
+    offlineBadge: {
+      backgroundColor: '#fbbf24',
+      color: '#78350f',
+    },
+    offlineEmpty: {
+      color: theme.textMuted,
+      fontSize: 14,
+    },
+    offlineItem: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.border,
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 12,
+      backgroundColor: theme.surface,
+    },
+    offlineItemInfo: {
+      marginBottom: 8,
+    },
+    offlineItemTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: theme.textPrimary,
+    },
+    offlineItemMeta: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: 2,
+    },
+    offlineItemWarning: {
+      fontSize: 12,
+      color: theme.dangerText,
+      marginTop: 6,
+    },
+    offlineActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
+    offlineButton: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      marginLeft: 8,
+    },
+    firstOfflineButton: {
+      marginLeft: 0,
+    },
+    offlinePreviewButton: {
+      backgroundColor: '#0f172a',
+    },
+    offlineDiscardButton: {
+      backgroundColor: '#991b1b',
+    },
+    offlineButtonText: {
+      color: '#f8fafc',
+      fontWeight: '600',
+    },
+    syncButton: {
+      marginTop: 8,
+      backgroundColor: '#334155',
     },
   });
 }
