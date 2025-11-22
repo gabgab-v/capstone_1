@@ -3,6 +3,11 @@ import * as Location from 'expo-location';
 import haversine from 'haversine-distance';
 import { ApiError, post } from '../lib/api';
 import { useTrailSync } from '../context/TrailSyncContext';
+import {
+  clearActiveRecordingState,
+  getActiveRecordingState,
+  setActiveRecordingState,
+} from '../utils/offlineTrailStorage';
 
 const DEFAULT_WATCH_OPTIONS = {
   accuracy: Location.Accuracy.Highest,
@@ -12,6 +17,48 @@ const DEFAULT_WATCH_OPTIONS = {
 };
 
 const MIN_DISTANCE_METERS = 3;
+
+function sanitizePoint(point) {
+  if (
+    !point ||
+    !Number.isFinite(point.lat ?? point.latitude) ||
+    !Number.isFinite(point.lng ?? point.longitude)
+  ) {
+    return null;
+  }
+  return {
+    lat: Number(point.lat ?? point.latitude),
+    lng: Number(point.lng ?? point.longitude),
+    accuracy: Number.isFinite(point.accuracy) ? Number(point.accuracy) : null,
+    at: point.at || point.timestamp || new Date().toISOString(),
+  };
+}
+
+function sanitizeStoredPoints(rawPoints = []) {
+  return rawPoints
+    .map((sample) => sanitizePoint(sample))
+    .filter(Boolean);
+}
+
+function computeStoredDistance(points = []) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return 0;
+  }
+  return points.slice(1).reduce((total, point, index) => {
+    const prev = points[index];
+    if (!prev) {
+      return total;
+    }
+    const segment = haversine(
+      { lat: prev.lat, lng: prev.lng },
+      { lat: point.lat, lng: point.lng },
+    );
+    if (!Number.isFinite(segment)) {
+      return total;
+    }
+    return total + segment;
+  }, 0);
+}
 
 function toIso(timestamp) {
   try {
@@ -38,6 +85,71 @@ export function useTrailRecorder() {
   const [error, setError] = useState(null);
   const [startedAt, setStartedAt] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [restoredRecordingMessage, setRestoredRecordingMessage] = useState(null);
+
+  const persistActiveRecording = useCallback((nextStatus) => {
+    if (!startTimeRef.current) {
+      return;
+    }
+    setActiveRecordingState({
+      startedAt: startTimeRef.current,
+      status: nextStatus,
+      points: pointsRef.current,
+      totalDistanceMeters: distanceRef.current,
+    }).catch((error) => {
+      console.warn('Failed to persist active trail recording state:', error?.message || error);
+    });
+  }, []);
+
+  const clearPersistedRecording = useCallback(() => {
+    clearActiveRecordingState().catch((error) => {
+      console.warn('Failed to clear active recording state:', error?.message || error);
+    });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const stored = await getActiveRecordingState();
+        if (!isMounted || !stored || !stored.startedAt || !Array.isArray(stored.points)) {
+          return;
+        }
+        const restoredPoints = sanitizeStoredPoints(stored.points);
+        if (restoredPoints.length === 0) {
+          try {
+            await clearActiveRecordingState();
+          } catch (cleanupError) {
+            console.warn(
+              'Failed to clear an empty active recording snapshot:',
+              cleanupError?.message || cleanupError,
+            );
+          }
+          return;
+        }
+        startTimeRef.current = stored.startedAt;
+        setStartedAt(stored.startedAt);
+        pointsRef.current = restoredPoints;
+        setPoints(restoredPoints);
+        const restoredDistance =
+          typeof stored.totalDistanceMeters === 'number'
+            ? stored.totalDistanceMeters
+            : computeStoredDistance(restoredPoints);
+        distanceRef.current = restoredDistance;
+        setTotalDistance(restoredDistance);
+        setStatus('paused');
+        setRestoredRecordingMessage(
+          'Recovered an unfinished recording. Resume or finish when you are ready.',
+        );
+      } catch (error) {
+        console.warn('Failed to restore active recording state:', error?.message || error);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const clearWatcher = useCallback(() => {
     if (watcherRef.current) {
@@ -92,7 +204,9 @@ export function useTrailRecorder() {
       pointsRef.current = updatedPoints;
       return updatedPoints;
     });
-  }, []);
+
+    persistActiveRecording('recording');
+  }, [persistActiveRecording]);
 
   const startWatcher = useCallback(async () => {
     clearWatcher();
@@ -135,13 +249,15 @@ export function useTrailRecorder() {
 
       await startWatcher();
       setStatus('recording');
+      setRestoredRecordingMessage(null);
+      persistActiveRecording('recording');
       return true;
     } catch (startError) {
       console.error('Failed to start trail recorder:', startError);
       setError('Failed to start recording.');
       return false;
     }
-  }, [startWatcher, status]);
+  }, [startWatcher, status, persistActiveRecording]);
 
   const pause = useCallback(() => {
     if (status !== 'recording') {
@@ -149,7 +265,8 @@ export function useTrailRecorder() {
     }
     clearWatcher();
     setStatus('paused');
-  }, [clearWatcher, status]);
+    persistActiveRecording('paused');
+  }, [clearWatcher, status, persistActiveRecording]);
 
   const resume = useCallback(async () => {
     if (status !== 'paused') {
@@ -158,13 +275,14 @@ export function useTrailRecorder() {
     try {
       await startWatcher();
       setStatus('recording');
+      persistActiveRecording('recording');
       return true;
     } catch (resumeError) {
       console.error('Failed to resume trail recorder:', resumeError);
       setError('Failed to resume recording.');
       return false;
     }
-  }, [startWatcher, status]);
+  }, [startWatcher, status, persistActiveRecording]);
 
   const reset = useCallback(() => {
     clearWatcher();
@@ -176,7 +294,9 @@ export function useTrailRecorder() {
     distanceRef.current = 0;
     setStatus('idle');
     setError(null);
-  }, [clearWatcher]);
+    setRestoredRecordingMessage(null);
+    clearPersistedRecording();
+  }, [clearWatcher, clearPersistedRecording]);
 
   const finish = useCallback(async ({ label } = {}) => {
     clearWatcher();
@@ -260,6 +380,7 @@ export function useTrailRecorder() {
     startedAt,
     isSaving,
     error,
+    restoredRecordingMessage,
   };
 }
 

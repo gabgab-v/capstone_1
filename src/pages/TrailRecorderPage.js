@@ -89,6 +89,7 @@ export default function TrailRecorderPage() {
     startedAt,
     isSaving,
     error,
+    restoredRecordingMessage,
   } = useTrailRecorder();
   const {
     pendingTrails,
@@ -214,6 +215,9 @@ export default function TrailRecorderPage() {
         />
 
         {error && <Text style={styles.errorText}>{error}</Text>}
+        {restoredRecordingMessage && (
+          <Text style={styles.recoveredNotice}>{restoredRecordingMessage}</Text>
+        )}
         {!isOnline && (
           <Text style={styles.offlineNotice}>
             Offline mode detected. New recordings will be queued until you reconnect.
@@ -470,6 +474,11 @@ function createStyles(theme, isDarkMode) {
       color: theme.dangerText,
       marginBottom: 12,
       fontSize: 14,
+    },
+    recoveredNotice: {
+      color: theme.infoText,
+      marginBottom: 12,
+      fontSize: 13,
     },
     offlineNotice: {
       color: theme.warningText,

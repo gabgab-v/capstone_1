@@ -1,20 +1,24 @@
 import * as FileSystem from 'expo-file-system';
 
-const STORAGE_FILE = 'pending-trails.json';
-const STORAGE_PATH = FileSystem.documentDirectory
-  ? `${FileSystem.documentDirectory}${STORAGE_FILE}`
-  : null;
+const PENDING_STORAGE_FILE = 'pending-trails.json';
+const ACTIVE_STORAGE_FILE = 'active-trail.json';
 
-let memoryFallback = [];
+const DOCUMENT_DIRECTORY = FileSystem.documentDirectory || null;
 
-async function ensureStorageFile() {
-  if (!STORAGE_PATH) {
+const PENDING_STORAGE_PATH = DOCUMENT_DIRECTORY ? `${DOCUMENT_DIRECTORY}${PENDING_STORAGE_FILE}` : null;
+const ACTIVE_STORAGE_PATH = DOCUMENT_DIRECTORY ? `${DOCUMENT_DIRECTORY}${ACTIVE_STORAGE_FILE}` : null;
+
+let pendingMemoryFallback = [];
+let activeMemoryFallback = null;
+
+async function ensureStorageFile(path, defaultContents) {
+  if (!path) {
     return;
   }
   try {
-    const info = await FileSystem.getInfoAsync(STORAGE_PATH);
+    const info = await FileSystem.getInfoAsync(path);
     if (!info.exists) {
-      await FileSystem.writeAsStringAsync(STORAGE_PATH, '[]', {
+      await FileSystem.writeAsStringAsync(path, defaultContents, {
         encoding: FileSystem.EncodingType.UTF8,
       });
     }
@@ -24,12 +28,12 @@ async function ensureStorageFile() {
 }
 
 export async function getStoredPendingTrails() {
-  if (!STORAGE_PATH) {
-    return [...memoryFallback];
+  if (!PENDING_STORAGE_PATH) {
+    return [...pendingMemoryFallback];
   }
   try {
-    await ensureStorageFile();
-    const contents = await FileSystem.readAsStringAsync(STORAGE_PATH, {
+    await ensureStorageFile(PENDING_STORAGE_PATH, '[]');
+    const contents = await FileSystem.readAsStringAsync(PENDING_STORAGE_PATH, {
       encoding: FileSystem.EncodingType.UTF8,
     });
     const parsed = JSON.parse(contents);
@@ -47,13 +51,13 @@ export async function setStoredPendingTrails(nextList) {
   if (!Array.isArray(nextList)) {
     throw new Error('Pending trails payload must be an array.');
   }
-  if (!STORAGE_PATH) {
-    memoryFallback = [...nextList];
+  if (!PENDING_STORAGE_PATH) {
+    pendingMemoryFallback = [...nextList];
     return;
   }
   try {
-    await ensureStorageFile();
-    await FileSystem.writeAsStringAsync(STORAGE_PATH, JSON.stringify(nextList), {
+    await ensureStorageFile(PENDING_STORAGE_PATH, '[]');
+    await FileSystem.writeAsStringAsync(PENDING_STORAGE_PATH, JSON.stringify(nextList), {
       encoding: FileSystem.EncodingType.UTF8,
     });
   } catch (error) {
@@ -77,4 +81,60 @@ export async function removePendingTrail(id) {
   const filtered = current.filter((item) => item.id !== id);
   await setStoredPendingTrails(filtered);
   return filtered;
+}
+
+export async function getActiveRecordingState() {
+  if (!ACTIVE_STORAGE_PATH) {
+    return activeMemoryFallback ? { ...activeMemoryFallback } : null;
+  }
+  try {
+    const info = await FileSystem.getInfoAsync(ACTIVE_STORAGE_PATH);
+    if (!info.exists) {
+      return null;
+    }
+    const contents = await FileSystem.readAsStringAsync(ACTIVE_STORAGE_PATH, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (!contents) {
+      return null;
+    }
+    return JSON.parse(contents);
+  } catch (error) {
+    console.error('Failed to read active recording state:', error);
+    return null;
+  }
+}
+
+export async function setActiveRecordingState(state) {
+  if (!state) {
+    return clearActiveRecordingState();
+  }
+  if (!ACTIVE_STORAGE_PATH) {
+    activeMemoryFallback = { ...state };
+    return;
+  }
+  try {
+    await FileSystem.writeAsStringAsync(ACTIVE_STORAGE_PATH, JSON.stringify(state), {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+  } catch (error) {
+    console.error('Failed to persist active recording state:', error);
+    throw error;
+  }
+}
+
+export async function clearActiveRecordingState() {
+  if (!ACTIVE_STORAGE_PATH) {
+    activeMemoryFallback = null;
+    return;
+  }
+  try {
+    const info = await FileSystem.getInfoAsync(ACTIVE_STORAGE_PATH);
+    if (info.exists) {
+      await FileSystem.deleteAsync(ACTIVE_STORAGE_PATH, { idempotent: true });
+    }
+  } catch (error) {
+    console.error('Failed to clear active recording state:', error);
+  }
+  activeMemoryFallback = null;
 }
