@@ -13,6 +13,7 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { TrailSyncProvider } from './src/context/TrailSyncContext';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import StartupDiagnosticsGate from './src/components/StartupDiagnosticsGate';
 
 // Import all your page components
 import LoginPage from './src/pages/LoginPage';
@@ -128,9 +129,11 @@ function AppShell() {
   const resetKey = user?.id ? `user-${user.id}` : 'guest';
   return (
     <AppErrorBoundary resetKey={resetKey}>
-      <TrailSyncProvider>
-        <ThemedNavigation />
-      </TrailSyncProvider>
+      <StartupDiagnosticsGate>
+        <TrailSyncProvider>
+          <ThemedNavigation />
+        </TrailSyncProvider>
+      </StartupDiagnosticsGate>
     </AppErrorBoundary>
   );
 }
