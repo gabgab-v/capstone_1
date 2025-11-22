@@ -31,6 +31,7 @@ import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
+import TrailRecorderPage from './src/pages/TrailRecorderPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -83,6 +84,11 @@ function AppNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginPage} />
           <Stack.Screen name="Signup" component={SignupPage} />
+          <Stack.Screen
+            name="OfflineRecorder"
+            component={TrailRecorderPage}
+            initialParams={{ guestMode: true }}
+          />
         </>
       )}
       <Stack.Screen name="LegalDocument" component={LegalDocumentPage} />

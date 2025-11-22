@@ -10,9 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTrailRecorder } from '../hooks/useTrailRecorder';
 import RecordedTrailSummary from '../components/RecordedTrailSummary';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useTrailSync } from '../context/TrailSyncContext';
 
 function formatDistance(meters) {
@@ -73,7 +75,7 @@ function buildPreviewTrail(entry) {
   };
 }
 
-export default function TrailRecorderPage() {
+export default function TrailRecorderPage({ navigation, route }) {
   const [label, setLabel] = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [savedTrail, setSavedTrail] = useState(null);
@@ -91,6 +93,10 @@ export default function TrailRecorderPage() {
     error,
     restoredRecordingMessage,
   } = useTrailRecorder();
+  const guestMode = Boolean(route?.params?.guestMode);
+  const { user } = useAuth();
+  const viewerUserId = user?.id ?? null;
+  const isAuthenticatedUser = Boolean(viewerUserId);
   const {
     pendingTrails,
     isOnline,
@@ -99,6 +105,18 @@ export default function TrailRecorderPage() {
     discardPendingTrail,
     lastSyncError,
   } = useTrailSync();
+  const visiblePendingTrails = useMemo(() => {
+    return pendingTrails.filter((trail) => {
+      if (!viewerUserId) {
+        return !trail.ownerId;
+      }
+      if (!trail.ownerId) {
+        return true;
+      }
+      return trail.ownerId === viewerUserId;
+    });
+  }, [pendingTrails, viewerUserId]);
+  const pendingCount = visiblePendingTrails.length;
   const { isDarkMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
 
@@ -172,7 +190,27 @@ export default function TrailRecorderPage() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 16}
       >
         <View style={styles.container}>
-        <Text style={styles.header}>Trail Recorder</Text>
+        {guestMode && (
+          <TouchableOpacity
+            style={styles.guestBackButton}
+            onPress={() => {
+              if (navigation?.canGoBack?.()) {
+                navigation.goBack();
+              } else if (navigation?.navigate) {
+                navigation.navigate('Login');
+              }
+            }}
+          >
+            <Ionicons name="chevron-back" size={18} color={colors.accent} />
+            <Text style={styles.guestBackText}>Back to sign in</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={styles.header}>{guestMode ? 'Offline Trail Recorder' : 'Trail Recorder'}</Text>
+        {guestMode && (
+          <Text style={styles.guestNotice}>
+            Record hikes without signing in. They will sync the next time you log into your account.
+          </Text>
+        )}
 
         <View style={styles.metricRow}>
           <View style={[styles.metricBox, styles.metricBoxSpacer]}>
@@ -221,6 +259,11 @@ export default function TrailRecorderPage() {
         {!isOnline && (
           <Text style={styles.offlineNotice}>
             Offline mode detected. New recordings will be queued until you reconnect.
+          </Text>
+        )}
+        {!isAuthenticatedUser && (
+          <Text style={styles.authNotice}>
+            These recordings stay on this device until you sign in.
           </Text>
         )}
 
@@ -295,10 +338,10 @@ export default function TrailRecorderPage() {
               {isOnline ? 'Online' : 'Offline'}
             </Text>
           </View>
-          {pendingTrails.length === 0 ? (
+          {pendingCount === 0 ? (
             <Text style={styles.offlineEmpty}>No pending recordings saved on this device.</Text>
           ) : (
-            pendingTrails.map((trail) => (
+            visiblePendingTrails.map((trail) => (
               <View key={trail.id} style={styles.offlineItem}>
                 <View style={styles.offlineItemInfo}>
                   <Text style={styles.offlineItemTitle}>{trail.label || 'Untitled Trail'}</Text>
@@ -331,16 +374,25 @@ export default function TrailRecorderPage() {
             style={[
               styles.button,
               styles.syncButton,
-              (isSyncingPending || pendingTrails.length === 0) && styles.buttonDisabled,
+              (isSyncingPending || pendingCount === 0 || !isAuthenticatedUser) && styles.buttonDisabled,
             ]}
             onPress={syncPendingTrails}
-            disabled={isSyncingPending || pendingTrails.length === 0}
+            disabled={isSyncingPending || pendingCount === 0 || !isAuthenticatedUser}
           >
             <Text style={styles.buttonText}>
-              {isSyncingPending ? 'Syncing...' : 'Sync pending recordings'}
+              {!isAuthenticatedUser
+                ? 'Sign in to sync'
+                : isSyncingPending
+                  ? 'Syncing...'
+                  : 'Sync pending recordings'}
             </Text>
           </TouchableOpacity>
           {lastSyncError && <Text style={styles.offlineItemWarning}>{lastSyncError}</Text>}
+          {!isAuthenticatedUser && pendingCount > 0 && (
+            <Text style={styles.offlineItemWarning}>
+              Log into your account to upload these saved recordings.
+            </Text>
+          )}
         </View>
 
         <Modal
@@ -382,11 +434,28 @@ function createStyles(theme, isDarkMode) {
       paddingTop: 24,
       backgroundColor: theme.surface,
     },
+    guestBackButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    guestBackText: {
+      marginLeft: 6,
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.accent,
+    },
     header: {
       fontSize: 24,
       fontWeight: '700',
       marginBottom: 24,
       color: theme.textPrimary,
+    },
+    guestNotice: {
+      marginTop: -16,
+      marginBottom: 20,
+      fontSize: 13,
+      color: theme.textMuted,
     },
     metricRow: {
       flexDirection: 'row',
@@ -482,6 +551,11 @@ function createStyles(theme, isDarkMode) {
     },
     offlineNotice: {
       color: theme.warningText,
+      marginBottom: 12,
+      fontSize: 13,
+    },
+    authNotice: {
+      color: theme.textMuted,
       marginBottom: 12,
       fontSize: 13,
     },

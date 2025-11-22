@@ -16,6 +16,7 @@ import {
   removePendingTrail as removeStored,
   setStoredPendingTrails,
 } from '../utils/offlineTrailStorage';
+import { useAuth } from './AuthContext';
 
 const TrailSyncContext = createContext(null);
 
@@ -43,6 +44,8 @@ function mapEntryToPayload(entry) {
 }
 
 export function TrailSyncProvider({ children }) {
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
   const [pendingTrails, setPendingTrails] = useState([]);
   const [networkState, setNetworkState] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -77,6 +80,7 @@ export function TrailSyncProvider({ children }) {
 
   const queueOfflineTrail = useCallback(
     async (payload) => {
+      const ownerId = currentUserId ?? null;
       const offlineEntry = {
         id: `offline-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         label: payload.label || null,
@@ -88,12 +92,13 @@ export function TrailSyncProvider({ children }) {
         lastAttemptAt: null,
         attemptCount: 0,
         errorMessage: null,
+        ownerId,
       };
       await appendPendingTrail(offlineEntry);
       setPendingTrails((prev) => [...prev, offlineEntry]);
       return offlineEntry;
     },
-    [setPendingTrails],
+    [currentUserId],
   );
 
   const syncPendingTrails = useCallback(async () => {
@@ -111,12 +116,26 @@ export function TrailSyncProvider({ children }) {
       return true;
     }
 
+    if (!currentUserId) {
+      setPendingTrails(stored);
+      setLastSyncError('Sign in to sync saved recordings.');
+      return false;
+    }
+
+    const eligible = stored.filter((entry) => entry.ownerId === currentUserId);
+    const others = stored.filter((entry) => entry.ownerId !== currentUserId);
+
+    if (!eligible.length) {
+      setPendingTrails(stored);
+      return true;
+    }
+
     setIsSyncing(true);
     setLastSyncError(null);
 
     const syncPromise = (async () => {
-      const remaining = [];
-      for (const entry of stored) {
+      const remainingForCurrent = [];
+      for (const entry of eligible) {
         try {
           await post('/api/trails', mapEntryToPayload(entry));
         } catch (error) {
@@ -124,25 +143,28 @@ export function TrailSyncProvider({ children }) {
             ...entry,
             lastAttemptAt: new Date().toISOString(),
             attemptCount: (entry.attemptCount || 0) + 1,
-            errorMessage: error?.message || 'Failed to sync this recording.',
+            errorMessage:
+              error instanceof ApiError && error.status === 401
+                ? 'Sign in again to sync this recording.'
+                : error?.message || 'Failed to sync this recording.',
           };
-          remaining.push(next);
+          remainingForCurrent.push(next);
           if (error instanceof ApiError && error.status === 0) {
-            // Stop the loop if we are offline again.
-            const remainingIndex = stored.indexOf(entry);
-            const rest = stored.slice(remainingIndex + 1).map((item) => ({
+            const remainingIndex = eligible.indexOf(entry);
+            const rest = eligible.slice(remainingIndex + 1).map((item) => ({
               ...item,
               errorMessage: next.errorMessage,
             }));
-            remaining.push(...rest);
+            remainingForCurrent.push(...rest);
             break;
           }
         }
       }
 
-      await setStoredPendingTrails(remaining);
-      setPendingTrails(remaining);
-      return remaining.length === 0;
+      const combined = [...others, ...remainingForCurrent];
+      await setStoredPendingTrails(combined);
+      setPendingTrails(combined);
+      return remainingForCurrent.length === 0;
     })();
 
     syncPromiseRef.current = syncPromise;
@@ -161,7 +183,7 @@ export function TrailSyncProvider({ children }) {
       syncPromiseRef.current = null;
       setIsSyncing(false);
     }
-  }, [isSyncing, networkState]);
+  }, [currentUserId, isSyncing, networkState]);
 
   const discardPendingTrail = useCallback(
     async (id) => {
@@ -192,6 +214,34 @@ export function TrailSyncProvider({ children }) {
     }
   }, [pendingTrails.length, networkState, syncPendingTrails]);
 
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const stored = await getStoredPendingTrails();
+      const needsUpdate = stored.some((entry) => !entry.ownerId);
+      if (!needsUpdate) {
+        if (!cancelled) {
+          setPendingTrails(stored);
+        }
+        return;
+      }
+      const updated = stored.map((entry) =>
+        entry.ownerId ? entry : { ...entry, ownerId: currentUserId },
+      );
+      await setStoredPendingTrails(updated);
+      if (!cancelled) {
+        setPendingTrails(updated);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
+
   const value = useMemo(
     () => ({
       pendingTrails,
@@ -202,6 +252,7 @@ export function TrailSyncProvider({ children }) {
       syncPendingTrails,
       discardPendingTrail,
       refreshPending,
+      currentUserId,
     }),
     [
       pendingTrails,
@@ -212,6 +263,7 @@ export function TrailSyncProvider({ children }) {
       syncPendingTrails,
       discardPendingTrail,
       refreshPending,
+      currentUserId,
     ],
   );
 

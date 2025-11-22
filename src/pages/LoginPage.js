@@ -134,6 +134,15 @@ export default function LoginPage({ navigation }) {
               Don't have an account? <Text className="underline dark:text-white">Create one</Text>
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            className="mt-4"
+            onPress={() => navigation.navigate('OfflineRecorder', { guestMode: true })}
+          >
+            <Text className="text-center text-sm text-gray-500 dark:text-slate-400">
+              Just want to record offline? <Text className="font-semibold text-green-700 dark:text-white">Open the trail recorder</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

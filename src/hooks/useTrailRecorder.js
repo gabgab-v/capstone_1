@@ -8,6 +8,7 @@ import {
   getActiveRecordingState,
   setActiveRecordingState,
 } from '../utils/offlineTrailStorage';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_WATCH_OPTIONS = {
   accuracy: Location.Accuracy.Highest,
@@ -78,6 +79,9 @@ export function useTrailRecorder() {
   const pointsRef = useRef([]);
   const distanceRef = useRef(0);
   const { queueOfflineTrail } = useTrailSync();
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
+  const isAuthenticated = Boolean(currentUserId);
 
   const [status, setStatus] = useState('idle');
   const [points, setPoints] = useState([]);
@@ -324,40 +328,64 @@ export function useTrailRecorder() {
       totalDistanceMeters: Math.round(distanceRef.current * 100) / 100,
     };
 
+    const saveOfflineFallback = async (message) => {
+      try {
+        const offlineEntry = await queueOfflineTrail(payload);
+        reset();
+        setError(
+          message ||
+            (isAuthenticated
+              ? 'No connection detected. The recording was stored offline and will sync automatically.'
+              : 'The recording was stored on this device. Sign in later to sync it.'),
+        );
+        return {
+          id: offlineEntry.id,
+          label: payload.label,
+          startedAt: payload.startedAt,
+          endedAt: payload.endedAt,
+          totalDistanceMeters: payload.totalDistanceMeters,
+          samples: payload.points.map((point) => ({
+            lat: point.lat,
+            lng: point.lng,
+            accuracy: point.accuracy ?? null,
+            at: point.at,
+          })),
+          isOfflineOnly: true,
+        };
+      } catch (storageError) {
+        console.error('Failed to store trail offline:', storageError);
+        setError(
+          'Unable to store this recording offline. Please keep the app open until you regain connection.',
+        );
+        setStatus('paused');
+        return null;
+      }
+    };
+
+    if (!isAuthenticated) {
+      const result = await saveOfflineFallback(
+        'Recording saved locally. Sign in when ready to sync it with your account.',
+      );
+      setIsSaving(false);
+      return result;
+    }
+
     try {
       const savedTrail = await post('/api/trails', payload);
       reset();
       return savedTrail;
     } catch (saveError) {
-      if (saveError instanceof ApiError && saveError.status === 0) {
-        try {
-          const offlineEntry = await queueOfflineTrail(payload);
-          reset();
-          setError(
-            'No connection detected. The recording was stored offline and will sync automatically.',
-          );
-          return {
-            id: offlineEntry.id,
-            label: payload.label,
-            startedAt: payload.startedAt,
-            endedAt: payload.endedAt,
-            totalDistanceMeters: payload.totalDistanceMeters,
-            samples: payload.points.map((point) => ({
-              lat: point.lat,
-              lng: point.lng,
-              accuracy: point.accuracy ?? null,
-              at: point.at,
-            })),
-            isOfflineOnly: true,
-          };
-        } catch (storageError) {
-          console.error('Failed to store trail offline:', storageError);
-          setError(
-            'Unable to store this recording offline. Please keep the app open until you regain connection.',
-          );
-          setStatus('paused');
-          return null;
-        }
+      if (
+        saveError instanceof ApiError &&
+        (saveError.status === 0 || saveError.status === 401 || saveError.status === 403)
+      ) {
+        const message =
+          saveError.status === 401 || saveError.status === 403
+            ? 'Session unavailable. The recording was saved locally and will sync after you sign in again.'
+            : null;
+        const result = await saveOfflineFallback(message);
+        setIsSaving(false);
+        return result;
       }
       console.error('Failed to save trail:', saveError);
       setError('Failed to save the recorded trail.');
@@ -366,7 +394,7 @@ export function useTrailRecorder() {
     } finally {
       setIsSaving(false);
     }
-  }, [clearWatcher, queueOfflineTrail, reset, status]);
+  }, [clearWatcher, isAuthenticated, queueOfflineTrail, reset, status]);
 
   return {
     status,
