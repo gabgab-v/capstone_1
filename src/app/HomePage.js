@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,14 +18,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { decode } from "base64-arraybuffer";
-import { AntDesign } from "@expo/vector-icons";
+import { AntDesign, Feather } from "@expo/vector-icons";
 
 import AppHeader from "../components/AppHeader";
 import PostCard from "../components/PostCard";
 import CreatePost from "../components/CreatePost";
+import PostVisibilityPicker from "../components/PostVisibilityPicker";
 import { get, post as postRequest } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../lib/supabase";
+import { POST_VISIBILITY, getPostVisibilityOption } from "../constants/postVisibility";
 
 const MAX_IMAGES = 5;
 
@@ -34,8 +36,22 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   const [caption, setCaption] = useState("");
   const [images, setImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [visibility, setVisibility] = useState(POST_VISIBILITY.PUBLIC);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const selectedVisibility = useMemo(
+    () => getPostVisibilityOption(visibility),
+    [visibility],
+  );
 
   const canPost = caption.trim().length > 0 || images.length > 0;
+
+  const handleClose = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
+    setPickerVisible(false);
+    onClose();
+  }, [isSubmitting, onClose]);
 
   const pickImage = useCallback(async () => {
     if (images.length >= MAX_IMAGES) {
@@ -115,9 +131,11 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
       await onSubmit({
         caption: caption.trim(),
         images,
+        visibility,
       });
       setCaption("");
       setImages([]);
+      setPickerVisible(false);
       onClose();
     } catch (error) {
       console.error("Post creation failed:", error);
@@ -128,10 +146,10 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   }, [canPost, caption, images, isSubmitting, onClose, onSubmit]);
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <SafeAreaView className="flex-1 bg-white dark:bg-slate-950">
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
-          <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
+          <TouchableOpacity onPress={handleClose} disabled={isSubmitting}>
             <AntDesign name="close" size={24} color={colors.icon} />
           </TouchableOpacity>
           <Text className="text-lg font-bold text-slate-900 dark:text-slate-100">Create Post</Text>
@@ -161,6 +179,25 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
               style={{ color: colors.textPrimary }}
             />
             <TouchableOpacity
+              onPress={() => setPickerVisible(true)}
+              className="mt-4 flex-row items-center justify-between rounded-2xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 px-3 py-3"
+            >
+              <View className="flex-row items-center">
+                <View className="mr-3 rounded-full bg-white dark:bg-slate-700 p-2">
+                  <Feather name={selectedVisibility.icon} size={18} color={colors.accent} />
+                </View>
+                <View>
+                  <Text className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                    {selectedVisibility.label}
+                  </Text>
+                  <Text className="text-xs text-gray-500 dark:text-slate-400">
+                    {selectedVisibility.description}
+                  </Text>
+                </View>
+              </View>
+              <Feather name="chevron-down" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={pickImage}
               className="mt-4 self-start rounded-lg bg-gray-200 dark:bg-slate-700 py-2 px-4"
               disabled={images.length >= MAX_IMAGES || isSubmitting}
@@ -184,6 +221,12 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+        <PostVisibilityPicker
+          visible={pickerVisible}
+          value={visibility}
+          onSelect={setVisibility}
+          onClose={() => setPickerVisible(false)}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -218,7 +261,7 @@ export default function HomePage({ user }) {
   }, [fetchPosts]);
 
   const handleCreatePost = useCallback(
-    async ({ caption, images }) => {
+    async ({ caption, images, visibility }) => {
       const trimmedCaption = caption?.trim?.() ?? "";
 
       const {
@@ -263,12 +306,29 @@ export default function HomePage({ user }) {
       const createdPost = await postRequest("/api/posts", {
         content: trimmedCaption,
         imageUrls: uploadedUrls,
+        visibility: visibility ?? POST_VISIBILITY.PUBLIC,
       });
 
       setPosts((current) => [createdPost, ...current]);
     },
     [],
   );
+
+  const handlePostUpdated = useCallback((updatedPost) => {
+    if (!updatedPost?.id) {
+      return;
+    }
+    setPosts((current) =>
+      current.map((existing) => (existing.id === updatedPost.id ? updatedPost : existing)),
+    );
+  }, []);
+
+  const handlePostDeleted = useCallback((postId) => {
+    if (!postId) {
+      return;
+    }
+    setPosts((current) => current.filter((post) => post.id !== postId));
+  }, []);
 
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-gray-100 dark:bg-slate-950">
@@ -277,7 +337,9 @@ export default function HomePage({ user }) {
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PostCard post={item} />}
+        renderItem={({ item }) => (
+          <PostCard post={item} onPostUpdated={handlePostUpdated} onPostDeleted={handlePostDeleted} />
+        )}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={<CreatePost user={user} onPostPress={() => setModalVisible(true)} />}
         ListEmptyComponent={

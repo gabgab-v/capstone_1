@@ -150,6 +150,7 @@ model Post {
   id        String   @id @default(uuid())
   content   String?
   imageUrls String[] @default([])
+  visibility PostVisibility @default(PUBLIC)
   user      User     @relation(fields: [userId], references: [id])
   userId    String
   trail     Trail?   @relation(fields: [trailId], references: [id])
@@ -161,6 +162,12 @@ model Post {
 
   @@index([userId, createdAt])
   @@index([trailId])
+}
+
+enum PostVisibility {
+  PUBLIC
+  FRIENDS
+  PRIVATE
 }
 
 enum UserRole {

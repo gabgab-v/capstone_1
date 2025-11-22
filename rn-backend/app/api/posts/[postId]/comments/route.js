@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
+import { ensureViewerCanAccessPost } from '@/lib/posts';
 
 function sanitizeContent(value) {
   if (typeof value !== 'string') {
@@ -8,19 +9,6 @@ function sanitizeContent(value) {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-async function ensurePostExists(postId) {
-  if (!postId) {
-    return false;
-  }
-
-  const post = await prisma.post.findUnique({
-    where: { id: postId },
-    select: { id: true },
-  });
-
-  return Boolean(post);
 }
 
 function mapComment(comment) {
@@ -42,11 +30,16 @@ function mapComment(comment) {
   };
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
+    const authUser = await getUserFromToken(request);
     const postId = params?.postId;
-    if (!(await ensurePostExists(postId))) {
+    const { post, allowed } = await ensureViewerCanAccessPost(postId, authUser?.id ?? null);
+    if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'You cannot view comments for this post.' }, { status: 403 });
     }
 
     const comments = await prisma.postComment.findMany({
@@ -81,8 +74,12 @@ export async function POST(request, { params }) {
     }
 
     const postId = params?.postId;
-    if (!(await ensurePostExists(postId))) {
+    const { post, allowed } = await ensureViewerCanAccessPost(postId, authUser.id);
+    if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'You cannot interact with this post.' }, { status: 403 });
     }
 
     const payload = await request.json();

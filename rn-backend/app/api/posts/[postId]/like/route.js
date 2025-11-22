@@ -1,19 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
-
-async function ensurePostExists(postId) {
-  if (!postId) {
-    return false;
-  }
-
-  const post = await prisma.post.findUnique({
-    where: { id: postId },
-    select: { id: true },
-  });
-
-  return Boolean(post);
-}
+import { ensureViewerCanAccessPost } from '@/lib/posts';
 
 export async function POST(request, { params }) {
   try {
@@ -23,8 +11,12 @@ export async function POST(request, { params }) {
     }
 
     const postId = params?.postId;
-    if (!(await ensurePostExists(postId))) {
+    const { post, allowed } = await ensureViewerCanAccessPost(postId, authUser.id);
+    if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'You cannot like this post.' }, { status: 403 });
     }
 
     await prisma.postLike.upsert({
@@ -58,8 +50,12 @@ export async function DELETE(request, { params }) {
     }
 
     const postId = params?.postId;
-    if (!(await ensurePostExists(postId))) {
+    const { post, allowed } = await ensureViewerCanAccessPost(postId, authUser.id);
+    if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+    }
+    if (!allowed) {
+      return NextResponse.json({ error: 'You cannot unlike this post.' }, { status: 403 });
     }
 
     await prisma.postLike.deleteMany({

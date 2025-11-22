@@ -1,118 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
-
-function sanitizeContent(value) {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function sanitizeImageUrls(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((item) => typeof item === 'string' && item.trim().length > 0)
-    .map((item) => item.trim());
-}
-
-function sanitizeTrailId(value) {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length ? trimmed : null;
-}
-
-function buildPostInclude(currentUserId) {
-  const include = {
-    user: {
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-      },
-    },
-    trail: {
-      select: {
-        id: true,
-        label: true,
-        startedAt: true,
-        endedAt: true,
-        totalDistanceMeters: true,
-        geoJson: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    },
-    _count: {
-      select: {
-        likes: true,
-        comments: true,
-      },
-    },
-  };
-
-  if (currentUserId) {
-    include.likes = {
-      where: { userId: currentUserId },
-      select: { id: true },
-    };
-  }
-
-  return include;
-}
-
-function mapTrail(trail) {
-  if (!trail) {
-    return null;
-  }
-  return {
-    id: trail.id,
-    label: trail.label ?? null,
-    startedAt: trail.startedAt,
-    endedAt: trail.endedAt ?? null,
-    totalDistanceMeters:
-      typeof trail.totalDistanceMeters === 'number'
-        ? trail.totalDistanceMeters
-        : trail.totalDistanceMeters == null
-          ? null
-          : Number(trail.totalDistanceMeters),
-    geoJson: trail.geoJson ?? null,
-    createdAt: trail.createdAt,
-    updatedAt: trail.updatedAt,
-  };
-}
-
-function mapPost(post) {
-  if (!post) {
-    return null;
-  }
-
-  const { user, likes, _count, ...rest } = post;
-  return {
-    ...rest,
-    content: post.content ?? '',
-    imageUrls: post.imageUrls ?? [],
-    likeCount: _count?.likes ?? 0,
-    commentCount: _count?.comments ?? 0,
-    likedByCurrentUser: Array.isArray(likes) ? likes.length > 0 : false,
-    trail: mapTrail(post.trail),
-    author: user
-      ? {
-          id: user.id,
-          name: user.name ?? null,
-          email: user.email ?? null,
-          avatarUrl: user.avatarUrl ?? null,
-        }
-      : null,
-  };
-}
+import {
+  buildPostInclude,
+  buildPostVisibilityWhereClause,
+  mapPost,
+  normalizePostVisibility,
+  sanitizePostContent,
+  sanitizePostImageUrls,
+  sanitizePostTrailId,
+} from '@/lib/posts';
 
 export async function GET(request) {
   try {
@@ -120,7 +17,10 @@ export async function GET(request) {
     const url = request.nextUrl;
     const userId = url.searchParams.get('userId');
 
-    const where = userId ? { userId } : {};
+    const where = {
+      ...(userId ? { userId } : {}),
+      ...buildPostVisibilityWhereClause(authUser?.id ?? null),
+    };
 
     const include = buildPostInclude(authUser?.id);
 
@@ -145,9 +45,10 @@ export async function POST(request) {
     }
 
     const payload = await request.json();
-    const content = sanitizeContent(payload?.content);
-    const imageUrls = sanitizeImageUrls(payload?.imageUrls);
-    const trailId = sanitizeTrailId(payload?.trailId);
+    const content = sanitizePostContent(payload?.content);
+    const imageUrls = sanitizePostImageUrls(payload?.imageUrls);
+    const trailId = sanitizePostTrailId(payload?.trailId);
+    const visibility = normalizePostVisibility(payload?.visibility);
 
     if (!content && imageUrls.length === 0) {
       return NextResponse.json(
@@ -177,6 +78,7 @@ export async function POST(request) {
         imageUrls,
         userId: authUser.id,
         trailId: selectedTrailId,
+        visibility,
       },
     });
 
