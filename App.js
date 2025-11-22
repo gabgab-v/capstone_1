@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { TrailSyncProvider } from './src/context/TrailSyncContext';
+import AppErrorBoundary from './src/components/AppErrorBoundary';
 
 // Import all your page components
 import LoginPage from './src/pages/LoginPage';
@@ -122,15 +123,25 @@ function ThemedNavigation() {
   );
 }
 
+function AppShell() {
+  const { user } = useAuth();
+  const resetKey = user?.id ? `user-${user.id}` : 'guest';
+  return (
+    <AppErrorBoundary resetKey={resetKey}>
+      <TrailSyncProvider>
+        <ThemedNavigation />
+      </TrailSyncProvider>
+    </AppErrorBoundary>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <NotificationProvider>
           <AuthProvider>
-            <TrailSyncProvider>
-              <ThemedNavigation />
-            </TrailSyncProvider>
+            <AppShell />
           </AuthProvider>
         </NotificationProvider>
       </ThemeProvider>
