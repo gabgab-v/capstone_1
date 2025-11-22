@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
 import './global.css';
+import './src/setupErrorTracking';
 import React, { useMemo } from 'react';
 import 'react-native-url-polyfill/auto';
 import { ActivityIndicator, View } from 'react-native';
@@ -14,6 +15,7 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { TrailSyncProvider } from './src/context/TrailSyncContext';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import StartupDiagnosticsGate from './src/components/StartupDiagnosticsGate';
+import GlobalErrorToast from './src/components/GlobalErrorToast';
 
 // Import all your page components
 import LoginPage from './src/pages/LoginPage';
@@ -133,6 +135,7 @@ function AppShell() {
         <TrailSyncProvider>
           <ThemedNavigation />
         </TrailSyncProvider>
+        <GlobalErrorToast />
       </StartupDiagnosticsGate>
     </AppErrorBoundary>
   );

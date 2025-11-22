@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { reportHandledError } from '../utils/globalErrorTracker';
 
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
@@ -18,6 +19,10 @@ export default class AppErrorBoundary extends React.Component {
     if (typeof this.props.onError === 'function') {
       this.props.onError(error, info);
     }
+    reportHandledError(error, {
+      boundary: 'AppErrorBoundary',
+      componentStack: info?.componentStack,
+    });
   }
 
   componentDidUpdate(prevProps) {
