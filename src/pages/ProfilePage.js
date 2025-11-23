@@ -164,6 +164,9 @@ const COMPLETION_STATUS_BADGES = {
   APPROVED: { label: 'Approved', background: '#E0F2FE', color: '#1D4ED8' },
 };
 
+const TRAIL_RECORDINGS_SCROLL_THRESHOLD = 4; // Number of trail cards to show before constraining height
+const TRAIL_RECORDINGS_MAX_HEIGHT = 420; // Roughly 4 cards tall before requiring scroll
+
 function formatCompletionDate(value) {
   if (!value) {
     return null;
@@ -344,6 +347,15 @@ function ProfilePageContent({ navigation, route }) {
   const trailRecordings = useMemo(
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
+  );
+  const hasOverflowingTrailRecordings = trailRecordings.length > TRAIL_RECORDINGS_SCROLL_THRESHOLD;
+  const trailRecordingScrollStyle = useMemo(
+    () => (hasOverflowingTrailRecordings ? { maxHeight: TRAIL_RECORDINGS_MAX_HEIGHT } : null),
+    [hasOverflowingTrailRecordings],
+  );
+  const trailRecordingScrollContentStyle = useMemo(
+    () => (hasOverflowingTrailRecordings ? { paddingBottom: 8 } : null),
+    [hasOverflowingTrailRecordings],
   );
   const organizerFollowerOptions = useMemo(
     () =>
@@ -1359,18 +1371,33 @@ function ProfilePageContent({ navigation, route }) {
             ) : null}
           </View>
           {trailRecordings.length ? (
-            trailRecordings.map((trail) => (
-              <TrailRecordingCard
-                key={trail.id ?? `${trail.startedAt}`}
-                trail={trail}
-                canShare={isOwnProfile}
-                onPress={handleTrailRecordingPress}
-                onRename={isOwnProfile ? handleStartRenameTrail : undefined}
-                onShareWithOrganizers={
-                  isOwnProfile ? handleOpenShareModal : undefined
-                }
-              />
-            ))
+            <View>
+              <ScrollView
+                nestedScrollEnabled
+                scrollEnabled={hasOverflowingTrailRecordings}
+                showsVerticalScrollIndicator={hasOverflowingTrailRecordings}
+                style={trailRecordingScrollStyle || undefined}
+                contentContainerStyle={trailRecordingScrollContentStyle || undefined}
+              >
+                {trailRecordings.map((trail) => (
+                  <TrailRecordingCard
+                    key={trail.id ?? `${trail.startedAt}`}
+                    trail={trail}
+                    canShare={isOwnProfile}
+                    onPress={handleTrailRecordingPress}
+                    onRename={isOwnProfile ? handleStartRenameTrail : undefined}
+                    onShareWithOrganizers={
+                      isOwnProfile ? handleOpenShareModal : undefined
+                    }
+                  />
+                ))}
+              </ScrollView>
+              {hasOverflowingTrailRecordings ? (
+                <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
+                  Scroll to see more recordings
+                </Text>
+              ) : null}
+            </View>
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
               {isOwnProfile
