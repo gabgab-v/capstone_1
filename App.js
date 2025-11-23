@@ -186,12 +186,10 @@ function AppShell() {
   const resetKey = user?.id ? `user-${user.id}` : 'guest';
   return (
     <AppErrorBoundary resetKey={resetKey}>
-      <StartupDiagnosticsGate>
-        <TrailSyncProvider>
-          <ThemedNavigation />
-        </TrailSyncProvider>
-        <GlobalErrorToast />
-      </StartupDiagnosticsGate>
+      <TrailSyncProvider>
+        <ThemedNavigation />
+      </TrailSyncProvider>
+      <GlobalErrorToast />
     </AppErrorBoundary>
   );
 }
@@ -200,11 +198,13 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <NotificationProvider>
-          <AuthProvider>
-            <AppShell />
-          </AuthProvider>
-        </NotificationProvider>
+        <StartupDiagnosticsGate>
+          <NotificationProvider>
+            <AuthProvider>
+              <AppShell />
+            </AuthProvider>
+          </NotificationProvider>
+        </StartupDiagnosticsGate>
       </ThemeProvider>
     </SafeAreaProvider>
   );
