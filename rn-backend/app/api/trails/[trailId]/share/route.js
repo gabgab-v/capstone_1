@@ -34,7 +34,8 @@ export async function POST(request, { params }) {
     let payload;
     try {
       payload = await request.json();
-    } catch (error) {
+    } catch (parseError) {
+      console.error(`POST /api/trails/${trailId}/share invalid JSON payload:`, parseError);
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
 

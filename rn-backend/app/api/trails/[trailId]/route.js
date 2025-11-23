@@ -61,7 +61,8 @@ export async function PATCH(request, context) {
     let payload;
     try {
       payload = await request.json();
-    } catch (error) {
+    } catch (parseError) {
+      console.error('PATCH /api/trails/' + trailId + ' invalid JSON payload:', parseError);
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
 

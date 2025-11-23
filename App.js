@@ -1,12 +1,12 @@
 import 'react-native-gesture-handler';
 import './global.css';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import 'react-native-url-polyfill/auto';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
@@ -31,6 +31,94 @@ import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+    this.handleRetry = this.handleRetry.bind(this);
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('App crashed:', error, info?.componentStack);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  handleRetry() {
+    this.setState({ error: null }, () => {
+      if (typeof this.props.onReset === 'function') {
+        this.props.onReset();
+      }
+    });
+  }
+
+  render() {
+    if (this.state.error) {
+      const message =
+        this.state.error?.message || 'Something went wrong while loading the app.';
+      return <AppErrorFallback message={message} onRetry={this.handleRetry} />;
+    }
+
+    return this.props.children;
+  }
+}
+
+function AppErrorFallback({ message, onRetry }) {
+  const { colors } = useTheme();
+
+  return (
+    <SafeAreaView style={[errorStyles.container, { backgroundColor: colors.background }]}>
+      <Text style={[errorStyles.title, { color: colors.textPrimary }]}>Something went wrong</Text>
+      <Text style={[errorStyles.message, { color: colors.textMuted }]}>{message}</Text>
+      <TouchableOpacity
+        onPress={onRetry}
+        activeOpacity={0.85}
+        style={[errorStyles.button, { backgroundColor: colors.accent }]}
+      >
+        <Text style={errorStyles.buttonLabel}>Restart app</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  button: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 999,
+  },
+  buttonLabel: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+});
 
 const Stack = createNativeStackNavigator();
 
@@ -117,14 +205,22 @@ function ThemedNavigation() {
 }
 
 export default function App() {
+  const [appResetKey, setAppResetKey] = useState(0);
+
+  const handleAppReset = () => {
+    setAppResetKey((current) => current + 1);
+  };
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <NotificationProvider>
-          <AuthProvider>
-            <TrailSyncProvider>
-              <ThemedNavigation />
-            </TrailSyncProvider>
+          <AuthProvider key={appResetKey}>
+            <AppErrorBoundary resetKey={appResetKey} onReset={handleAppReset}>
+              <TrailSyncProvider key={appResetKey}>
+                <ThemedNavigation />
+              </TrailSyncProvider>
+            </AppErrorBoundary>
           </AuthProvider>
         </NotificationProvider>
       </ThemeProvider>

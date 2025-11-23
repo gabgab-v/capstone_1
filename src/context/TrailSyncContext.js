@@ -59,18 +59,42 @@ export function TrailSyncProvider({ children }) {
   }, [refreshPending]);
 
   useEffect(() => {
-    let unsubscribe;
+    let isMounted = true;
+    let subscription = null;
+
     Network.getNetworkStateAsync()
-      .then(setNetworkState)
+      .then((state) => {
+        if (isMounted) {
+          setNetworkState(state);
+        }
+      })
       .catch((error) => {
-        console.warn('Unable to fetch network state:', error?.message);
+        console.warn('Unable to fetch network state:', error?.message || error);
       });
-    unsubscribe = Network.addNetworkStateListener((state) => {
-      setNetworkState(state);
-    });
+
+    if (typeof Network.addNetworkStateListener === 'function') {
+      try {
+        subscription = Network.addNetworkStateListener((state) => {
+          setNetworkState(state);
+        });
+      } catch (listenerError) {
+        console.warn(
+          'Unable to subscribe to network state changes:',
+          listenerError?.message || listenerError,
+        );
+      }
+    } else if (__DEV__) {
+      console.warn(
+        'Network state listener is unavailable on this platform; background sync may be delayed.',
+      );
+    }
+
     return () => {
-      if (unsubscribe && typeof unsubscribe.remove === 'function') {
-        unsubscribe.remove();
+      isMounted = false;
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      } else if (typeof subscription === 'function') {
+        subscription();
       }
     };
   }, []);
