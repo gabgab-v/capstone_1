@@ -163,9 +163,21 @@ const COMPLETION_STATUS_BADGES = {
   CONFIRMED: { label: 'Confirmed', background: '#DCFCE7', color: '#166534' },
   APPROVED: { label: 'Approved', background: '#E0F2FE', color: '#1D4ED8' },
 };
+const COMPLETED_TRAILS_SCROLL_THRESHOLD = 3; // Number of completion cards before constraining height
+const COMPLETED_TRAILS_MAX_HEIGHT = 360; // Roughly 3 completion cards tall
 
 const TRAIL_RECORDINGS_SCROLL_THRESHOLD = 4; // Number of trail cards to show before constraining height
 const TRAIL_RECORDINGS_MAX_HEIGHT = 420; // Roughly 4 cards tall before requiring scroll
+
+function toSearchableString(value) {
+  if (typeof value === 'string') {
+    return value.toLowerCase();
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value).toLowerCase();
+}
 
 function formatCompletionDate(value) {
   if (!value) {
@@ -329,6 +341,7 @@ function ProfilePageContent({ navigation, route }) {
   const [selectedOrganizerIds, setSelectedOrganizerIds] = useState(() => new Set());
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [trailRecordingSearch, setTrailRecordingSearch] = useState('');
+  const [completedTrailSearch, setCompletedTrailSearch] = useState('');
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -345,6 +358,80 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.completedEvents) ? profile.completedEvents : []),
     [profile?.completedEvents],
   );
+  const filteredCompletedEvents = useMemo(() => {
+    const query = completedTrailSearch.trim().toLowerCase();
+    if (!query) {
+      return completedEvents;
+    }
+    return completedEvents.filter((completion) => {
+      if (!completion) {
+        return false;
+      }
+      if (toSearchableString(completion.title ?? completion.eventName).includes(query)) {
+        return true;
+      }
+      if (toSearchableString(completion.locationName).includes(query)) {
+        return true;
+      }
+      if (toSearchableString(completion.organizer?.name ?? completion.organizer?.email).includes(query)) {
+        return true;
+      }
+      if (completion.completedAt) {
+        const completedAtString = toSearchableString(completion.completedAt);
+        if (completedAtString.includes(query)) {
+          return true;
+        }
+        const completedDate = new Date(completion.completedAt);
+        if (!Number.isNaN(completedDate.valueOf())) {
+          const friendlyDate = completedDate.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          if (toSearchableString(friendlyDate).includes(query)) {
+            return true;
+          }
+        }
+      }
+      const badge = getCompletionBadge(completion.bookingStatus);
+      if (toSearchableString(badge.label).includes(query)) {
+        return true;
+      }
+      return false;
+    });
+  }, [completedEvents, completedTrailSearch]);
+  const trimmedCompletedTrailSearch = completedTrailSearch.trim();
+  const completedSearchActive = trimmedCompletedTrailSearch.length > 0;
+  const noMatchingCompletedEvents = completedSearchActive && filteredCompletedEvents.length === 0;
+  const hasOverflowingCompletedEvents =
+    filteredCompletedEvents.length > COMPLETED_TRAILS_SCROLL_THRESHOLD;
+  const completedTrailsScrollStyle = useMemo(
+    () => (hasOverflowingCompletedEvents ? { maxHeight: COMPLETED_TRAILS_MAX_HEIGHT } : null),
+    [hasOverflowingCompletedEvents],
+  );
+  const completedTrailsScrollContentStyle = useMemo(
+    () => (hasOverflowingCompletedEvents ? { paddingBottom: 8 } : null),
+    [hasOverflowingCompletedEvents],
+  );
+  const completionStatusSummary = useMemo(() => {
+    if (!completedEvents.length) {
+      return [];
+    }
+    const counts = completedEvents.reduce((acc, completion) => {
+      const badge = getCompletionBadge(completion.bookingStatus);
+      const key = badge.label;
+      if (!acc[key]) {
+        acc[key] = { count: 0, color: badge.color, background: badge.background };
+      }
+      acc[key].count += 1;
+      acc[key].color = badge.color;
+      acc[key].background = badge.background;
+      return acc;
+    }, {});
+    return Object.entries(counts)
+      .map(([label, data]) => ({ label, ...data }))
+      .sort((a, b) => b.count - a.count);
+  }, [completedEvents]);
   const trailRecordings = useMemo(
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
@@ -358,16 +445,14 @@ function ProfilePageContent({ navigation, route }) {
       if (!trail) {
         return false;
       }
-      const safeLower = (value) =>
-        typeof value === 'string' ? value.toLowerCase() : String(value ?? '').toLowerCase();
-      if (safeLower(trail.label ?? 'Untitled Trail').includes(query)) {
+      if (toSearchableString(trail.label ?? 'Untitled Trail').includes(query)) {
         return true;
       }
-      if (safeLower(trail.locationName).includes(query)) {
+      if (toSearchableString(trail.locationName).includes(query)) {
         return true;
       }
       if (trail.startedAt) {
-        const startedAtString = safeLower(trail.startedAt);
+        const startedAtString = toSearchableString(trail.startedAt);
         if (startedAtString.includes(query)) {
           return true;
         }
@@ -378,7 +463,7 @@ function ProfilePageContent({ navigation, route }) {
             day: 'numeric',
             year: 'numeric',
           });
-          if (safeLower(friendlyStart).includes(query)) {
+          if (toSearchableString(friendlyStart).includes(query)) {
             return true;
           }
         }
@@ -386,7 +471,7 @@ function ProfilePageContent({ navigation, route }) {
       const distanceMeters = Number(trail.totalDistanceMeters);
       if (Number.isFinite(distanceMeters)) {
         const distanceLabel = `${(distanceMeters / 1000).toFixed(1)} km`;
-        if (safeLower(distanceLabel).includes(query)) {
+        if (toSearchableString(distanceLabel).includes(query)) {
           return true;
         }
       }
@@ -1390,19 +1475,88 @@ function ProfilePageContent({ navigation, route }) {
             ) : null}
           </View>
           {completedEvents.length ? (
-            completedEvents.map((completion, index) => {
-              if (!completion) {
-                return null;
-              }
-              const completionKey =
-                completion.bookingId ?? completion.id ?? `completion-${index}`;
-              return (
-                <CompletedTrailCard
-                  key={completionKey}
-                  completion={completion}
+            <View>
+              {completionStatusSummary.length ? (
+                <View className="mt-3 flex-row flex-wrap">
+                  {completionStatusSummary.map((summary) => (
+                    <View
+                      key={`summary-${summary.label}`}
+                      className="mr-2 mb-2 flex-row items-center rounded-full border px-3 py-1"
+                      style={{
+                        borderColor: summary.color ?? '#065f46',
+                        backgroundColor: summary.background ?? '#ffffff',
+                      }}
+                    >
+                      <View
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: summary.color ?? '#065f46' }}
+                      />
+                      <Text
+                        className="ml-2 text-xs font-semibold"
+                        style={{ color: summary.color ?? '#065f46' }}
+                      >
+                        {summary.label}
+                      </Text>
+                      <Text className="ml-1 text-xs text-gray-600 dark:text-slate-300">
+                        {summary.count}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <View className="mt-3 flex-row items-center rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                <Ionicons name="search" size={18} color="#94A3B8" />
+                <TextInput
+                  value={completedTrailSearch}
+                  onChangeText={setCompletedTrailSearch}
+                  placeholder="Search completed trails"
+                  placeholderTextColor="#94a3b8"
+                  className="ml-2 flex-1 text-sm text-gray-900 dark:text-slate-100"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
                 />
-              );
-            })
+                {completedTrailSearch ? (
+                  <TouchableOpacity onPress={() => setCompletedTrailSearch('')} className="pl-2">
+                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {completedSearchActive && !noMatchingCompletedEvents ? (
+                <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                  Showing {filteredCompletedEvents.length} of {completedEvents.length} completions
+                </Text>
+              ) : null}
+              {noMatchingCompletedEvents ? (
+                <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+                  No completed trails match "{trimmedCompletedTrailSearch}".
+                </Text>
+              ) : (
+                <View className="mt-3">
+                  <ScrollView
+                    nestedScrollEnabled
+                    scrollEnabled={hasOverflowingCompletedEvents}
+                    showsVerticalScrollIndicator={hasOverflowingCompletedEvents}
+                    style={completedTrailsScrollStyle || undefined}
+                    contentContainerStyle={completedTrailsScrollContentStyle || undefined}
+                  >
+                    {filteredCompletedEvents.map((completion, index) => {
+                      if (!completion) {
+                        return null;
+                      }
+                      const completionKey =
+                        completion.bookingId ?? completion.id ?? `completion-${index}`;
+                      return <CompletedTrailCard key={completionKey} completion={completion} />;
+                    })}
+                  </ScrollView>
+                  {hasOverflowingCompletedEvents ? (
+                    <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
+                      Scroll to see more completed trails
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </View>
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
               Organizer-marked completions will appear here once this hiker finishes an event.
