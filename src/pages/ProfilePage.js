@@ -328,6 +328,7 @@ function ProfilePageContent({ navigation, route }) {
   const [organizerOptionsLoaded, setOrganizerOptionsLoaded] = useState(false);
   const [selectedOrganizerIds, setSelectedOrganizerIds] = useState(() => new Set());
   const [shareSubmitting, setShareSubmitting] = useState(false);
+  const [trailRecordingSearch, setTrailRecordingSearch] = useState('');
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -348,7 +349,55 @@ function ProfilePageContent({ navigation, route }) {
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
   );
-  const hasOverflowingTrailRecordings = trailRecordings.length > TRAIL_RECORDINGS_SCROLL_THRESHOLD;
+  const filteredTrailRecordings = useMemo(() => {
+    const query = trailRecordingSearch.trim().toLowerCase();
+    if (!query) {
+      return trailRecordings;
+    }
+    return trailRecordings.filter((trail) => {
+      if (!trail) {
+        return false;
+      }
+      const safeLower = (value) =>
+        typeof value === 'string' ? value.toLowerCase() : String(value ?? '').toLowerCase();
+      if (safeLower(trail.label ?? 'Untitled Trail').includes(query)) {
+        return true;
+      }
+      if (safeLower(trail.locationName).includes(query)) {
+        return true;
+      }
+      if (trail.startedAt) {
+        const startedAtString = safeLower(trail.startedAt);
+        if (startedAtString.includes(query)) {
+          return true;
+        }
+        const startDate = new Date(trail.startedAt);
+        if (!Number.isNaN(startDate.valueOf())) {
+          const friendlyStart = startDate.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          if (safeLower(friendlyStart).includes(query)) {
+            return true;
+          }
+        }
+      }
+      const distanceMeters = Number(trail.totalDistanceMeters);
+      if (Number.isFinite(distanceMeters)) {
+        const distanceLabel = `${(distanceMeters / 1000).toFixed(1)} km`;
+        if (safeLower(distanceLabel).includes(query)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }, [trailRecordings, trailRecordingSearch]);
+  const trimmedTrailRecordingSearch = trailRecordingSearch.trim();
+  const searchActive = trimmedTrailRecordingSearch.length > 0;
+  const noMatchingTrailRecordings = searchActive && filteredTrailRecordings.length === 0;
+  const hasOverflowingTrailRecordings =
+    filteredTrailRecordings.length > TRAIL_RECORDINGS_SCROLL_THRESHOLD;
   const trailRecordingScrollStyle = useMemo(
     () => (hasOverflowingTrailRecordings ? { maxHeight: TRAIL_RECORDINGS_MAX_HEIGHT } : null),
     [hasOverflowingTrailRecordings],
@@ -1372,31 +1421,62 @@ function ProfilePageContent({ navigation, route }) {
           </View>
           {trailRecordings.length ? (
             <View>
-              <ScrollView
-                nestedScrollEnabled
-                scrollEnabled={hasOverflowingTrailRecordings}
-                showsVerticalScrollIndicator={hasOverflowingTrailRecordings}
-                style={trailRecordingScrollStyle || undefined}
-                contentContainerStyle={trailRecordingScrollContentStyle || undefined}
-              >
-                {trailRecordings.map((trail) => (
-                  <TrailRecordingCard
-                    key={trail.id ?? `${trail.startedAt}`}
-                    trail={trail}
-                    canShare={isOwnProfile}
-                    onPress={handleTrailRecordingPress}
-                    onRename={isOwnProfile ? handleStartRenameTrail : undefined}
-                    onShareWithOrganizers={
-                      isOwnProfile ? handleOpenShareModal : undefined
-                    }
-                  />
-                ))}
-              </ScrollView>
-              {hasOverflowingTrailRecordings ? (
-                <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
-                  Scroll to see more recordings
+              <View className="mt-3 flex-row items-center rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                <Ionicons name="search" size={18} color="#94A3B8" />
+                <TextInput
+                  value={trailRecordingSearch}
+                  onChangeText={setTrailRecordingSearch}
+                  placeholder="Search recordings"
+                  placeholderTextColor="#94a3b8"
+                  className="ml-2 flex-1 text-sm text-gray-900 dark:text-slate-100"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {trailRecordingSearch ? (
+                  <TouchableOpacity onPress={() => setTrailRecordingSearch('')} className="pl-2">
+                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {searchActive && !noMatchingTrailRecordings ? (
+                <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                  Showing {filteredTrailRecordings.length} of {trailRecordings.length} recordings
                 </Text>
               ) : null}
+              {noMatchingTrailRecordings ? (
+                <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+                  No recordings match "{trimmedTrailRecordingSearch}".
+                </Text>
+              ) : (
+                <View className="mt-3">
+                  <ScrollView
+                    nestedScrollEnabled
+                    scrollEnabled={hasOverflowingTrailRecordings}
+                    showsVerticalScrollIndicator={hasOverflowingTrailRecordings}
+                    style={trailRecordingScrollStyle || undefined}
+                    contentContainerStyle={trailRecordingScrollContentStyle || undefined}
+                  >
+                    {filteredTrailRecordings.map((trail) => (
+                      <TrailRecordingCard
+                        key={trail.id ?? `${trail.startedAt}`}
+                        trail={trail}
+                        canShare={isOwnProfile}
+                        onPress={handleTrailRecordingPress}
+                        onRename={isOwnProfile ? handleStartRenameTrail : undefined}
+                        onShareWithOrganizers={
+                          isOwnProfile ? handleOpenShareModal : undefined
+                        }
+                      />
+                    ))}
+                  </ScrollView>
+                  {hasOverflowingTrailRecordings ? (
+                    <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
+                      Scroll to see more recordings
+                    </Text>
+                  ) : null}
+                </View>
+              )}
             </View>
           ) : (
             <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
