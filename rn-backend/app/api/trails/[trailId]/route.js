@@ -61,7 +61,7 @@ export async function PATCH(request, context) {
     let payload;
     try {
       payload = await request.json();
-    } catch (_error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
 
