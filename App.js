@@ -3,7 +3,7 @@ import './src/setupErrorTracking';
 import './global.css';
 import React, { useMemo } from 'react';
 import 'react-native-url-polyfill/auto';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -40,13 +40,68 @@ import TrailRecorderPage from './src/pages/TrailRecorderPage';
 const Stack = createNativeStackNavigator();
 
 function AppNavigator() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, bootstrapError, retryBootstrap } = useAuth();
   const { colors } = useTheme();
+  const handleRetryBootstrap = React.useCallback(() => {
+    if (typeof retryBootstrap === 'function') {
+      retryBootstrap();
+    }
+  }, [retryBootstrap]);
 
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (bootstrapError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingHorizontal: 32,
+          backgroundColor: colors.background,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 20,
+            fontWeight: '700',
+            color: colors.textPrimary,
+            marginBottom: 8,
+            textAlign: 'center',
+          }}
+        >
+          Unable to start Pabukid
+        </Text>
+        <Text
+          style={{
+            color: colors.textMuted,
+            textAlign: 'center',
+            marginBottom: 24,
+          }}
+        >
+          {bootstrapError}
+        </Text>
+        <TouchableOpacity
+          onPress={handleRetryBootstrap}
+          style={{
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 999,
+            backgroundColor: colors.accent,
+            minWidth: 200,
+          }}
+          activeOpacity={0.88}
+        >
+          <Text style={{ textAlign: 'center', fontWeight: '600', color: '#ffffff' }}>
+            Try again
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
