@@ -244,7 +244,7 @@ function getCompletionBadge(status) {
   return { label: normalized, background: '#E5E7EB', color: '#374151' };
 }
 
-function CompletedTrailCard({ completion }) {
+function CompletedTrailCard({ completion, onPress }) {
   if (!completion) {
     return null;
   }
@@ -259,8 +259,20 @@ function CompletedTrailCard({ completion }) {
     ? { uri: completion.imageUrl }
     : { uri: COMPLETION_IMAGE_PLACEHOLDER };
 
+  const CardComponent = onPress ? TouchableOpacity : View;
+  const cardProps = onPress
+    ? {
+        activeOpacity: 0.85,
+        onPress: () => onPress && onPress(completion),
+        accessibilityRole: 'button',
+      }
+    : {};
+
   return (
-    <View className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+    <CardComponent
+      {...cardProps}
+      className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+    >
       <View className="flex-row">
         <Image
           source={imageSource}
@@ -312,7 +324,21 @@ function CompletedTrailCard({ completion }) {
           ))}
         </View>
       ) : null}
-    </View>
+      {onPress ? (
+        <View className="mt-3 flex-row items-center justify-between">
+          <View className="flex-row items-center rounded-full bg-amber-100 px-3 py-1 dark:bg-amber-500/20">
+            <Ionicons name="trophy" size={14} color="#b45309" />
+            <Text className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-100">
+              Achievement
+            </Text>
+          </View>
+          <View className="flex-row items-center">
+            <Text className="text-xs font-semibold text-green-700 dark:text-emerald-200">View</Text>
+            <Ionicons name="chevron-forward" size={14} color="#16a34a" />
+          </View>
+        </View>
+      ) : null}
+    </CardComponent>
   );
 }
 
@@ -334,6 +360,7 @@ function ProfilePageContent({ navigation, route }) {
   const [trailLabelDraft, setTrailLabelDraft] = useState('');
   const [savingTrailLabel, setSavingTrailLabel] = useState(false);
   const [sharingTrail, setSharingTrail] = useState(null);
+  const [selectedCompletion, setSelectedCompletion] = useState(null);
   const [organizerOptions, setOrganizerOptions] = useState([]);
   const [organizerOptionsLoading, setOrganizerOptionsLoading] = useState(false);
   const [organizerOptionsError, setOrganizerOptionsError] = useState(null);
@@ -432,6 +459,21 @@ function ProfilePageContent({ navigation, route }) {
       .map(([label, data]) => ({ label, ...data }))
       .sort((a, b) => b.count - a.count);
   }, [completedEvents]);
+  const selectedCompletionBadge = useMemo(
+    () => (selectedCompletion ? getCompletionBadge(selectedCompletion.bookingStatus) : null),
+    [selectedCompletion],
+  );
+  const selectedCompletionMetrics = useMemo(
+    () => (selectedCompletion ? buildCompletionMetrics(selectedCompletion) : []),
+    [selectedCompletion],
+  );
+  const selectedCompletionDateLabel = useMemo(
+    () =>
+      selectedCompletion
+        ? formatCompletionDate(selectedCompletion.completedAt ?? selectedCompletion.recordedAt)
+        : null,
+    [selectedCompletion?.completedAt, selectedCompletion?.recordedAt],
+  );
   const trailRecordings = useMemo(
     () => (Array.isArray(profile?.trailRecordings) ? profile.trailRecordings : []),
     [profile?.trailRecordings],
@@ -934,6 +976,50 @@ function ProfilePageContent({ navigation, route }) {
       });
     },
     [navigation, profile?.email, profile?.id, profile?.name],
+  );
+
+  const handleCompletionPress = useCallback((completion) => {
+    if (!completion) {
+      return;
+    }
+    setSelectedCompletion(completion);
+  }, []);
+
+  const handleCloseCompletionPreview = useCallback(() => {
+    setSelectedCompletion(null);
+  }, []);
+
+  const handleViewCompletionEvent = useCallback(
+    (completion) => {
+      if (!completion?.id) {
+        Alert.alert('Event unavailable', 'We could not open this completed event right now.');
+        return;
+      }
+
+      const normalizedBookingStatus =
+        typeof completion.bookingStatus === 'string' && completion.bookingStatus.trim()
+          ? completion.bookingStatus.trim().toUpperCase()
+          : 'COMPLETED';
+
+      const eventPayload = {
+        ...completion,
+        organizerId: completion.organizer?.id ?? completion.organizerId ?? null,
+        status: 'COMPLETED',
+        completedAt: completion.completedAt ?? completion.recordedAt ?? null,
+      };
+
+      const viewerBooking =
+        isOwnProfile && (completion.bookingId || completion.bookingStatus)
+          ? { id: completion.bookingId ?? null, status: normalizedBookingStatus }
+          : null;
+
+      navigation.navigate('EventDetails', {
+        event: eventPayload,
+        viewerBooking,
+      });
+      setSelectedCompletion(null);
+    },
+    [isOwnProfile, navigation],
   );
 
   const handleTrailRecordingPress = useCallback((trail) => {
@@ -1546,7 +1632,13 @@ function ProfilePageContent({ navigation, route }) {
                       }
                       const completionKey =
                         completion.bookingId ?? completion.id ?? `completion-${index}`;
-                      return <CompletedTrailCard key={completionKey} completion={completion} />;
+                      return (
+                        <CompletedTrailCard
+                          key={completionKey}
+                          completion={completion}
+                          onPress={handleCompletionPress}
+                        />
+                      );
                     })}
                   </ScrollView>
                   {hasOverflowingCompletedEvents ? (
@@ -1691,6 +1783,104 @@ function ProfilePageContent({ navigation, route }) {
           }
         />
       </KeyboardAvoidingView>
+      <Modal
+        visible={!!selectedCompletion}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseCompletionPreview}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70 px-4">
+          {selectedCompletion ? (
+            <View
+              className="w-full rounded-2xl bg-white p-4 dark:bg-slate-900"
+              style={{ maxHeight: 620 }}
+            >
+              <View className="flex-row items-center">
+                <View className="h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-500/20">
+                  <Ionicons name="trophy" size={22} color="#b45309" />
+                </View>
+                <View className="ml-3 flex-1">
+                  <Text className="text-base font-semibold text-gray-900 dark:text-slate-100">
+                    Achievement unlocked
+                  </Text>
+                  <Text className="text-xs text-gray-500 dark:text-slate-400">
+                    {selectedCompletionDateLabel
+                      ? `Completed ${selectedCompletionDateLabel}`
+                      : 'Marked as completed by the organizer'}
+                  </Text>
+                </View>
+                {selectedCompletionBadge ? (
+                  <View
+                    className="ml-2 rounded-full px-2 py-0.5"
+                    style={{ backgroundColor: selectedCompletionBadge.background }}
+                  >
+                    <Text
+                      className="text-[11px] font-semibold uppercase tracking-wide"
+                      style={{ color: selectedCompletionBadge.color }}
+                    >
+                      {selectedCompletionBadge.label}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Image
+                source={
+                  selectedCompletion?.imageUrl
+                    ? { uri: selectedCompletion.imageUrl }
+                    : { uri: COMPLETION_IMAGE_PLACEHOLDER }
+                }
+                className="mt-4 h-48 w-full rounded-xl bg-gray-200 dark:bg-slate-800"
+                resizeMode="cover"
+              />
+
+              <Text className="mt-4 text-lg font-semibold text-gray-900 dark:text-slate-100">
+                {selectedCompletion.title ?? selectedCompletion.eventName ?? 'Guided adventure'}
+              </Text>
+              <Text className="mt-1 text-sm text-gray-600 dark:text-slate-300">
+                {selectedCompletion.locationName ?? 'Location will be shared with confirmed hikers.'}
+              </Text>
+              {selectedCompletion?.organizer?.name || selectedCompletion?.organizer?.email ? (
+                <Text className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                  Hosted by {selectedCompletion.organizer?.name ?? selectedCompletion.organizer?.email}
+                </Text>
+              ) : null}
+
+              {selectedCompletionMetrics.length ? (
+                <View className="mt-3 flex-row flex-wrap">
+                  {selectedCompletionMetrics.map((metric, index) => (
+                    <View
+                      key={`selected-metric-${metric}-${index}`}
+                      className="mr-2 mb-2 rounded-full bg-gray-100 px-3 py-1 dark:bg-slate-800"
+                    >
+                      <Text className="text-xs font-medium text-gray-700 dark:text-slate-200">
+                        {metric}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View className="mt-4 flex-row space-x-3">
+                <TouchableOpacity
+                  onPress={handleCloseCompletionPreview}
+                  className="flex-1 rounded-full border border-gray-300 py-2 dark:border-slate-700"
+                >
+                  <Text className="text-center font-semibold text-gray-700 dark:text-slate-100">
+                    Close
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleViewCompletionEvent(selectedCompletion)}
+                  className="flex-1 rounded-full bg-emerald-600 py-2"
+                >
+                  <Text className="text-center font-semibold text-white">View event</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
       <Modal visible={!!trailPreview} transparent animationType="slide" onRequestClose={handleCloseTrailPreview}>
         <View className="flex-1 items-center justify-center bg-black/70 p-4">
           {trailPreview ? (
