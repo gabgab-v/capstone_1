@@ -33,6 +33,14 @@ function toInt(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+function normalizeAge(value) {
+  const age = toInt(value);
+  if (!Number.isFinite(age) || age <= 0) {
+    return null;
+  }
+  return Math.min(Math.max(age, 10), 100);
+}
+
 function toDate(value) {
   if (!value) {
     return null;
@@ -309,6 +317,11 @@ export async function PATCH(request, { params }) {
       minParticipants = Math.max(0, parsedMin ?? 0);
     }
 
+    let minAge = existingEvent.minAge ?? null;
+    if (Object.prototype.hasOwnProperty.call(body, "minAge")) {
+      minAge = normalizeAge(body?.minAge);
+    }
+
     let maxParticipants = existingEvent.maxParticipants ?? null;
     if (Object.prototype.hasOwnProperty.call(body, "maxParticipants")) {
       const parsedMax = toInt(body?.maxParticipants);
@@ -395,6 +408,7 @@ export async function PATCH(request, { params }) {
       maxParticipants,
       status,
       announceAt,
+      minAge,
       trailType: hasTrailTypeField ? normalizedTrailType : existingEvent.trailType,
       trailId: selectedTrail.id,
       trailGeoJson: selectedTrail.geoJson ?? sanitizeGeoJson(body?.trailGeoJson) ?? existingEvent.trailGeoJson,

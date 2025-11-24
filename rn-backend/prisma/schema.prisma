@@ -70,6 +70,7 @@ model Event {
   steps                Int?
   elevationM           Float?
   price                Int      @default(0)
+  minAge               Int?
   imageUrl             String?
   difficulty           EventDifficulty @default(BEGINNER)
   minParticipants      Int      @default(0)

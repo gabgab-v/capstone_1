@@ -27,6 +27,7 @@ import {
   cosineSimilarity,
   buildMatchBreakdown,
   magnitude,
+  deriveUserAgeYears,
 } from '../../utils/matchScoring';
 
 const BASE_TABS = [
@@ -231,6 +232,11 @@ function getDetailRows(event, locationLabel) {
 
   if (sanitizeText(event.gcashNumber)) {
     rows.push({ label: 'GCash number', value: event.gcashNumber.trim() });
+  }
+
+  const minAge = Number(event?.minAge);
+  if (Number.isFinite(minAge) && minAge > 0) {
+    rows.push({ label: 'Minimum age', value: `${Math.round(minAge)}+` });
   }
 
   rows.push({ label: 'Organizer', value: sanitizeText(event.organizer?.name) ?? 'Unknown organizer' });
@@ -538,6 +544,55 @@ export default function EventDetailsPage({ route, navigation }) {
       breakdown: Array.isArray(breakdown) ? breakdown : [],
     };
   }, [preferenceVector, event, user]);
+
+  const userAgeYears = useMemo(() => deriveUserAgeYears(user), [user]);
+  const eventMinAge = useMemo(() => {
+    const value = Number(event?.minAge);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [event?.minAge]);
+
+  const ageNotice = useMemo(() => {
+    const age = Number.isFinite(userAgeYears) ? Math.floor(userAgeYears) : null;
+
+    if (eventMinAge) {
+      if (age === null) {
+        return {
+          tone: 'info',
+          message: `This hike recommends ${eventMinAge}+ hikers. Add your birthdate so we can confirm eligibility and fine-tune your match score.`,
+        };
+      }
+      if (age < eventMinAge) {
+        const gap = eventMinAge - age;
+        const gapLabel = gap === 1 ? '1 year' : `${gap} years`;
+        return {
+          tone: 'warning',
+          message: `Recommended for ${eventMinAge}+ hikers. You are ${age}, about ${gapLabel} below the guidance—consider a different event or join only with guardian approval.`,
+        };
+      }
+      if (age === eventMinAge) {
+        return {
+          tone: 'success',
+          message: `You meet the ${eventMinAge}+ age recommendation. Hike responsibly and stay hydrated.`,
+        };
+      }
+      return {
+        tone: 'success',
+        message: `You're ${age}, above the ${eventMinAge}+ guidance. Keep fitness and safety in mind for this route.`,
+      };
+    }
+
+    if (age === null) {
+      return {
+        tone: 'info',
+        message: 'Add your birthdate so we can include age in your match score and safety reminders.',
+      };
+    }
+
+    return {
+      tone: 'info',
+      message: `You're ${age}. This organizer did not set age guidance, so choose responsibly based on your ability.`,
+    };
+  }, [eventMinAge, userAgeYears]);
 
   useEffect(() => {
     if (!organizerId) {
@@ -1152,6 +1207,22 @@ export default function EventDetailsPage({ route, navigation }) {
             </View>
           </View>
 
+          {ageNotice ? (
+            <View
+              style={[
+                styles.ageNotice,
+                ageNotice.tone === 'warning'
+                  ? styles.ageNoticeWarning
+                  : ageNotice.tone === 'success'
+                  ? styles.ageNoticeSuccess
+                  : styles.ageNoticeInfo,
+              ]}
+            >
+              <Text style={styles.ageNoticeTitle}>Age guidance</Text>
+              <Text style={styles.ageNoticeBody}>{ageNotice.message}</Text>
+            </View>
+          ) : null}
+
           {matchInsight && (
             <View
               style={[
@@ -1577,6 +1648,17 @@ const styles = StyleSheet.create({
   },
   locationChipText: { color: '#166534', fontSize: 13, fontWeight: '600', flexShrink: 1 },
   locationIcon: { marginRight: 6 },
+  ageNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  ageNoticeInfo: { backgroundColor: '#EFF6FF', borderColor: '#93C5FD' },
+  ageNoticeWarning: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  ageNoticeSuccess: { backgroundColor: '#ECFDF3', borderColor: '#86EFAC' },
+  ageNoticeTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
+  ageNoticeBody: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
   matchCard: {
     borderWidth: 1,
     borderRadius: 16,

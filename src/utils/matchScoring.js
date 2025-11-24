@@ -9,6 +9,7 @@ const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
 const MAX_DISTANCE_KM = 40;
 const MAX_ELEVATION_M = 2000;
+const MAX_AGE_YEARS = 80;
 const MIN_BREAKDOWN_SHARE = 0.01;
 
 function clamp(value, min = 0, max = 1) {
@@ -16,6 +17,54 @@ function clamp(value, min = 0, max = 1) {
     return min;
   }
   return Math.min(max, Math.max(min, value));
+}
+
+function deriveUserAgeYears(user) {
+  const birthdateValue = user?.birthdate ?? user?.birthDate ?? null;
+  if (!birthdateValue) {
+    return null;
+  }
+  const birthdate = new Date(birthdateValue);
+  if (Number.isNaN(birthdate.valueOf())) {
+    return null;
+  }
+  const now = new Date();
+  let age = now.getFullYear() - birthdate.getFullYear();
+  const monthDiff = now.getMonth() - birthdate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthdate.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+function normalizeAgeYears(ageYears) {
+  if (!Number.isFinite(ageYears) || ageYears <= 0) {
+    return 0;
+  }
+  return clamp(ageYears / MAX_AGE_YEARS);
+}
+
+function deriveEventAgeScore(event, userAgeYears) {
+  const minAge = Number(event?.minAge);
+  const normalizedMinAge = normalizeAgeYears(minAge);
+  const normalizedUserAge = normalizeAgeYears(userAgeYears);
+
+  if (!Number.isFinite(minAge) || minAge <= 0) {
+    return normalizedUserAge;
+  }
+
+  if (!Number.isFinite(userAgeYears)) {
+    return normalizedMinAge ? clamp(normalizedMinAge * 0.85 + 0.05) : 0;
+  }
+
+  if (userAgeYears < minAge) {
+    const gap = minAge - userAgeYears;
+    const penalty = clamp(gap / 10, 0, 0.85);
+    return clamp(normalizedMinAge * (1 - penalty));
+  }
+
+  const headroomBoost = clamp((userAgeYears - minAge) / 40, 0, 0.25);
+  return clamp(normalizedMinAge + headroomBoost);
 }
 
 function normalizeDifficultyValue(value) {
@@ -204,6 +253,7 @@ function computeUserVector(user) {
     return null;
   }
 
+  const userAgeYears = deriveUserAgeYears(user);
   const durationScore = normalizeDuration(Number(user.preferredDurationHrs));
   const distanceScore = normalizeDistance(Number(user.preferredDistanceKm));
   const elevationScore = normalizeElevation(Number(user.preferredElevationM));
@@ -217,6 +267,7 @@ function computeUserVector(user) {
       ? budgetRange.min
       : 0,
   );
+  const ageScore = normalizeAgeYears(userAgeYears);
 
   return [
     levelToScore(user.experienceLevel),
@@ -226,6 +277,7 @@ function computeUserVector(user) {
     user?.preferredTrailType ? 1 : 0,
     distanceScore,
     elevationScore,
+    ageScore,
   ];
 }
 
@@ -248,8 +300,19 @@ function computeEventVector(event, user) {
       : 0;
   const distanceScore = normalizeDistance(Number(event?.distanceKm));
   const elevationScore = normalizeElevation(Number(event?.elevationM));
+  const userAgeYears = deriveUserAgeYears(user);
+  const ageScore = deriveEventAgeScore(event, userAgeYears);
 
-  return [difficultyScore, difficultyScore, durationScore, priceScore, trailScore, distanceScore, elevationScore];
+  return [
+    difficultyScore,
+    difficultyScore,
+    durationScore,
+    priceScore,
+    trailScore,
+    distanceScore,
+    elevationScore,
+    ageScore,
+  ];
 }
 
 function dotProduct(vectorA, vectorB) {
@@ -317,6 +380,8 @@ function buildMatchBreakdown({
   const eventDistance = Number(event?.distanceKm);
   const preferredElevation = Number(user?.preferredElevationM);
   const eventElevation = Number(event?.elevationM);
+  const userAgeYears = deriveUserAgeYears(user);
+  const eventMinAge = Number(event?.minAge);
   const preferredTrailRaw =
     typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
   const preferredTrail = preferredTrailRaw || '';
@@ -342,6 +407,8 @@ function buildMatchBreakdown({
     eventDistance,
     preferredElevation,
     eventElevation,
+    userAgeYears,
+    eventMinAge,
     preferredTrail,
     eventTrailType,
     matchesTrail,
@@ -544,6 +611,39 @@ function buildMatchBreakdown({
         return `Trail description has not mentioned ${preferredTrail} yet.`;
       },
     },
+    {
+      key: 'age',
+      label: 'Age suitability',
+      indices: [7],
+      detail: ({ userAgeYears: age, eventMinAge: minAgeRaw }) => {
+        const minAge = Number(minAgeRaw);
+        const hasMinAge = Number.isFinite(minAge) && minAge > 0;
+        const userAge = Number.isFinite(age) ? Math.floor(age) : null;
+
+        if (!hasMinAge && !userAge) {
+          return 'Add your birthdate so we can tailor hikes to your age and safety needs.';
+        }
+        if (hasMinAge && !userAge) {
+          return `Organizer recommends ${minAge}+ hikers. Add your birthdate to confirm you meet it.`;
+        }
+        if (!hasMinAge && userAge) {
+          return `You are ${userAge}. This hike has no age guidance, so join responsibly.`;
+        }
+        if (userAge < minAge) {
+          const gap = minAge - userAge;
+          const gapLabel = gap === 1 ? '1 year' : `${gap} years`;
+          return `Recommended for ${minAge}+ hikers. You are ${userAge}, about ${gapLabel} under the guidance—consider a different event or get guardian clearance.`;
+        }
+        if (userAge === minAge) {
+          return `You meet the ${minAge}+ age recommendation.`;
+        }
+        const headroom = userAge - minAge;
+        if (headroom <= 5) {
+          return `You are ${userAge} and this hike suggests ${minAge}+, which fits you.`;
+        }
+        return `You are ${userAge}, comfortably above the ${minAge}+ guidance.`;
+      },
+    },
   ];
 
   return groups
@@ -555,21 +655,25 @@ function buildMatchBreakdown({
       }, 0);
 
       const contribution = raw / denominator;
-      if (contribution <= 0 || contribution < minShare) {
-        return null;
-      }
-
       const detail = group.detail(context);
       if (!detail) {
         return null;
       }
 
+       const includeDespiteShare = group.key === 'age' && detail;
+       if (!includeDespiteShare && (contribution <= 0 || contribution < minShare)) {
+         return null;
+       }
+
+       const effectiveContribution =
+         contribution > 0 && contribution >= minShare ? contribution : minShare;
+
       return {
         key: group.key,
         label: group.label,
         detail,
-        contribution,
-        percent: Math.max(1, Math.round(contribution * 100)),
+        contribution: effectiveContribution,
+        percent: Math.max(1, Math.round(effectiveContribution * 100)),
       };
     })
     .filter(Boolean)
@@ -582,6 +686,7 @@ export {
   MAX_PRICE_PHP,
   MAX_DISTANCE_KM,
   MAX_ELEVATION_M,
+  MAX_AGE_YEARS,
   MIN_BREAKDOWN_SHARE,
   normalizeDifficultyValue,
   levelToScore,
@@ -601,4 +706,7 @@ export {
   cosineSimilarity,
   buildMatchBreakdown,
   formatPhp,
+  deriveUserAgeYears,
+  normalizeAgeYears,
+  deriveEventAgeScore,
 };

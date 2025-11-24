@@ -412,6 +412,9 @@ export default function CreateEventPage({ route, navigation }) {
   const [price, setPrice] = useState(() =>
     Number.isFinite(Number(eventFromParams?.price)) ? String(eventFromParams.price) : '',
   );
+  const [minAge, setMinAge] = useState(() =>
+    Number.isFinite(Number(eventFromParams?.minAge)) ? String(eventFromParams.minAge) : '',
+  );
   const [difficulty, setDifficulty] = useState(() =>
     resolveDifficultyValue(eventFromParams?.difficulty),
   );
@@ -530,6 +533,7 @@ export default function CreateEventPage({ route, navigation }) {
       Number.isFinite(Number(activeEvent.elevationM)) ? String(activeEvent.elevationM) : '',
     );
     setPrice(Number.isFinite(Number(activeEvent.price)) ? String(activeEvent.price) : '');
+    setMinAge(Number.isFinite(Number(activeEvent.minAge)) ? String(activeEvent.minAge) : '');
     setDifficulty(resolveDifficultyValue(activeEvent.difficulty));
     setGcashNumber(sanitizeGcashInput(activeEvent.gcashNumber ?? ''));
     setTrailType(activeEvent.trailType ?? '');
@@ -843,6 +847,22 @@ export default function CreateEventPage({ route, navigation }) {
       return;
     }
 
+    const minAgeTrimmed = (minAge ?? '').trim();
+    let normalizedMinAge = null;
+    if (minAgeTrimmed.length > 0) {
+      const parsedMinAge = toIntOrNull(minAgeTrimmed);
+      if (
+        parsedMinAge === null ||
+        parsedMinAge < 10 ||
+        parsedMinAge > 100
+      ) {
+        Alert.alert('Invalid age', 'Enter a minimum age between 10 and 100, or leave it blank.');
+        setActiveTab('details');
+        return;
+      }
+      normalizedMinAge = parsedMinAge;
+    }
+
     const normalizedStatus = EVENT_STATUS_SET.has(status) ? status : DEFAULT_EVENT_STATUS;
 
     const targetEventId = activeEvent?.id ?? eventIdFromParams ?? null;
@@ -932,6 +952,7 @@ export default function CreateEventPage({ route, navigation }) {
         maxParticipants: normalizedMaxParticipants,
         status: normalizedStatus,
         trailType: normalizedTrailType,
+        minAge: normalizedMinAge,
       };
 
       let savedEvent;
@@ -1009,6 +1030,7 @@ export default function CreateEventPage({ route, navigation }) {
     eventIdFromParams,
     onEventUpdated,
     navigation,
+    minAge,
   ]);
 
   const selectedLocationText =
@@ -1189,6 +1211,20 @@ export default function CreateEventPage({ route, navigation }) {
                   keyboardType="numeric"
                   placeholder="0"
                 />
+              </View>
+
+              <View style={styles.infoField}>
+                <Text style={styles.infoLabel}>Minimum age</Text>
+                <TextInput
+                  style={styles.input}
+                  value={minAge}
+                  onChangeText={setMinAge}
+                  keyboardType="numeric"
+                  placeholder="e.g., 18"
+                />
+                <Text style={styles.helperText}>
+                  We remind hikers of this guidance and factor it into matching.
+                </Text>
               </View>
 
               <View style={styles.infoField}>

@@ -56,6 +56,15 @@ function toInt(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+function normalizeAge(value) {
+  const age = toInt(value);
+  if (!Number.isFinite(age) || age <= 0) {
+    return null;
+  }
+  const clamped = Math.min(Math.max(age, 10), 100);
+  return clamped;
+}
+
 function toDate(value) {
   if (!value) {
     return null;
@@ -161,6 +170,7 @@ export async function POST(req) {
     const steps = toInt(body?.steps);
     const elevationM = toFloat(body?.elevationM);
     const price = toInt(body?.price) ?? 0;
+    const minAge = normalizeAge(body?.minAge);
 
     const startsAt = toDate(body?.startsAt);
     if (!startsAt) {
@@ -266,6 +276,7 @@ export async function POST(req) {
       maxParticipants,
       status,
       announceAt,
+      minAge,
     };
 
     if (status === 'COMPLETED') {
