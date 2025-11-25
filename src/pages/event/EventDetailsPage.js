@@ -28,6 +28,7 @@ import {
   buildMatchBreakdown,
   magnitude,
   deriveUserAgeYears,
+  getEventDifficultyLabel,
 } from '../../utils/matchScoring';
 
 const BASE_TABS = [
@@ -593,6 +594,43 @@ export default function EventDetailsPage({ route, navigation }) {
       message: `You're ${age}. This organizer did not set age guidance, so choose responsibly based on your ability.`,
     };
   }, [eventMinAge, userAgeYears]);
+
+  const physicalReminder = useMemo(() => {
+    if (!event) {
+      return null;
+    }
+    const distance = Number(event.distanceKm);
+    const elevation = Number(event.elevationM);
+    const duration = Number(event.durationHrs);
+    const difficulty = getEventDifficultyLabel(event);
+    const parts = [];
+
+    if (Number.isFinite(distance) && distance > 0) {
+      parts.push(`${distance.toFixed(1)} km`);
+    }
+    if (Number.isFinite(elevation) && elevation > 0) {
+      parts.push(`${Math.round(elevation)} m gain`);
+    }
+    if (Number.isFinite(duration) && duration > 0) {
+      parts.push(`${duration.toFixed(1)} hrs`);
+    }
+    const metrics = parts.length ? parts.join(' • ') : null;
+    const difficultyText = difficulty ? difficulty.toLowerCase() : null;
+
+    let body = 'Make sure you feel physically fit and cleared to join. Listen to your body and avoid pushing beyond your limits.';
+    if (metrics && difficultyText) {
+      body = `This route is ${metrics} and rated ${difficultyText}. Confirm you can comfortably handle this effort and have no health restrictions for strenuous activity.`;
+    } else if (metrics) {
+      body = `This route is ${metrics}. Confirm you can comfortably handle that effort and have no health restrictions for strenuous activity.`;
+    } else if (difficultyText) {
+      body = `Rated ${difficultyText}. Ensure your cardio and strength match this level, and avoid joining if you have health restrictions.`;
+    }
+
+    return {
+      title: 'Physical readiness',
+      message: `${body} If you have medical conditions, consult a doctor before joining and bring necessary meds/clearance.`,
+    };
+  }, [event]);
 
   useEffect(() => {
     if (!organizerId) {
@@ -1223,6 +1261,13 @@ export default function EventDetailsPage({ route, navigation }) {
             </View>
           ) : null}
 
+          {physicalReminder ? (
+            <View style={styles.readinessNotice}>
+              <Text style={styles.readinessTitle}>{physicalReminder.title}</Text>
+              <Text style={styles.readinessBody}>{physicalReminder.message}</Text>
+            </View>
+          ) : null}
+
           {matchInsight && (
             <View
               style={[
@@ -1659,6 +1704,16 @@ const styles = StyleSheet.create({
   ageNoticeSuccess: { backgroundColor: '#ECFDF3', borderColor: '#86EFAC' },
   ageNoticeTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
   ageNoticeBody: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
+  readinessNotice: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  readinessTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
+  readinessBody: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
   matchCard: {
     borderWidth: 1,
     borderRadius: 16,
