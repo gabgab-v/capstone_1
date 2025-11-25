@@ -20,6 +20,7 @@ const userSelect = {
   preferredDistanceKm: true,
   preferredElevationM: true,
   budgetRange: true,
+  previousPreferences: true,
   role: true,
   organizerRequestPending: true,
   organizerApplication: {
@@ -86,6 +87,7 @@ export async function GET(request) {
         preferredDistanceKm: authUser.preferredDistanceKm,
         preferredElevationM: authUser.preferredElevationM,
         budgetRange: authUser.budgetRange,
+        previousPreferences: authUser.previousPreferences ?? null,
         role: authUser.role,
         organizerRequestPending: authUser.organizerRequestPending ?? false,
         organizerApplication: null,

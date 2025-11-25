@@ -369,6 +369,7 @@ function ProfilePageContent({ navigation, route }) {
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [trailRecordingSearch, setTrailRecordingSearch] = useState('');
   const [completedTrailSearch, setCompletedTrailSearch] = useState('');
+  const [preferenceView, setPreferenceView] = useState('current');
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -791,6 +792,64 @@ function ProfilePageContent({ navigation, route }) {
   }, [authUser?.id, routeUserId]);
 
   const isOwnProfile = profile ? profile.isSelf ?? authUser?.id === profile.id : authUser?.id === viewedUserId;
+  const previousPreferences = useMemo(() => {
+    const snapshot = profile?.previousPreferences;
+    if (!snapshot || typeof snapshot !== 'object') {
+      return null;
+    }
+    return {
+      experienceLevel: snapshot.experienceLevel ?? null,
+      preferredDifficulty: snapshot.preferredDifficulty ?? null,
+      preferredTrailType: snapshot.preferredTrailType ?? null,
+      preferredDurationHrs: snapshot.preferredDurationHrs ?? null,
+      preferredDistanceKm: snapshot.preferredDistanceKm ?? null,
+      preferredElevationM: snapshot.preferredElevationM ?? null,
+      budgetRange: snapshot.budgetRange ?? null,
+      capturedAt: snapshot.capturedAt ?? null,
+    };
+  }, [profile?.previousPreferences]);
+  const hasPreviousPreferences = useMemo(() => {
+    if (!previousPreferences) {
+      return false;
+    }
+    return Boolean(
+      previousPreferences.experienceLevel ||
+        previousPreferences.preferredDifficulty ||
+        previousPreferences.preferredTrailType ||
+        previousPreferences.preferredDurationHrs ||
+        previousPreferences.preferredDistanceKm ||
+        previousPreferences.preferredElevationM ||
+        previousPreferences.budgetRange,
+    );
+  }, [previousPreferences]);
+  const isShowingPreviousPreferences = preferenceView === 'previous' && hasPreviousPreferences;
+  const preferenceTimestampLabel = useMemo(() => {
+    if (!previousPreferences?.capturedAt) {
+      return null;
+    }
+    const timestamp = new Date(previousPreferences.capturedAt);
+    if (Number.isNaN(timestamp.valueOf())) {
+      return null;
+    }
+    return timestamp.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [previousPreferences?.capturedAt]);
+  const preferenceSource = isShowingPreviousPreferences && previousPreferences ? previousPreferences : profile;
+
+  useEffect(() => {
+    if (preferenceView === 'previous' && !hasPreviousPreferences) {
+      setPreferenceView('current');
+    }
+  }, [hasPreviousPreferences, preferenceView]);
+
+  useEffect(() => {
+    setPreferenceView('current');
+  }, [profile?.id]);
 
   useEffect(() => {
     if (!viewedUserId) {
@@ -1276,15 +1335,40 @@ function ProfilePageContent({ navigation, route }) {
     );
   }
 
+  const formatPreferenceNumber = (value, suffix) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return `${numeric} ${suffix}`;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return `${trimmed} ${suffix}`;
+      }
+    }
+    return null;
+  };
+
   const preferenceItems = [
-    { label: 'Experience Level', value: profile.experienceLevel },
-    { label: 'Preferred Difficulty', value: profile.preferredDifficulty },
-    { label: 'Preferred Trail Type', value: profile.preferredTrailType },
+    { label: 'Experience Level', value: preferenceSource?.experienceLevel },
+    { label: 'Preferred Difficulty', value: preferenceSource?.preferredDifficulty },
+    { label: 'Preferred Trail Type', value: preferenceSource?.preferredTrailType },
     {
       label: 'Preferred Duration (hrs)',
-      value: profile.preferredDurationHrs ? `${profile.preferredDurationHrs} hr` : null,
+      value: formatPreferenceNumber(preferenceSource?.preferredDurationHrs, 'hr'),
     },
-    { label: 'Budget Range', value: profile.budgetRange },
+    {
+      label: 'Preferred Distance (km)',
+      value: formatPreferenceNumber(preferenceSource?.preferredDistanceKm, 'km'),
+    },
+    {
+      label: 'Preferred Elevation Gain (m)',
+      value: formatPreferenceNumber(preferenceSource?.preferredElevationM, 'm'),
+    },
+    { label: 'Budget Range', value: preferenceSource?.budgetRange },
   ].filter((item) => item.value);
 
   const renderHeader = () => (
@@ -1734,7 +1818,38 @@ function ProfilePageContent({ navigation, route }) {
         </View>
 
         <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:bg-slate-900 dark:border-slate-700">
-          <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Trail Preferences</Text>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Trail Preferences</Text>
+            {hasPreviousPreferences ? (
+              <TouchableOpacity
+                onPress={() =>
+                  setPreferenceView(isShowingPreviousPreferences ? 'current' : 'previous')
+                }
+                className="flex-row items-center rounded-full border border-green-600 px-3 py-1"
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={isShowingPreviousPreferences ? 'time-outline' : 'swap-horizontal'}
+                  size={16}
+                  color="#15803d"
+                />
+                <Text className="ml-1 text-xs font-semibold text-green-700 dark:text-emerald-200">
+                  {isShowingPreviousPreferences ? 'Show current' : 'Show previous'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {isShowingPreviousPreferences ? (
+            <Text className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              Viewing previous preferences
+              {preferenceTimestampLabel ? ` saved ${preferenceTimestampLabel}` : ''}.
+            </Text>
+          ) : hasPreviousPreferences ? (
+            <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+              Viewing current preferences
+              {preferenceTimestampLabel ? ` (last change ${preferenceTimestampLabel})` : ''}.
+            </Text>
+          ) : null}
           {preferenceItems.length > 0 ? (
             preferenceItems.map((item) => (
               <InfoRow key={item.label} label={item.label} value={item.value} />

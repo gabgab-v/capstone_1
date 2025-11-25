@@ -31,6 +31,7 @@ model User {
   preferredDistanceKm     Float?
   preferredElevationM     Float?
   budgetRange             String?
+  previousPreferences     Json?
 
   bookings                Booking[]
   events                  Event[]

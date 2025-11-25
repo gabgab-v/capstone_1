@@ -37,7 +37,10 @@ const userProfileSelect = {
   preferredDifficulty: true,
   preferredTrailType: true,
   preferredDurationHrs: true,
+  preferredDistanceKm: true,
+  preferredElevationM: true,
   budgetRange: true,
+  previousPreferences: true,
   organizerApplication: {
     select: {
       organizationName: true,

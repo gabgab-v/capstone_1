@@ -91,8 +91,15 @@ export async function POST(request) {
     const currentUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
+        preferredDifficulty: true,
+        preferredTrailType: true,
+        preferredDurationHrs: true,
+        preferredDistanceKm: true,
+        preferredElevationM: true,
+        budgetRange: true,
         experienceLevel: true,
         experienceLevelLocked: true,
+        previousPreferences: true,
       },
     });
 
@@ -115,6 +122,30 @@ export async function POST(request) {
       data.experienceLevel = experience_level;
     }
 
+    const hasExistingPreferences = Boolean(
+      currentUser &&
+        (currentUser.experienceLevel ||
+          currentUser.preferredDifficulty ||
+          currentUser.preferredTrailType ||
+          currentUser.preferredDurationHrs ||
+          currentUser.preferredDistanceKm ||
+          currentUser.preferredElevationM ||
+          currentUser.budgetRange),
+    );
+
+    if (hasExistingPreferences) {
+      data.previousPreferences = {
+        experienceLevel: currentUser?.experienceLevel ?? null,
+        preferredDifficulty: currentUser?.preferredDifficulty ?? null,
+        preferredTrailType: currentUser?.preferredTrailType ?? null,
+        preferredDurationHrs: currentUser?.preferredDurationHrs ?? null,
+        preferredDistanceKm: currentUser?.preferredDistanceKm ?? null,
+        preferredElevationM: currentUser?.preferredElevationM ?? null,
+        budgetRange: currentUser?.budgetRange ?? null,
+        capturedAt: new Date().toISOString(),
+      };
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data,
@@ -132,6 +163,7 @@ export async function POST(request) {
         preferredDistanceKm: true,
         preferredElevationM: true,
         budgetRange: true,
+        previousPreferences: true,
       },
     });
 
