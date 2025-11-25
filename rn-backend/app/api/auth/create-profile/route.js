@@ -13,6 +13,15 @@ export async function POST(req) {
       return NextResponse.json({ message: 'User id, email, and name are required.' }, { status: 400 });
     }
 
+    const existingEmail = await prisma.user.findFirst({
+      where: { email: trimmedEmail },
+      select: { id: true },
+    });
+
+    if (existingEmail) {
+      return NextResponse.json({ message: 'Email already in use' }, { status: 409 });
+    }
+
     const existingName = await prisma.user.findFirst({
       where: { name: trimmedName },
       select: { id: true },

@@ -27,6 +27,15 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 });
     }
 
+    const existingEmail = await prisma.user.findFirst({
+      where: { email: trimmedEmail },
+      select: { id: true },
+    });
+
+    if (existingEmail) {
+      return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+    }
+
     const existingName = await prisma.user.findFirst({
       where: { name: trimmedName },
       select: { id: true },
