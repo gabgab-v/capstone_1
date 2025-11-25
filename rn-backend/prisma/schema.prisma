@@ -30,6 +30,8 @@ model User {
   preferredDurationHrs    Float?
   preferredDistanceKm     Float?
   preferredElevationM     Float?
+  preferredMountains      String[] @default([])
+  mountainSuggestionsEnabled Boolean @default(true)
   budgetRange             String?
   previousPreferences     Json?
 

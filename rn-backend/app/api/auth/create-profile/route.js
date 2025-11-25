@@ -4,10 +4,11 @@ import { NextResponse } from 'next/server';
 // This endpoint is called AFTER a user is created in Supabase Auth
 export async function POST(req) {
   try {
-    const { id, email, name } = await req.json();
+    const { id, email, name, visitedTrail } = await req.json();
 
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
     const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const trimmedVisited = typeof visitedTrail === 'string' ? visitedTrail.trim() : '';
 
     if (!id || !trimmedEmail || !trimmedName) {
       return NextResponse.json({ message: 'User id, email, and name are required.' }, { status: 400 });
@@ -39,6 +40,8 @@ export async function POST(req) {
         supabaseUserId: id, // Also store it in the dedicated sync column
         email: trimmedEmail,
         name: trimmedName,
+        preferredMountains: trimmedVisited ? [trimmedVisited] : [],
+        mountainSuggestionsEnabled: true,
         // You don't store the password here anymore
       },
     });

@@ -150,6 +150,7 @@ const MAX_PRICE_PHP = 12000;
 const MAX_DISTANCE_KM = 40;
 const MAX_ELEVATION_M = 2000;
 const MAX_AGE_YEARS = 80;
+const MAX_MOUNTAIN_MATCH_WEIGHT = 1;
 
 function clamp(value, min = 0, max = 1) {
   if (!Number.isFinite(value)) {
@@ -395,6 +396,54 @@ function extractTrailDescriptor(event) {
   return parts.join(" | ");
 }
 
+function buildMountainHaystack(event) {
+  const parts = [
+    event?.title,
+    event?.trail?.label,
+    event?.locationName,
+    event?.overview,
+  ].filter((value) => typeof value === "string" && value.trim().length > 0);
+  if (!parts.length) {
+    return null;
+  }
+  return parts.join(" | ").toLowerCase();
+}
+
+function computeMountainMatchScore(event, mountains, enabled) {
+  if (!enabled || !Array.isArray(mountains) || mountains.length === 0) {
+    return { score: 0, match: null };
+  }
+
+  const haystack = buildMountainHaystack(event);
+  if (!haystack) {
+    return { score: 0, match: null };
+  }
+
+  let bestScore = 0;
+  let bestMatch = null;
+  mountains.forEach((mountain) => {
+    const normalized = typeof mountain === "string" ? mountain.trim().toLowerCase() : "";
+    if (!normalized) {
+      return;
+    }
+    if (haystack.includes(normalized)) {
+      if (bestScore < 1) {
+        bestScore = 1;
+        bestMatch = mountain;
+      }
+      return;
+    }
+    const tokens = normalized.split(/\s+/).filter((token) => token.length >= 3);
+    const partialHit = tokens.some((token) => haystack.includes(token));
+    if (partialHit && bestScore < 0.6) {
+      bestScore = 0.6;
+      bestMatch = mountain;
+    }
+  });
+
+  return { score: clamp(bestScore, 0, 1), match: bestMatch };
+}
+
 function computeUserVector(user) {
   if (!user) {
     return null;
@@ -415,6 +464,11 @@ function computeUserVector(user) {
       : 0
   );
   const ageScore = normalizeAgeYears(userAgeYears);
+  const hasMountains =
+    user?.mountainSuggestionsEnabled !== false &&
+    Array.isArray(user?.preferredMountains) &&
+    user.preferredMountains.length > 0;
+  const mountainWeight = hasMountains ? MAX_MOUNTAIN_MATCH_WEIGHT : 0;
 
   return [
     levelToScore(user.experienceLevel),
@@ -425,6 +479,7 @@ function computeUserVector(user) {
     distanceScore,
     elevationScore,
     ageScore,
+    mountainWeight,
   ];
 }
 
@@ -449,17 +504,31 @@ function computeEventVector(event, user) {
   const elevationScore = normalizeElevation(Number(event?.elevationM));
   const userAgeYears = deriveUserAgeYears(user);
   const ageScore = deriveEventAgeScore(event, userAgeYears);
+  const mountainsEnabled =
+    user?.mountainSuggestionsEnabled !== false &&
+    Array.isArray(user?.preferredMountains) &&
+    user.preferredMountains.length > 0;
+  const { score: mountainScore, match: mountainMatch } = computeMountainMatchScore(
+    event,
+    user?.preferredMountains,
+    mountainsEnabled
+  );
 
-  return [
-    difficultyScore,
-    difficultyScore,
-    durationScore,
-    priceScore,
-    trailScore,
-    distanceScore,
-    elevationScore,
-    ageScore,
-  ];
+  return {
+    vector: [
+      difficultyScore,
+      difficultyScore,
+      durationScore,
+      priceScore,
+      trailScore,
+      distanceScore,
+      elevationScore,
+      ageScore,
+      mountainsEnabled ? mountainScore : 0,
+    ],
+    mountainMatch,
+    mountainsEnabled,
+  };
 }
 
 function dotProduct(vectorA, vectorB) {
@@ -484,7 +553,7 @@ function cosineSimilarity(vectorA, vectorB) {
   return clamp(dotProduct(vectorA, vectorB) / (magA * magB), 0, 1);
 }
 
-function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
+function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mountainMatch, mountainsEnabled }) {
   if (!Array.isArray(preferenceVector) || !Array.isArray(eventVector)) {
     return [];
   }
@@ -521,6 +590,9 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
   const matchesTrail =
     Boolean(preferredTrail) &&
     (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
+  const preferredMountains = Array.isArray(user?.preferredMountains) ? user.preferredMountains : [];
+  const mountainsEnabled =
+    user?.mountainSuggestionsEnabled !== false && preferredMountains.length > 0;
 
   const context = {
     eventDifficultyLabel,
@@ -539,6 +611,9 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
     preferredTrail,
     eventTrailType,
     matchesTrail,
+    preferredMountains,
+    mountainsEnabled,
+    mountainMatch,
   };
 
   const formatRange = (min, max) => {
@@ -771,6 +846,20 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
         return `You are ${userAge}, comfortably above the ${minAge}+ guidance.`;
       },
     },
+    {
+      key: "mountain",
+      label: "Familiar mountains",
+      indices: [8],
+      detail: ({ preferredMountains: mountains, mountainsEnabled: enabled, mountainMatch: match }) => {
+        if (!enabled || !mountains?.length) {
+          return null;
+        }
+        if (match) {
+          return `Surfaced because it mentions ${match}, one of your saved mountains/trails.`;
+        }
+        return "Does not mention your saved mountains/trails yet.";
+      },
+    },
   ];
 
   return groups
@@ -787,7 +876,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector }) {
         return null;
       }
 
-      const includeDespiteShare = group.key === "age" && detail;
+      const includeDespiteShare = (group.key === "age" || group.key === "mountain") && detail;
       if (!includeDespiteShare && (contribution <= 0 || contribution < MIN_BREAKDOWN_SHARE)) {
         return null;
       }
@@ -836,11 +925,8 @@ export default function DiscoverPage() {
   );
 
   const preferenceVector = useMemo(() => {
-    if (!user?.preferencesComplete) {
-      return null;
-    }
     const vector = computeUserVector(user);
-    return magnitude(vector) > 0 ? vector : null;
+    return vector && magnitude(vector) > 0 ? vector : null;
   }, [user]);
 
   const scoredEvents = useMemo(() => {
@@ -860,15 +946,20 @@ export default function DiscoverPage() {
 
     return baseline
       .map(({ event, index }) => {
-        const eventVector = computeEventVector(event, user);
+        const { vector: eventVector, mountainMatch, mountainsEnabled } = computeEventVector(
+          event,
+          user
+        );
         const score = cosineSimilarity(preferenceVector, eventVector);
         const breakdown = buildMatchBreakdown({
           user,
           event,
           preferenceVector,
           eventVector,
+          mountainMatch,
+          mountainsEnabled,
         });
-        return { event, score, index, breakdown };
+        return { event, score, index, breakdown, mountainMatch, mountainsEnabled };
       })
       .sort((a, b) => {
         if (a.score === null && b.score === null) {

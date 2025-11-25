@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Linking,
+  TextInput,
   ScrollView,
   Switch,
   Text,
@@ -17,6 +18,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensureAvatarUri } from '../../utils/media';
 import ScreenHeader from '../../components/ScreenHeader';
+import { put } from '../../lib/api';
 
 function statusMeta(status) {
   switch (status) {
@@ -30,7 +32,7 @@ function statusMeta(status) {
 }
 
 export default function SettingsPage({ navigation }) {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, logout, refreshUser } = useAuth();
   const {
     notificationsEnabled,
     requestPermission,
@@ -46,6 +48,12 @@ export default function SettingsPage({ navigation }) {
   const [shareActivityStatus, setShareActivityStatus] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const { themePreference, setThemePreference } = useTheme();
+  const [mountains, setMountains] = useState(user?.preferredMountains ?? []);
+  const [mountainInput, setMountainInput] = useState('');
+  const [mountainSuggestionsEnabled, setMountainSuggestionsEnabled] = useState(
+    user?.mountainSuggestionsEnabled ?? true,
+  );
+  const [savingMountains, setSavingMountains] = useState(false);
   const insets = useSafeAreaInsets();
   const contentContainerStyle = useMemo(
     () => ({
@@ -87,6 +95,11 @@ export default function SettingsPage({ navigation }) {
       : 'Turn on notifications to get booking confirmations and event reminders.';
   }, [isNativeModuleAvailable, isPhysicalDevice, notificationsEnabled]);
 
+  useEffect(() => {
+    setMountains(Array.isArray(user?.preferredMountains) ? user.preferredMountains : []);
+    setMountainSuggestionsEnabled(user?.mountainSuggestionsEnabled ?? true);
+  }, [user?.preferredMountains, user?.mountainSuggestionsEnabled]);
+
   const handleLogout = useCallback(async () => {
     await logout();
   }, [logout]);
@@ -97,6 +110,50 @@ export default function SettingsPage({ navigation }) {
       { text: 'Sign out', style: 'destructive', onPress: handleLogout },
     ]);
   };
+
+  const handleAddMountain = useCallback(() => {
+    const trimmed = mountainInput.trim();
+    if (!trimmed) {
+      return;
+    }
+    setMountains((current) => {
+      if (current.length >= 25) {
+        Alert.alert('Limit reached', 'You can track up to 25 mountains or trails.');
+        return current;
+      }
+      const exists = current.some((entry) => entry.toLowerCase() === trimmed.toLowerCase());
+      if (exists) {
+        Alert.alert('Already added', 'That mountain/trail is already in your list.');
+        return current;
+      }
+      return [...current, trimmed];
+    });
+    setMountainInput('');
+  }, [mountainInput]);
+
+  const handleRemoveMountain = useCallback((value) => {
+    setMountains((current) => current.filter((entry) => entry !== value));
+  }, []);
+
+  const handleSaveMountains = useCallback(async () => {
+    setSavingMountains(true);
+    try {
+      await put('/api/users/mountains', {
+        preferred_mountains: mountains,
+        mountain_suggestions_enabled: mountainSuggestionsEnabled,
+      });
+      await refreshUser?.();
+      Alert.alert('Saved', 'Mountain preferences updated.');
+    } catch (error) {
+      console.error('Failed to save mountains:', error);
+      Alert.alert(
+        'Update failed',
+        error?.message || 'Could not update mountain preferences right now.',
+      );
+    } finally {
+      setSavingMountains(false);
+    }
+  }, [mountains, mountainSuggestionsEnabled, refreshUser]);
 
   const handleOpenLink = async (url) => {
     try {
@@ -445,6 +502,85 @@ export default function SettingsPage({ navigation }) {
     </View>
   );
 
+  const renderMountainsSection = () => (
+    <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">
+        Mountain suggestions
+      </Text>
+      <Text className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+        Prioritize hikes that mention mountains or trails you have visited.
+      </Text>
+
+      <View className="mt-4 flex-row items-center justify-between">
+        <Text className="text-base font-medium text-slate-900 dark:text-slate-100">
+          Use mountain-based suggestions
+        </Text>
+        <Switch
+          value={mountainSuggestionsEnabled}
+          onValueChange={setMountainSuggestionsEnabled}
+          thumbColor={mountainSuggestionsEnabled ? '#22c55e' : undefined}
+        />
+      </View>
+
+      <Text className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        Saved mountains/trails
+      </Text>
+      <View className="mt-2 flex-row flex-wrap">
+        {mountains.length ? (
+          mountains.map((mountain) => (
+            <View
+              key={mountain}
+              className="mr-2 mb-2 flex-row items-center rounded-full bg-slate-100 px-3 py-2 dark:bg-slate-800"
+            >
+              <Text className="text-sm text-slate-800 dark:text-slate-100">{mountain}</Text>
+              <TouchableOpacity className="ml-2" onPress={() => handleRemoveMountain(mountain)}>
+                <Text className="text-base font-semibold text-red-500">×</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        ) : (
+          <Text className="text-sm text-slate-500 dark:text-slate-400">
+            Add mountains or trails you have climbed to see them first in Discover.
+          </Text>
+        )}
+      </View>
+
+      <View className="mt-3 flex-row items-center">
+        <TextInput
+          className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          placeholder="e.g., Mt. Pulag"
+          placeholderTextColor="#94a3b8"
+          value={mountainInput}
+          onChangeText={setMountainInput}
+          onSubmitEditing={handleAddMountain}
+          returnKeyType="done"
+        />
+        <TouchableOpacity
+          className="ml-3 rounded-xl bg-green-700 px-4 py-3"
+          onPress={handleAddMountain}
+          activeOpacity={0.85}
+        >
+          <Text className="text-sm font-semibold text-white">Add</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        className={`mt-4 rounded-xl px-4 py-3 ${savingMountains ? 'bg-green-300' : 'bg-green-700'}`}
+        onPress={handleSaveMountains}
+        disabled={savingMountains}
+        activeOpacity={0.85}
+      >
+        {savingMountains ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text className="text-center text-base font-semibold text-white">
+            Save mountain preferences
+          </Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderPrivacySection = () => (
     <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
       <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Privacy & Safety</Text>
@@ -653,6 +789,8 @@ export default function SettingsPage({ navigation }) {
         {renderExpertSection()}
 
         {renderNotificationsSection()}
+
+        {renderMountainsSection()}
 
         {renderPrivacySection()}
 
