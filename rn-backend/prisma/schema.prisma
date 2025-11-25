@@ -53,6 +53,14 @@ model User {
   bookingRequestLogs      BookingRequestLog[]
   bookingAccessLogs       BookingAccessLog[] @relation("OrganizerAccessLogs")
 
+  lastActiveAt           DateTime? @default(now())
+  deactivatedAt          DateTime?
+  deactivationReason     String?
+  reactivationChecklist  Json?
+  termsVersionAccepted   String?
+  emailVerifiedAt        DateTime?
+  phoneVerifiedAt        DateTime?
+
   createdAt               DateTime  @default(now())
 }
 

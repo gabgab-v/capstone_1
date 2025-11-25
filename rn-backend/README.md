@@ -1,5 +1,12 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Account inactivity safeguards
+
+- Users are automatically flagged for temporary deactivation after 12 months of inactivity. Run `npm run deactivate:inactive` (with `.env` loaded) to batch-mark inactive accounts for recovery.
+- Recovery steps live at `POST /api/auth/reactivate` and include verifying email/phone, accepting updated terms, and resetting the password. The endpoint returns outstanding steps and reactivates the account when all are satisfied.
+- New Prisma fields: `lastActiveAt`, `deactivatedAt`, `deactivationReason`, `reactivationChecklist`, `termsVersionAccepted`, `emailVerifiedAt`, `phoneVerifiedAt`. Run a Prisma migration and `prisma generate` after updating your database schema.
+- Set `CURRENT_TERMS_VERSION` (and optional `SUPABASE_EMAIL_CONFIRM_REDIRECT_TO`) in `.env` to control which terms version users must accept during recovery.
+
 ## Getting Started
 
 First, run the development server:

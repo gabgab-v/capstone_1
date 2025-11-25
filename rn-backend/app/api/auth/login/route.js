@@ -2,6 +2,12 @@ import { compare } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { sign } from 'jsonwebtoken';
 import { NextResponse } from 'next/server';
+import {
+  INACTIVITY_REASON,
+  buildReactivationChecklist,
+  shouldDeactivateForInactivity,
+  publicRecoveryRequirements,
+} from '@/lib/reactivation';
 
 export async function POST(req) {
   try {
@@ -18,7 +24,7 @@ export async function POST(req) {
 
     const { email, password } = await req.json();
     console.log(`1. Finding user for email: ${email}`);
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({ where: { email } });
 
     // 2. Check if the user exists and has a synced Supabase ID
     if (!user) {
@@ -31,6 +37,33 @@ export async function POST(req) {
     }
     console.log(`2. User found. Supabase User ID: ${user.supabaseUserId}`);
 
+    // 2b. Automatically deactivate accounts that have been inactive for 12 months
+    if (!user.deactivatedAt && shouldDeactivateForInactivity(user)) {
+      const checklist = buildReactivationChecklist(user.reactivationChecklist);
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          deactivatedAt: new Date(),
+          deactivationReason: INACTIVITY_REASON,
+          reactivationChecklist: checklist,
+        },
+      });
+      console.log(`ℹ️ Auto-deactivated ${email} due to inactivity.`);
+    }
+
+    if (user.deactivatedAt) {
+      const checklist = buildReactivationChecklist(user.reactivationChecklist);
+      console.warn(`⚠️ Login blocked: ${email} is deactivated (${user.deactivationReason}).`);
+      return NextResponse.json(
+        {
+          message: 'Account temporarily deactivated after 12 months of inactivity. Complete recovery steps to regain access.',
+          reason: user.deactivationReason,
+          recoveryRequirements: publicRecoveryRequirements(checklist, user),
+        },
+        { status: 423 },
+      );
+    }
+
     // 3. Verify the password
     const match = await compare(password, user.password);
     if (!match) {
@@ -38,6 +71,16 @@ export async function POST(req) {
       return NextResponse.json({ message: 'Invalid credentials' }, { status: 401 });
     }
     console.log("3. Password verified successfully.");
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastActiveAt: new Date(),
+        deactivatedAt: null,
+        deactivationReason: null,
+        reactivationChecklist: null,
+      },
+    });
 
     const issuedAt = Math.floor(Date.now() / 1000);
     const payload = {
