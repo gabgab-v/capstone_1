@@ -20,18 +20,30 @@ export async function POST(request) {
   try {
     const { email, password, name } = await request.json();
 
-    if (!email || !password || !name) {
+    const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+    if (!trimmedEmail || !password || !trimmedName) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 });
+    }
+
+    const existingName = await prisma.user.findFirst({
+      where: { name: trimmedName },
+      select: { id: true },
+    });
+
+    if (existingName) {
+      return NextResponse.json({ error: 'Name already in use' }, { status: 409 });
     }
 
     // Step 1: Create the user in Supabase Authentication with email verification
     const signUpOptions = {
-      data: { name },
+      data: { name: trimmedName },
       ...(emailRedirectTo ? { emailRedirectTo } : {}),
     };
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
-      email,
+      email: trimmedEmail,
       password,
       options: signUpOptions,
     });
@@ -54,8 +66,8 @@ export async function POST(request) {
       data: {
         id: authData.user.id,        // Use the ID from Supabase as the primary key
         supabaseUserId: authData.user.id, // Also store it in the dedicated sync column
-        email: email,
-        name: name,
+        email: trimmedEmail,
+        name: trimmedName,
         // Password is NOT saved in this database
       },
       select: { id: true, email: true, name: true },
@@ -73,7 +85,19 @@ export async function POST(request) {
     console.error('Signup error:', err);
     // Check for Prisma unique constraint violation as a fallback
     if (err.code === 'P2002') {
+      const rawTargets = err.meta?.target;
+      const targets = Array.isArray(rawTargets) ? rawTargets : rawTargets ? [rawTargets] : [];
+      const targetString = targets.join(',').toLowerCase();
+
+      if (targetString.includes('email')) {
         return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+      }
+
+      if (targetString.includes('name')) {
+        return NextResponse.json({ error: 'Name already in use' }, { status: 409 });
+      }
+
+      return NextResponse.json({ error: 'Unique constraint violation' }, { status: 409 });
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
