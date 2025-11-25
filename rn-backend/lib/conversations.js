@@ -17,15 +17,65 @@ export const eventSelect = {
   id: true,
   title: true,
   organizerId: true,
+  status: true,
+  completedAt: true,
 };
 
 export const CHAT_ELIGIBLE_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
+export const NORMAL_CHAT_RETENTION_DAYS = 365;
+export const EVENT_CHAT_RETENTION_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function isChatEligibleStatus(status) {
   if (!status || typeof status !== 'string') {
     return false;
   }
   return CHAT_ELIGIBLE_STATUSES.has(status.trim().toUpperCase());
+}
+
+export function getEventChatDeletionMeta(event) {
+  if (!event?.completedAt) return null;
+
+  const completedAt = new Date(event.completedAt);
+  const deletionAt = new Date(completedAt.getTime() + EVENT_CHAT_RETENTION_DAYS * DAY_MS);
+  const msRemaining = deletionAt.getTime() - Date.now();
+
+  if (msRemaining <= 0) {
+    return {
+      scheduledDeletionAt: deletionAt,
+      daysRemaining: 0,
+      expired: true,
+    };
+  }
+
+  return {
+    scheduledDeletionAt: deletionAt,
+    daysRemaining: Math.ceil(msRemaining / DAY_MS),
+    expired: false,
+  };
+}
+
+export function buildRetentionInfo(conversation) {
+  if (conversation?.event) {
+    const meta = getEventChatDeletionMeta(conversation.event);
+    if (meta) {
+      return {
+        type: 'event_chat',
+        scheduledDeletionAt: meta.scheduledDeletionAt,
+        daysRemaining: meta.daysRemaining,
+        expired: meta.expired,
+        reminder: meta.expired
+          ? 'This event chat is scheduled for removal after completion and is no longer available.'
+          : `This event chat will be deleted in ${meta.daysRemaining} day(s) after the event was completed.`,
+      };
+    }
+  }
+
+  return {
+    type: 'direct_chat',
+    messageRetentionDays: NORMAL_CHAT_RETENTION_DAYS,
+    reminder: `Messages older than ${NORMAL_CHAT_RETENTION_DAYS} days may be purged.`,
+  };
 }
 
 export function buildConversationPayload(conversation, currentUserId) {
@@ -71,6 +121,8 @@ export function buildConversationPayload(conversation, currentUserId) {
           id: conversation.event.id,
           title: conversation.event.title,
           organizerId: conversation.event.organizerId,
+          status: conversation.event.status ?? null,
+          completedAt: conversation.event.completedAt ?? null,
         }
       : null,
     createdAt: conversation.createdAt,
@@ -78,6 +130,7 @@ export function buildConversationPayload(conversation, currentUserId) {
     participants,
     peers,
     lastMessage,
+    retention: buildRetentionInfo(conversation),
   };
 }
 
@@ -115,6 +168,8 @@ export async function syncEventGroupConversation(eventId) {
     where: { id: eventId },
     select: {
       organizerId: true,
+      status: true,
+      completedAt: true,
       bookings: {
         select: {
           userId: true,
@@ -128,6 +183,27 @@ export async function syncEventGroupConversation(eventId) {
     return;
   }
 
+  const deletionMeta = getEventChatDeletionMeta(eventWithBookings);
+  const now = new Date();
+
+  const existingConversation = await prisma.conversation.findUnique({
+    where: { eventId },
+    include: {
+      participants: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+  });
+
+  if (deletionMeta?.expired || (deletionMeta && deletionMeta.scheduledDeletionAt <= now)) {
+    if (existingConversation) {
+      await prisma.conversation.delete({ where: { id: existingConversation.id } });
+    }
+    return;
+  }
+
   const desiredUserIds = new Set([eventWithBookings.organizerId]);
   for (const booking of eventWithBookings.bookings) {
     if (isChatEligibleStatus(booking.status)) {
@@ -136,11 +212,6 @@ export async function syncEventGroupConversation(eventId) {
   }
 
   if (desiredUserIds.size < 2) {
-    const existingConversation = await prisma.conversation.findUnique({
-      where: { eventId },
-      select: { id: true },
-    });
-
     if (existingConversation) {
       await prisma.conversationParticipant.deleteMany({
         where: {
@@ -154,21 +225,9 @@ export async function syncEventGroupConversation(eventId) {
     return;
   }
 
-  const conversation = await prisma.conversation.findUnique({
-    where: { eventId },
-    include: {
-      participants: {
-        select: {
-          userId: true,
-        },
-      },
-    },
-  });
-
   const targetUserIds = Array.from(desiredUserIds);
-  const now = new Date();
 
-  if (!conversation) {
+  if (!existingConversation) {
     await prisma.conversation.create({
       data: {
         event: {
@@ -187,9 +246,9 @@ export async function syncEventGroupConversation(eventId) {
     return;
   }
 
-  const existingUserIds = new Set(conversation.participants.map((participant) => participant.userId));
+  const existingUserIds = new Set(existingConversation.participants.map((participant) => participant.userId));
   const toAdd = targetUserIds.filter((userId) => !existingUserIds.has(userId));
-  const toRemove = conversation.participants
+  const toRemove = existingConversation.participants
     .map((participant) => participant.userId)
     .filter((userId) => !desiredUserIds.has(userId));
 
@@ -199,7 +258,7 @@ export async function syncEventGroupConversation(eventId) {
     operations.push(
       prisma.conversationParticipant.createMany({
         data: toAdd.map((userId) => ({
-          conversationId: conversation.id,
+          conversationId: existingConversation.id,
           userId,
           lastReadAt: now,
         })),
@@ -212,7 +271,7 @@ export async function syncEventGroupConversation(eventId) {
     operations.push(
       prisma.conversationParticipant.deleteMany({
         where: {
-          conversationId: conversation.id,
+          conversationId: existingConversation.id,
           userId: {
             in: toRemove,
           },

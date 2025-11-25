@@ -4,6 +4,7 @@ import { getUserFromToken } from '@/lib/auth';
 import {
   appendUnreadCounts,
   eventSelect,
+  getEventChatDeletionMeta,
   isChatEligibleStatus,
   messageInclude,
   participantUserSelect,
@@ -28,6 +29,7 @@ export async function GET(request, { params }) {
         id: true,
         title: true,
         organizerId: true,
+        completedAt: true,
         bookings: {
           select: {
             userId: true,
@@ -53,7 +55,15 @@ export async function GET(request, { params }) {
       );
     }
 
+    const deletionMeta = getEventChatDeletionMeta(event);
     await syncEventGroupConversation(event.id);
+
+    if (deletionMeta?.expired || (deletionMeta && deletionMeta.scheduledDeletionAt <= new Date())) {
+      return NextResponse.json(
+        { error: 'This event chat was deleted 7 days after the event was completed.' },
+        { status: 410 },
+      );
+    }
 
     const conversation = await prisma.conversation.findUnique({
       where: { eventId: event.id },

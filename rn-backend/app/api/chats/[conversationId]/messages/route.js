@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
+import { getEventChatDeletionMeta } from '@/lib/conversations';
 
 const messageUserSelect = {
   id: true,
@@ -71,6 +72,30 @@ export async function GET(request, { params }) {
 
     if (!participant) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        event: {
+          select: {
+            completedAt: true,
+          },
+        },
+      },
+    });
+
+    const deletionMeta = getEventChatDeletionMeta(conversation?.event);
+    if (deletionMeta?.expired || (deletionMeta && deletionMeta.scheduledDeletionAt <= new Date())) {
+      try {
+        await prisma.conversation.delete({ where: { id: conversationId } });
+      } catch (deleteError) {
+        console.error('Failed to delete expired event conversation:', deleteError);
+      }
+      return NextResponse.json(
+        { error: 'This event chat was deleted 7 days after the event was completed.' },
+        { status: 410 },
+      );
     }
 
     const url = new URL(request.url);
@@ -150,6 +175,30 @@ export async function POST(request, { params }) {
 
     if (!participant) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        event: {
+          select: {
+            completedAt: true,
+          },
+        },
+      },
+    });
+
+    const deletionMeta = getEventChatDeletionMeta(conversation?.event);
+    if (deletionMeta?.expired || (deletionMeta && deletionMeta.scheduledDeletionAt <= new Date())) {
+      try {
+        await prisma.conversation.delete({ where: { id: conversationId } });
+      } catch (deleteError) {
+        console.error('Failed to delete expired event conversation:', deleteError);
+      }
+      return NextResponse.json(
+        { error: 'This event chat was deleted 7 days after the event was completed.' },
+        { status: 410 },
+      );
     }
 
     const payload = await request.json();

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "deactivate:inactive": "dotenv -e .env -- node scripts/deactivate-inactive-users.js",
+    "cleanup:messages": "dotenv -e .env -- node scripts/cleanup-messages.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

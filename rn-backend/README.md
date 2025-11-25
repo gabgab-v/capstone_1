@@ -7,6 +7,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - New Prisma fields: `lastActiveAt`, `deactivatedAt`, `deactivationReason`, `reactivationChecklist`, `termsVersionAccepted`, `emailVerifiedAt`, `phoneVerifiedAt`. Run a Prisma migration and `prisma generate` after updating your database schema.
 - Set `CURRENT_TERMS_VERSION` (and optional `SUPABASE_EMAIL_CONFIRM_REDIRECT_TO`) in `.env` to control which terms version users must accept during recovery.
 
+## Message retention
+
+- Direct/1:1 chats keep messages for at least 12 months; older messages are purged by `npm run cleanup:messages`.
+- Event group chats are deleted 7 days after an event is marked completed. The same cleanup script enforces this and the event chat API returns days-remaining metadata so clients can warn users.
+- Schedule `npm run cleanup:messages` (cron/Render job) daily or weekly with `.env` loaded to keep retention rules enforced.
+
 ## Getting Started
 
 First, run the development server:
