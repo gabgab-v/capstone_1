@@ -28,6 +28,12 @@ const DOCUMENT_CONFIG = {
     label: "Medical Clearance",
     helper: "Provide a recent medical certificate showing you are fit to join.",
   },
+  experienceProof: {
+    key: "experienceProof",
+    label: "Experience Proof",
+    helper:
+      "Upload summit photos or past hike evidence so organizers can verify your experience and trail policy adherence.",
+  },
   trailPolicy: {
     key: "trailPolicy",
     label: "Trail Policy Acknowledgement",
@@ -37,7 +43,14 @@ const DOCUMENT_CONFIG = {
 
 const REQUIRED_DOCUMENTS_BY_DIFFICULTY = {
   Technical: ["waiver", "trailPolicy"],
-  Expert: ["waiver", "medicalCertificate"],
+  Expert: ["waiver", "medicalCertificate", "experienceProof"],
+};
+
+const OPTIONAL_DOCUMENTS_BY_DIFFICULTY = {
+  Beginner: ["experienceProof"],
+  Intermediate: ["experienceProof"],
+  Technical: ["experienceProof"],
+  Expert: [],
 };
 
 export default function BookingPage({ route, navigation }) {
@@ -46,6 +59,7 @@ export default function BookingPage({ route, navigation }) {
   const [documents, setDocuments] = useState({
     waiver: null,
     medicalCertificate: null,
+    experienceProof: null,
     trailPolicy: null,
   });
   const [loading, setLoading] = useState(false);
@@ -61,6 +75,30 @@ export default function BookingPage({ route, navigation }) {
     () => REQUIRED_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [],
     [eventDifficulty],
   );
+  const optionalDocuments = useMemo(
+    () => OPTIONAL_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [],
+    [eventDifficulty],
+  );
+  const documentationSections = useMemo(() => {
+    const seen = new Set();
+    const sections = [];
+
+    requiredDocuments.forEach((docKey) => {
+      if (DOCUMENT_CONFIG[docKey] && !seen.has(docKey)) {
+        seen.add(docKey);
+        sections.push({ key: docKey, required: true });
+      }
+    });
+
+    optionalDocuments.forEach((docKey) => {
+      if (DOCUMENT_CONFIG[docKey] && !seen.has(docKey)) {
+        seen.add(docKey);
+        sections.push({ key: docKey, required: false });
+      }
+    });
+
+    return sections;
+  }, [optionalDocuments, requiredDocuments]);
   const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
   const isSafetyWaiverPending = !safetyWaiverAccepted;
 
@@ -68,7 +106,7 @@ export default function BookingPage({ route, navigation }) {
     setExpertWaiverAccepted(false);
     setSafetyWaiverAccepted(false);
     setBookingRequestKey(createIdempotencyKey());
-    setDocuments({ waiver: null, medicalCertificate: null, trailPolicy: null });
+    setDocuments({ waiver: null, medicalCertificate: null, experienceProof: null, trailPolicy: null });
     setReceipt(null);
   }, [event?.id, eventDifficulty]);
 
@@ -238,7 +276,7 @@ export default function BookingPage({ route, navigation }) {
         },
       });
 
-      setDocuments({ waiver: null, medicalCertificate: null, trailPolicy: null });
+      setDocuments({ waiver: null, medicalCertificate: null, experienceProof: null, trailPolicy: null });
       setReceipt(null);
       navigation.navigate("ReceiptPage", { event, booking });
       setBookingRequestKey(createIdempotencyKey());
@@ -379,27 +417,35 @@ export default function BookingPage({ route, navigation }) {
         </View>
       ) : null}
 
-      {requiredDocuments.length ? (
+      {documentationSections.length ? (
         <View style={styles.documentationCard}>
-          <Text style={styles.documentationTitle}>Required Documentation</Text>
+          <Text style={styles.documentationTitle}>Safety & Experience Docs</Text>
           <Text style={styles.documentationSubtitle}>
-            {`This trail is rated ${eventDifficulty || "advanced"}. Upload these files before submitting your booking.`}
+            {`Organizers review these to enforce trail policies. ${
+              isExpertDifficulty
+                ? "Expert trails are strict: all required files must be attached."
+                : "Expert trails are strict; easier trails are lighter, but sharing experience proof speeds approval."
+            }`}
           </Text>
 
-          {requiredDocuments.map((docKey) => {
+          {documentationSections.map(({ key: docKey, required }) => {
             const config = DOCUMENT_CONFIG[docKey];
             if (!config) {
               return null;
             }
             const doc = documents[docKey];
             const isImage = (doc?.mimeType || "").startsWith("image/");
+            const badgeStyle = required ? styles.documentRequiredBadge : styles.documentOptionalBadge;
+            const helperText = required
+              ? config.helper
+              : `${config.helper} Optional, but it helps organizers confirm you meet the trail policy.`;
             return (
               <View key={docKey} style={styles.documentSection}>
                 <View style={styles.documentLabelRow}>
                   <Text style={styles.documentLabel}>{config.label}</Text>
-                  <Text style={styles.documentRequiredBadge}>Required</Text>
+                  <Text style={badgeStyle}>{required ? "Required" : "Optional"}</Text>
                 </View>
-                <Text style={styles.documentHelper}>{config.helper}</Text>
+                <Text style={styles.documentHelper}>{helperText}</Text>
                 <TouchableOpacity
                   style={styles.uploadBtn}
                   onPress={() => pickDocument(docKey)}
@@ -667,6 +713,7 @@ const styles = StyleSheet.create({
   },
   documentLabel: { fontSize: 14, fontWeight: "600", color: "#0f172a" },
   documentRequiredBadge: { fontSize: 12, fontWeight: "700", color: "#b91c1c" },
+  documentOptionalBadge: { fontSize: 12, fontWeight: "700", color: "#0ea5e9" },
   documentHelper: { fontSize: 12, color: "#334155", marginBottom: 10, lineHeight: 18 },
   documentPlaceholder: {
     width: "100%",

@@ -26,6 +26,7 @@ const DOCUMENT_FIELDS = [
   { key: "waiverUrl", label: "Risk Waiver" },
   { key: "medicalCertificateUrl", label: "Medical Clearance" },
   { key: "trailPolicyUrl", label: "Trail Policy Document" },
+  { key: "experienceProofUrl", label: "Experience Proof" },
 ];
 
 function formatAmount(amount) {
@@ -163,7 +164,8 @@ export default function ReceiptPage({ route, navigation }) {
             );
           })}
           <Text style={styles.docsHint}>
-            Keep these files accessible. Organizers may request them during check-in.
+            Organizers review these to confirm trail policy compliance. Keep copies handy for
+            check-in.
           </Text>
         </View>
       ) : null}

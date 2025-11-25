@@ -31,15 +31,17 @@ const STORAGE_FOLDERS = {
   waiver: "waivers",
   medicalCertificate: "medical-certificates",
   trailPolicy: "trail-policies",
+  experienceProof: "experience-proof",
 };
 const DOCUMENT_LABELS = {
   waiver: "waiver",
   medicalCertificate: "medical certificate",
   trailPolicy: "trail policy document",
+  experienceProof: "experience proof",
 };
 const REQUIRED_DOCUMENTS_BY_DIFFICULTY = {
   TECHNICAL: ["waiver", "trailPolicy"],
-  EXPERT: ["waiver", "medicalCertificate"],
+  EXPERT: ["waiver", "medicalCertificate", "experienceProof"],
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -305,6 +307,7 @@ export async function POST(req) {
     const waiver = formData.get("waiver");
     const medicalCertificate = formData.get("medicalCertificate");
     const trailPolicy = formData.get("trailPolicy");
+    const experienceProof = formData.get("experienceProof");
 
     const eventId = typeof eventIdRaw === "string" ? eventIdRaw : null;
     if (eventId) {
@@ -459,7 +462,7 @@ export async function POST(req) {
 
     const eventDifficulty =
       typeof event.difficulty === "string" ? event.difficulty.toUpperCase() : null;
-    const documentationInputs = { waiver, medicalCertificate, trailPolicy };
+    const documentationInputs = { waiver, medicalCertificate, trailPolicy, experienceProof };
     const requiredDocuments = REQUIRED_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [];
     const missingDocuments = requiredDocuments.filter(
       (docKey) => !isFileLike(documentationInputs[docKey]),
@@ -484,6 +487,7 @@ export async function POST(req) {
     let waiverUrl = null;
     let medicalCertificateUrl = null;
     let trailPolicyUrl = null;
+    let experienceProofUrl = null;
 
     if (expectedAmount > 0) {
       if (!receipt || typeof receipt.arrayBuffer !== "function") {
@@ -516,6 +520,12 @@ export async function POST(req) {
         "trailPolicy",
       );
     }
+    if (isFileLike(documentationInputs.experienceProof)) {
+      experienceProofUrl = await persistBookingDocument(
+        documentationInputs.experienceProof,
+        "experienceProof",
+      );
+    }
 
     if (event.maxParticipants) {
       const activeBookingCount = await prisma.booking.count({
@@ -545,6 +555,7 @@ export async function POST(req) {
         waiverUrl,
         medicalCertificateUrl,
         trailPolicyUrl,
+        experienceProofUrl,
       },
       include: {
         event: true,
