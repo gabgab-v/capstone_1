@@ -70,3 +70,50 @@ export async function PUT(request) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const authUser = await getUserFromToken(request);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      // allow empty body for "clear all"
+    }
+
+    const target = typeof body?.mountain === 'string' ? body.mountain.trim() : '';
+
+    const current = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { preferredMountains: true },
+    });
+
+    const existing = Array.isArray(current?.preferredMountains) ? current.preferredMountains : [];
+
+    const nextList = target
+      ? existing.filter((entry) => entry.toLowerCase() !== target.toLowerCase())
+      : [];
+
+    const updatedUser = await prisma.user.update({
+      where: { id: authUser.id },
+      data: { preferredMountains: nextList },
+      select: {
+        id: true,
+        preferredMountains: true,
+        mountainSuggestionsEnabled: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error('DELETE /api/users/mountains error:', error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

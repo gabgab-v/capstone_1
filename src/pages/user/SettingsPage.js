@@ -18,7 +18,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensureAvatarUri } from '../../utils/media';
 import ScreenHeader from '../../components/ScreenHeader';
-import { put } from '../../lib/api';
+import { del, put } from '../../lib/api';
 
 function statusMeta(status) {
   switch (status) {
@@ -54,6 +54,7 @@ export default function SettingsPage({ navigation }) {
     user?.mountainSuggestionsEnabled ?? true,
   );
   const [savingMountains, setSavingMountains] = useState(false);
+  const [deletingMountain, setDeletingMountain] = useState(null);
   const insets = useSafeAreaInsets();
   const contentContainerStyle = useMemo(
     () => ({
@@ -131,9 +132,40 @@ export default function SettingsPage({ navigation }) {
     setMountainInput('');
   }, [mountainInput]);
 
-  const handleRemoveMountain = useCallback((value) => {
-    setMountains((current) => current.filter((entry) => entry !== value));
-  }, []);
+  const handleRemoveMountain = useCallback(
+    async (value) => {
+      const previous = [...mountains];
+      setMountains((current) => current.filter((entry) => entry !== value));
+      setDeletingMountain(value);
+      try {
+        await del('/api/users/mountains', { mountain: value });
+        await refreshUser?.();
+      } catch (error) {
+        console.error('Failed to delete mountain:', error);
+        Alert.alert('Delete failed', error?.message || 'Could not remove that mountain right now.');
+        setMountains(previous);
+      } finally {
+        setDeletingMountain(null);
+      }
+    },
+    [mountains, refreshUser],
+  );
+
+  const handleClearMountains = useCallback(async () => {
+    const previous = mountains;
+    setMountains([]);
+    setDeletingMountain('ALL');
+    try {
+      await del('/api/users/mountains');
+      await refreshUser?.();
+    } catch (error) {
+      console.error('Failed to clear mountains:', error);
+      Alert.alert('Clear failed', error?.message || 'Could not clear your list right now.');
+      setMountains(previous);
+    } finally {
+      setDeletingMountain(null);
+    }
+  }, [mountains, refreshUser]);
 
   const handleSaveMountains = useCallback(async () => {
     setSavingMountains(true);
@@ -533,8 +565,16 @@ export default function SettingsPage({ navigation }) {
               className="mr-2 mb-2 flex-row items-center rounded-full bg-slate-100 px-3 py-2 dark:bg-slate-800"
             >
               <Text className="text-sm text-slate-800 dark:text-slate-100">{mountain}</Text>
-              <TouchableOpacity className="ml-2" onPress={() => handleRemoveMountain(mountain)}>
-                <Text className="text-base font-semibold text-red-500">×</Text>
+              <TouchableOpacity
+                className="ml-2"
+                onPress={() => handleRemoveMountain(mountain)}
+                disabled={Boolean(deletingMountain)}
+              >
+                {deletingMountain === mountain ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                  <Text className="text-base font-semibold text-red-500">×</Text>
+                )}
               </TouchableOpacity>
             </View>
           ))
@@ -554,20 +594,35 @@ export default function SettingsPage({ navigation }) {
           onChangeText={setMountainInput}
           onSubmitEditing={handleAddMountain}
           returnKeyType="done"
+          editable={!deletingMountain && !savingMountains}
         />
         <TouchableOpacity
           className="ml-3 rounded-xl bg-green-700 px-4 py-3"
           onPress={handleAddMountain}
           activeOpacity={0.85}
+          disabled={Boolean(deletingMountain || savingMountains)}
         >
           <Text className="text-sm font-semibold text-white">Add</Text>
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity
-        className={`mt-4 rounded-xl px-4 py-3 ${savingMountains ? 'bg-green-300' : 'bg-green-700'}`}
+        className="mt-3 rounded-xl border border-slate-300 px-4 py-3 dark:border-slate-700"
+        onPress={handleClearMountains}
+        disabled={Boolean(deletingMountain || savingMountains || mountains.length === 0)}
+        activeOpacity={0.85}
+      >
+        <Text className="text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Clear all
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        className={`mt-4 rounded-xl px-4 py-3 ${
+          savingMountains || deletingMountain ? 'bg-green-300' : 'bg-green-700'
+        }`}
         onPress={handleSaveMountains}
-        disabled={savingMountains}
+        disabled={savingMountains || Boolean(deletingMountain)}
         activeOpacity={0.85}
       >
         {savingMountains ? (
