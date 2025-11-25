@@ -62,6 +62,13 @@ function isFileLike(file) {
   return file && typeof file.arrayBuffer === "function";
 }
 
+function filterFileLikes(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.filter((item) => isFileLike(item));
+}
+
 async function persistUpload(file, options = {}) {
   if (!isFileLike(file)) {
     return null;
@@ -307,7 +314,7 @@ export async function POST(req) {
     const waiver = formData.get("waiver");
     const medicalCertificate = formData.get("medicalCertificate");
     const trailPolicy = formData.get("trailPolicy");
-    const experienceProof = formData.get("experienceProof");
+    const experienceProofFiles = filterFileLikes(formData.getAll("experienceProof"));
 
     const eventId = typeof eventIdRaw === "string" ? eventIdRaw : null;
     if (eventId) {
@@ -462,10 +469,15 @@ export async function POST(req) {
 
     const eventDifficulty =
       typeof event.difficulty === "string" ? event.difficulty.toUpperCase() : null;
-    const documentationInputs = { waiver, medicalCertificate, trailPolicy, experienceProof };
+    const documentationInputs = { waiver, medicalCertificate, trailPolicy };
     const requiredDocuments = REQUIRED_DOCUMENTS_BY_DIFFICULTY[eventDifficulty] ?? [];
     const missingDocuments = requiredDocuments.filter(
-      (docKey) => !isFileLike(documentationInputs[docKey]),
+      (docKey) => {
+        if (docKey === "experienceProof") {
+          return experienceProofFiles.length === 0;
+        }
+        return !isFileLike(documentationInputs[docKey]);
+      },
     );
 
     if (missingDocuments.length > 0) {
@@ -487,7 +499,7 @@ export async function POST(req) {
     let waiverUrl = null;
     let medicalCertificateUrl = null;
     let trailPolicyUrl = null;
-    let experienceProofUrl = null;
+    let experienceProofUrls = [];
 
     if (expectedAmount > 0) {
       if (!receipt || typeof receipt.arrayBuffer !== "function") {
@@ -520,10 +532,9 @@ export async function POST(req) {
         "trailPolicy",
       );
     }
-    if (isFileLike(documentationInputs.experienceProof)) {
-      experienceProofUrl = await persistBookingDocument(
-        documentationInputs.experienceProof,
-        "experienceProof",
+    if (experienceProofFiles.length > 0) {
+      experienceProofUrls = await Promise.all(
+        experienceProofFiles.map((file) => persistBookingDocument(file, "experienceProof")),
       );
     }
 
@@ -555,7 +566,7 @@ export async function POST(req) {
         waiverUrl,
         medicalCertificateUrl,
         trailPolicyUrl,
-        experienceProofUrl,
+        experienceProofUrls,
       },
       include: {
         event: true,

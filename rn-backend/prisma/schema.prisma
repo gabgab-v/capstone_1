@@ -125,7 +125,7 @@ model Booking {
   waiverUrl   String?
   medicalCertificateUrl String?
   trailPolicyUrl String?
-  experienceProofUrl String?
+  experienceProofUrls String[] @default([])
   createdAt   DateTime @default(now())
   requestLogs BookingRequestLog[]
 }

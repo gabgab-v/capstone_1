@@ -26,13 +26,14 @@ const DOCUMENT_CONFIG = {
   medicalCertificate: {
     key: "medicalCertificate",
     label: "Medical Clearance",
-    helper: "Provide a recent medical certificate showing you are fit to join.",
+    helper: "Provide a recent medical certificate showing you are fit to join. Required for Expert trails; strongly recommended for safety on other levels.",
   },
   experienceProof: {
     key: "experienceProof",
     label: "Experience Proof",
     helper:
       "Upload summit photos or past hike evidence so organizers can verify your experience and trail policy adherence.",
+    multiple: true,
   },
   trailPolicy: {
     key: "trailPolicy",
@@ -59,7 +60,7 @@ export default function BookingPage({ route, navigation }) {
   const [documents, setDocuments] = useState({
     waiver: null,
     medicalCertificate: null,
-    experienceProof: null,
+    experienceProof: [],
     trailPolicy: null,
   });
   const [loading, setLoading] = useState(false);
@@ -106,7 +107,7 @@ export default function BookingPage({ route, navigation }) {
     setExpertWaiverAccepted(false);
     setSafetyWaiverAccepted(false);
     setBookingRequestKey(createIdempotencyKey());
-    setDocuments({ waiver: null, medicalCertificate: null, experienceProof: null, trailPolicy: null });
+    setDocuments({ waiver: null, medicalCertificate: null, experienceProof: [], trailPolicy: null });
     setReceipt(null);
   }, [event?.id, eventDifficulty]);
 
@@ -135,11 +136,12 @@ export default function BookingPage({ route, navigation }) {
     label,
     unsupportedMessage,
     onPicked,
+    allowMultiple = false,
   }) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: pickerTypes,
-        multiple: false,
+        multiple: allowMultiple,
         copyToCacheDirectory: false,
       });
 
@@ -147,23 +149,37 @@ export default function BookingPage({ route, navigation }) {
         return;
       }
 
-      const file = createFilePayload(result.assets[0], fallbackName, fallbackMimeType);
+      const files = result.assets.map((asset, index) =>
+        createFilePayload(asset, `${fallbackName}-${index + 1}`, fallbackMimeType),
+      );
 
-      if (
-        Array.isArray(allowedMimeTypes) &&
-        allowedMimeTypes.length > 0 &&
-        file.mimeType &&
-        !allowedMimeTypes.includes(file.mimeType)
-      ) {
+      const hasUnsupported = Array.isArray(allowedMimeTypes)
+        ? files.some((file) => file.mimeType && !allowedMimeTypes.includes(file.mimeType))
+        : false;
+
+      if (hasUnsupported) {
         Alert.alert("Unsupported File", unsupportedMessage);
         return;
       }
 
-      onPicked(file);
+      onPicked(files);
     } catch (error) {
       console.error(`Error picking ${label}:`, error);
       Alert.alert("Error", `Could not pick the ${label.toLowerCase()}.`);
     }
+  };
+
+  const applyPickedDocuments = (docKey, files, allowMultiple) => {
+    if (!Array.isArray(files) || !files.length) {
+      return;
+    }
+    setDocuments((prev) => {
+      if (allowMultiple) {
+        const existing = Array.isArray(prev[docKey]) ? prev[docKey] : [];
+        return { ...prev, [docKey]: [...existing, ...files] };
+      }
+      return { ...prev, [docKey]: files[0] };
+    });
   };
 
   const pickReceipt = async () => {
@@ -177,7 +193,7 @@ export default function BookingPage({ route, navigation }) {
       fallbackMimeType: "image/jpeg",
       label: "Receipt",
       unsupportedMessage: "Please upload an image receipt (JPEG, PNG, WEBP, or GIF).",
-      onPicked: (file) => setReceipt(file),
+      onPicked: (files) => setReceipt(files[0]),
     });
   };
 
@@ -196,11 +212,8 @@ export default function BookingPage({ route, navigation }) {
       fallbackMimeType: "application/pdf",
       label: config.label,
       unsupportedMessage: "Please upload an image or PDF for this document.",
-      onPicked: (file) =>
-        setDocuments((prev) => ({
-          ...prev,
-          [docKey]: file,
-        })),
+      allowMultiple: Boolean(config.multiple),
+      onPicked: (files) => applyPickedDocuments(docKey, files, Boolean(config.multiple)),
     });
   };
 
@@ -208,11 +221,26 @@ export default function BookingPage({ route, navigation }) {
     setReceipt(null);
   };
 
-  const clearDocument = (docKey) => {
-    setDocuments((prev) => ({
-      ...prev,
-      [docKey]: null,
-    }));
+  const clearDocument = (docKey, index = null) => {
+    setDocuments((prev) => {
+      const current = prev[docKey];
+      if (Array.isArray(current)) {
+        if (index === null || index === undefined) {
+          return { ...prev, [docKey]: [] };
+        }
+        const next = current.filter((_, idx) => idx !== index);
+        return { ...prev, [docKey]: next };
+      }
+      return { ...prev, [docKey]: null };
+    });
+  };
+
+  const hasDocument = (docKey) => {
+    const value = documents[docKey];
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    return Boolean(value);
   };
 
   const submitBooking = async () => {
@@ -226,7 +254,7 @@ export default function BookingPage({ route, navigation }) {
     }
 
     const missingDocumentLabels = requiredDocuments
-      .filter((docKey) => !documents[docKey])
+      .filter((docKey) => !hasDocument(docKey))
       .map((docKey) => DOCUMENT_CONFIG[docKey]?.label || docKey);
 
     if (missingDocumentLabels.length) {
@@ -255,6 +283,19 @@ export default function BookingPage({ route, navigation }) {
         if (!file) {
           return;
         }
+        if (Array.isArray(file)) {
+          file.forEach((item) => {
+            if (!item) {
+              return;
+            }
+            formData.append(docKey, {
+              uri: item.uri,
+              name: item.name,
+              type: item.mimeType,
+            });
+          });
+          return;
+        }
         formData.append(docKey, {
           uri: file.uri,
           name: file.name,
@@ -276,7 +317,7 @@ export default function BookingPage({ route, navigation }) {
         },
       });
 
-      setDocuments({ waiver: null, medicalCertificate: null, experienceProof: null, trailPolicy: null });
+      setDocuments({ waiver: null, medicalCertificate: null, experienceProof: [], trailPolicy: null });
       setReceipt(null);
       navigation.navigate("ReceiptPage", { event, booking });
       setBookingRequestKey(createIdempotencyKey());
@@ -304,7 +345,7 @@ export default function BookingPage({ route, navigation }) {
     }
 
     const missingDocumentLabels = requiredDocuments
-      .filter((docKey) => !documents[docKey])
+      .filter((docKey) => !hasDocument(docKey))
       .map((docKey) => DOCUMENT_CONFIG[docKey]?.label || docKey);
     if (missingDocumentLabels.length) {
       Alert.alert(
@@ -378,6 +419,9 @@ export default function BookingPage({ route, navigation }) {
             - Inform guides of any concerns immediately and acknowledge that you participate at your
             own risk.
           </Text>
+          <Text style={styles.safetyListItem}>
+            - Provide a recent medical certificate when requested, especially for higher-difficulty trails.
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.safetyWaiverToggle}
@@ -423,8 +467,8 @@ export default function BookingPage({ route, navigation }) {
           <Text style={styles.documentationSubtitle}>
             {`Organizers review these to enforce trail policies. ${
               isExpertDifficulty
-                ? "Expert trails are strict: all required files must be attached."
-                : "Expert trails are strict; easier trails are lighter, but sharing experience proof speeds approval."
+                ? "Expert trails are strict: waiver, medical clearance, and experience proof are all required."
+                : "Expert trails are strict; below Expert, experience proof helps and medical clearance strengthens safety."
             }`}
           </Text>
 
@@ -433,8 +477,9 @@ export default function BookingPage({ route, navigation }) {
             if (!config) {
               return null;
             }
-            const doc = documents[docKey];
-            const isImage = (doc?.mimeType || "").startsWith("image/");
+            const docValue = documents[docKey];
+            const docList = Array.isArray(docValue) ? docValue : docValue ? [docValue] : [];
+            const allowMultiple = Boolean(config.multiple);
             const badgeStyle = required ? styles.documentRequiredBadge : styles.documentOptionalBadge;
             const helperText = required
               ? config.helper
@@ -452,28 +497,40 @@ export default function BookingPage({ route, navigation }) {
                   disabled={loading}
                 >
                   <Text style={styles.uploadBtnText}>
-                    {doc ? `Change ${config.label}` : `Upload ${config.label}`}
+                    {allowMultiple && docList.length
+                      ? `Add another ${config.label}`
+                      : docList.length
+                        ? `Change ${config.label}`
+                        : `Upload ${config.label}`}
                   </Text>
                 </TouchableOpacity>
-                {doc ? (
-                  <View style={styles.previewCard}>
-                    {isImage ? (
-                      <Image source={{ uri: doc.uri }} style={styles.previewImage} />
-                    ) : (
-                      <View style={styles.documentPlaceholder}>
-                        <Text style={styles.documentPlaceholderText}>PDF attached</Text>
-                      </View>
-                    )}
-                    <View style={styles.previewMeta}>
-                      <Text style={styles.previewName} numberOfLines={1}>
-                        {doc.name}
-                      </Text>
-                      <TouchableOpacity onPress={() => clearDocument(docKey)} disabled={loading}>
-                        <Text style={styles.removeText}>Remove</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : null}
+                {docList.length
+                  ? docList.map((doc, index) => {
+                      const isImage = (doc?.mimeType || "").startsWith("image/");
+                      return (
+                        <View key={`${docKey}-${index}`} style={styles.previewCard}>
+                          {isImage ? (
+                            <Image source={{ uri: doc.uri }} style={styles.previewImage} />
+                          ) : (
+                            <View style={styles.documentPlaceholder}>
+                              <Text style={styles.documentPlaceholderText}>PDF attached</Text>
+                            </View>
+                          )}
+                          <View style={styles.previewMeta}>
+                            <Text style={styles.previewName} numberOfLines={1}>
+                              {allowMultiple ? `${index + 1}. ${doc.name}` : doc.name}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => clearDocument(docKey, index)}
+                              disabled={loading}
+                            >
+                              <Text style={styles.removeText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })
+                  : null}
               </View>
             );
           })}

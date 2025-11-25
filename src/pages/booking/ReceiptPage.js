@@ -26,6 +26,7 @@ const DOCUMENT_FIELDS = [
   { key: "waiverUrl", label: "Risk Waiver" },
   { key: "medicalCertificateUrl", label: "Medical Clearance" },
   { key: "trailPolicyUrl", label: "Trail Policy Document" },
+  { key: "experienceProofUrls", label: "Experience Proof", multiple: true },
   { key: "experienceProofUrl", label: "Experience Proof" },
 ];
 
@@ -81,14 +82,41 @@ export default function ReceiptPage({ route, navigation }) {
     if (!booking) {
       return [];
     }
-    return DOCUMENT_FIELDS.filter(({ key }) => {
+    const seen = new Set();
+    const items = [];
+
+    DOCUMENT_FIELDS.forEach(({ key, label, multiple }) => {
       const value = booking?.[key];
-      return typeof value === "string" && value.trim().length > 0;
-    }).map(({ key, label }) => ({
-      key,
-      label,
-      url: booking[key],
-    }));
+      if (Array.isArray(value)) {
+        value
+          .filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+          .forEach((entry, index) => {
+            const trimmed = entry.trim();
+            if (seen.has(trimmed)) {
+              return;
+            }
+            seen.add(trimmed);
+            items.push({
+              key: `${key}-${index}`,
+              label: multiple ? `${label} ${index + 1}` : label,
+              url: trimmed,
+            });
+          });
+        return;
+      }
+
+      if (typeof value === "string" && value.trim().length > 0 && !seen.has(value.trim())) {
+        const trimmed = value.trim();
+        seen.add(trimmed);
+        items.push({
+          key,
+          label,
+          url: trimmed,
+        });
+      }
+    });
+
+    return items;
   }, [booking]);
 
   const handleOpenDocument = async (url) => {
