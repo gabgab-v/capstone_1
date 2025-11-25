@@ -15,14 +15,29 @@ import { Feather } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
 import { post } from '../lib/api';
+import SafePicker from '../components/SafePicker';
+import { useTheme } from '../context/ThemeContext';
 
 export default function SignupPage({ navigation }) {
+  const { colors } = useTheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasAcceptedPolicies, setHasAcceptedPolicies] = useState(false);
+  const [visitedTrail, setVisitedTrail] = useState(null);
+
+  const mountainOptions = useMemo(
+    () => [
+      { label: 'Mt. Pulag', value: 'mt-pulag' },
+      { label: 'Mt. Apo', value: 'mt-apo' },
+      { label: 'Mt. Batulao', value: 'mt-batulao' },
+      { label: 'Mt. Ulap', value: 'mt-ulap' },
+      { label: 'Other / not listed', value: 'other' },
+    ],
+    [],
+  );
 
   const checkboxStyles = useMemo(
     () =>
@@ -65,6 +80,7 @@ export default function SignupPage({ navigation }) {
         id: authData.user.id,
         email: authData.user.email,
         name,
+        visitedTrail,
       });
 
       Alert.alert(
@@ -139,6 +155,32 @@ export default function SignupPage({ navigation }) {
             value={confirm}
             onChangeText={setConfirm}
           />
+
+          <View className="mb-6">
+            <Text className="mb-2 text-base font-semibold text-gray-800 dark:text-slate-100">
+              Which of these mountains/trails have you been to?
+            </Text>
+            <Text className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+              This will help you be suggested which trails that suits your profile.
+            </Text>
+            <SafePicker
+              options={mountainOptions}
+              selectedValue={visitedTrail}
+              onValueChange={setVisitedTrail}
+              placeholder="Select a mountain or trail"
+              modalTitle="Choose a mountain or trail"
+              containerStyle={{
+                borderColor: colors.border,
+                backgroundColor: colors.surfaceMuted,
+              }}
+              dropdownIconColor={colors.icon}
+              textColor={colors.textPrimary}
+              placeholderColor={colors.textMuted}
+            />
+            <Text className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Organizers can add more mountains in Settings.
+            </Text>
+          </View>
 
           <TouchableOpacity
             className="mb-6 flex-row items-start"
