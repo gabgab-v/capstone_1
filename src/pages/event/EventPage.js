@@ -19,6 +19,13 @@ import { del, get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
 import SafePicker from "../../components/SafePicker";
 import { useTheme } from "../../context/ThemeContext";
+import { useNotifications } from "../../context/NotificationContext";
+import {
+  computeUserVector,
+  computeEventVector,
+  cosineSimilarity,
+  magnitude,
+} from "../../utils/matchScoring";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -196,6 +203,60 @@ function formatRelativeToNow(value) {
     return "in 1 day";
   }
   return `in ${diffDays} days`;
+}
+
+function normalizeStatus(value) {
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function isEventCompleted(event) {
+  if (!event) {
+    return false;
+  }
+  const status = normalizeStatus(event.status);
+  return status === "COMPLETED" || Boolean(event.completedAt);
+}
+
+function isEventUpcoming(event) {
+  if (!event) {
+    return false;
+  }
+  const status = normalizeStatus(event.status);
+  if (status !== "PUBLISHED") {
+    return false;
+  }
+  const start = event.startsAt ? parseDateValue(event.startsAt) : null;
+  return !start || start > new Date();
+}
+
+function scoreEventForUser(event, user, userVector, referenceEvent) {
+  if (!event || !userVector || magnitude(userVector) === 0) {
+    return 0;
+  }
+  const eventVector = computeEventVector(event, user);
+  if (!eventVector || magnitude(eventVector) === 0) {
+    return 0;
+  }
+  const baseScore = cosineSimilarity(userVector, eventVector);
+  const trailBoost =
+    referenceEvent?.trailType &&
+    event.trailType &&
+    referenceEvent.trailType.toLowerCase() === event.trailType.toLowerCase()
+      ? 0.05
+      : 0;
+  const difficultyBoost =
+    referenceEvent?.difficulty &&
+    event.difficulty &&
+    referenceEvent.difficulty.toLowerCase() === event.difficulty.toLowerCase()
+      ? 0.05
+      : 0;
+  const mountainBoost =
+    referenceEvent?.mountainTag &&
+    event.mountainTag &&
+    referenceEvent.mountainTag.toLowerCase() === event.mountainTag.toLowerCase()
+      ? 0.05
+      : 0;
+  return baseScore + trailBoost + difficultyBoost + mountainBoost;
 }
 
 function computeEventScheduleFlags(event) {
@@ -706,6 +767,7 @@ function OrganizerEventCard({
 
 export default function EventsPage({ navigation }) {
   const { styles, colors } = useEventStyles();
+  const { scheduleNotification } = useNotifications();
   const [user, setUser] = useState(null);
   const [bookedEvents, setBookedEvents] = useState([]);
   const [createdEvents, setCreatedEvents] = useState([]);
@@ -721,6 +783,8 @@ export default function EventsPage({ navigation }) {
   const [deletingEventId, setDeletingEventId] = useState(null);
 
   const hasLoadedRef = useRef(false);
+  const notifiedCompletionIdsRef = useRef(new Set());
+  const suggestionNotificationInFlightRef = useRef(false);
   const insets = useSafeAreaInsets();
   const contentInsets = useMemo(
     () => ({
@@ -743,6 +807,83 @@ export default function EventsPage({ navigation }) {
       setActiveTab((current) => (current === TAB_HOSTING ? TAB_BOOKINGS : current));
     }
   }, [isOrganizer]);
+
+  const maybeNotifyCompletionSuggestions = useCallback(
+    async (bookings, currentUser) => {
+      if (suggestionNotificationInFlightRef.current) {
+        return;
+      }
+      if (!Array.isArray(bookings) || bookings.length === 0 || !currentUser) {
+        return;
+      }
+
+      const completedEvents = bookings
+        .map((booking) => booking?.event)
+        .filter((event) => event && isEventCompleted(event));
+
+      const newCompletions = completedEvents.filter(
+        (event) => event?.id && !notifiedCompletionIdsRef.current.has(event.id),
+      );
+
+      if (!newCompletions.length) {
+        return;
+      }
+
+      suggestionNotificationInFlightRef.current = true;
+
+      try {
+        const referenceEvent = newCompletions[0];
+        const userVector = computeUserVector(currentUser);
+        const canScore = userVector && magnitude(userVector) > 0;
+
+        const eventsResponse = await get("/api/events");
+        const candidateEvents = Array.isArray(eventsResponse)
+          ? eventsResponse.filter(
+              (event) =>
+                isEventUpcoming(event) &&
+                (!referenceEvent?.id || event.id !== referenceEvent.id),
+            )
+          : [];
+
+        let bestEvent = null;
+        let bestScore = -Infinity;
+
+        candidateEvents.forEach((event) => {
+          const score = canScore
+            ? scoreEventForUser(event, currentUser, userVector, referenceEvent)
+            : 0;
+          if (score > bestScore) {
+            bestScore = score;
+            bestEvent = event;
+          }
+        });
+
+        if (bestEvent) {
+          const referenceTitle = referenceEvent?.title ?? "your recent hike";
+          const suggestionTitle = bestEvent.title ?? "a recommended event";
+          await scheduleNotification({
+            title: "Event completed!",
+            body: `Based on ${referenceTitle}, you might enjoy "${suggestionTitle}".`,
+            data: {
+              suggestedEventId: bestEvent.id,
+              source: "completion-suggestion",
+            },
+          });
+        }
+
+        newCompletions.forEach((event) => {
+          if (event?.id) {
+            notifiedCompletionIdsRef.current.add(event.id);
+          }
+        });
+      } catch (error) {
+        console.error("Failed to send completion suggestion notification:", error);
+      } finally {
+        suggestionNotificationInFlightRef.current = false;
+      }
+    },
+    [get, scheduleNotification],
+  );
 
   const sortedBookings = useMemo(() => {
     return [...bookedEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
@@ -793,6 +934,10 @@ export default function EventsPage({ navigation }) {
       return haystack.some((value) => value.includes(query));
     });
   }, [sortedCreatedEvents, searchQuery, hostStatusFilter]);
+
+  useEffect(() => {
+    maybeNotifyCompletionSuggestions(bookedEvents, user);
+  }, [bookedEvents, user, maybeNotifyCompletionSuggestions]);
 
   const fetchData = useCallback(
     async ({ showSpinner = false, useRefreshControl = false } = {}) => {
