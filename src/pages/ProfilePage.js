@@ -165,6 +165,7 @@ const COMPLETION_STATUS_BADGES = {
 };
 const COMPLETED_TRAILS_SCROLL_THRESHOLD = 3; // Number of completion cards before constraining height
 const COMPLETED_TRAILS_MAX_HEIGHT = 360; // Roughly 3 completion cards tall
+const COMPLETED_HIGHLIGHT_LIMIT = 4; // Max achievements to spotlight in the highlights tab
 
 const TRAIL_RECORDINGS_SCROLL_THRESHOLD = 4; // Number of trail cards to show before constraining height
 const TRAIL_RECORDINGS_MAX_HEIGHT = 420; // Roughly 4 cards tall before requiring scroll
@@ -244,7 +245,38 @@ function getCompletionBadge(status) {
   return { label: normalized, background: '#E5E7EB', color: '#374151' };
 }
 
-function CompletedTrailCard({ completion, onPress }) {
+function scoreCompletionForHighlight(completion) {
+  if (!completion) {
+    return 0;
+  }
+  const distanceKm = Number(completion?.distanceKm ?? completion?.trailDistanceMeters / 1000);
+  const durationHrs = Number(completion?.durationHrs);
+  const elevationM = Number(completion?.elevationM);
+  const badge = getCompletionBadge(completion?.bookingStatus);
+  const statusBonus = badge.label === 'Confirmed' || badge.label === 'Approved' ? 0.6 : 0.25;
+  const distanceScore = Number.isFinite(distanceKm) ? Math.min(distanceKm / 10, 1) : 0;
+  const durationScore = Number.isFinite(durationHrs) ? Math.min(durationHrs / 8, 1) : 0;
+  const elevationScore = Number.isFinite(elevationM) ? Math.min(elevationM / 800, 1) : 0;
+
+  let recencyBonus = 0;
+  const completedAt = completion?.completedAt ?? completion?.recordedAt;
+  if (completedAt) {
+    const completedDate = new Date(completedAt);
+    if (!Number.isNaN(completedDate.valueOf())) {
+      const daysAgo = Math.max(
+        0,
+        (Date.now() - completedDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysAgo <= 60) {
+        recencyBonus = Math.max(0.1, (60 - daysAgo) / 120); // up to 0.5 if within 0-60 days
+      }
+    }
+  }
+
+  return distanceScore * 0.3 + durationScore * 0.25 + elevationScore * 0.2 + statusBonus + recencyBonus;
+}
+
+function CompletedTrailCard({ completion, onPress, variant = 'default' }) {
   if (!completion) {
     return null;
   }
@@ -259,6 +291,7 @@ function CompletedTrailCard({ completion, onPress }) {
     ? { uri: completion.imageUrl }
     : { uri: COMPLETION_IMAGE_PLACEHOLDER };
 
+  const isHighlight = variant === 'highlight';
   const CardComponent = onPress ? TouchableOpacity : View;
   const cardProps = onPress
     ? {
@@ -267,12 +300,32 @@ function CompletedTrailCard({ completion, onPress }) {
         accessibilityRole: 'button',
       }
     : {};
+  const containerClasses = `mt-3 rounded-2xl border p-3 ${
+    isHighlight
+      ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-700/60 dark:bg-emerald-900/30'
+      : 'border-gray-100 bg-white dark:border-slate-700 dark:bg-slate-900'
+  }`;
 
   return (
     <CardComponent
       {...cardProps}
-      className="mt-3 rounded-2xl border border-gray-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+      className={containerClasses}
     >
+      {isHighlight ? (
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center rounded-full bg-emerald-100 px-3 py-1 dark:bg-emerald-500/20">
+            <Ionicons name="trophy" size={14} color="#047857" />
+            <Text className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-50">
+              Highlight
+            </Text>
+          </View>
+          {completion?.completedAt ? (
+            <Text className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-100">
+              {formatCompletionDate(completion.completedAt) ?? 'Recently completed'}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <View className="flex-row">
         <Image
           source={imageSource}
@@ -369,6 +422,7 @@ function ProfilePageContent({ navigation, route }) {
   const [shareSubmitting, setShareSubmitting] = useState(false);
   const [trailRecordingSearch, setTrailRecordingSearch] = useState('');
   const [completedTrailSearch, setCompletedTrailSearch] = useState('');
+  const [completedViewMode, setCompletedViewMode] = useState('all');
   const [preferenceView, setPreferenceView] = useState('current');
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
@@ -430,9 +484,35 @@ function ProfilePageContent({ navigation, route }) {
   }, [completedEvents, completedTrailSearch]);
   const trimmedCompletedTrailSearch = completedTrailSearch.trim();
   const completedSearchActive = trimmedCompletedTrailSearch.length > 0;
-  const noMatchingCompletedEvents = completedSearchActive && filteredCompletedEvents.length === 0;
+  const highlightedCompletedEvents = useMemo(() => {
+    if (!completedEvents.length) {
+      return [];
+    }
+    const scored = completedEvents.map((completion) => ({
+      completion,
+      score: scoreCompletionForHighlight(completion),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, COMPLETED_HIGHLIGHT_LIMIT).map((entry) => entry.completion);
+  }, [completedEvents]);
+  const filteredHighlightEvents = useMemo(
+    () => highlightedCompletedEvents.filter((completion) => filteredCompletedEvents.includes(completion)),
+    [filteredCompletedEvents, highlightedCompletedEvents],
+  );
+  const isHighlightsMode = completedViewMode === 'highlights';
+  const visibleCompletedEvents = useMemo(
+    () => (isHighlightsMode ? filteredHighlightEvents : filteredCompletedEvents),
+    [filteredHighlightEvents, filteredCompletedEvents, isHighlightsMode],
+  );
+  const visibleCompletedBaseCount = isHighlightsMode
+    ? highlightedCompletedEvents.length
+    : completedEvents.length;
+  const noHighlightsAvailable = highlightedCompletedEvents.length === 0;
+  const noMatchingCompletedEvents = isHighlightsMode
+    ? filteredHighlightEvents.length === 0
+    : completedSearchActive && filteredCompletedEvents.length === 0;
   const hasOverflowingCompletedEvents =
-    filteredCompletedEvents.length > COMPLETED_TRAILS_SCROLL_THRESHOLD;
+    visibleCompletedEvents.length > COMPLETED_TRAILS_SCROLL_THRESHOLD;
   const completedTrailsScrollStyle = useMemo(
     () => (hasOverflowingCompletedEvents ? { maxHeight: COMPLETED_TRAILS_MAX_HEIGHT } : null),
     [hasOverflowingCompletedEvents],
@@ -1638,9 +1718,15 @@ function ProfilePageContent({ navigation, route }) {
         <View className="mt-6 w-full rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:bg-slate-900 dark:border-slate-700">
           <View className="flex-row items-center justify-between">
             <Text className="text-sm font-semibold text-gray-700 dark:text-slate-300">Completed Trails</Text>
-            {completedEvents.length ? (
+            {visibleCompletedBaseCount ? (
               <Text className="text-xs text-gray-500 dark:text-slate-400">
-                {completedEvents.length === 1 ? '1 event' : `${completedEvents.length} events`}
+                {visibleCompletedBaseCount === 1
+                  ? isHighlightsMode
+                    ? '1 achievement'
+                    : '1 event'
+                  : isHighlightsMode
+                    ? `${visibleCompletedBaseCount} achievements`
+                    : `${visibleCompletedBaseCount} events`}
               </Text>
             ) : null}
           </View>
@@ -1674,12 +1760,47 @@ function ProfilePageContent({ navigation, route }) {
                   ))}
                 </View>
               ) : null}
+              <View className="mt-3 flex-row rounded-full bg-gray-100 p-1 dark:bg-slate-800">
+                <TouchableOpacity
+                  onPress={() => setCompletedViewMode('all')}
+                  className={`flex-1 rounded-full px-3 py-2 ${isHighlightsMode ? '' : 'bg-white dark:bg-slate-900'}`}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    className={`text-center text-sm font-semibold ${
+                      isHighlightsMode ? 'text-gray-600 dark:text-slate-300' : 'text-green-700 dark:text-emerald-200'
+                    }`}
+                  >
+                    All
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setCompletedViewMode('highlights')}
+                  className={`flex-1 rounded-full px-3 py-2 ${
+                    isHighlightsMode ? 'bg-white dark:bg-slate-900' : ''
+                  }`}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    className={`text-center text-sm font-semibold ${
+                      isHighlightsMode ? 'text-green-700 dark:text-emerald-200' : 'text-gray-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Achievements
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                {isHighlightsMode
+                  ? 'Spotlighted achievements are visible to anyone viewing this profile.'
+                  : 'Browse every completion or switch to Achievements to showcase the best ones.'}
+              </Text>
               <View className="mt-3 flex-row items-center rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                 <Ionicons name="search" size={18} color="#94A3B8" />
                 <TextInput
                   value={completedTrailSearch}
                   onChangeText={setCompletedTrailSearch}
-                  placeholder="Search completed trails"
+                  placeholder={isHighlightsMode ? 'Search achievements' : 'Search completed trails'}
                   placeholderTextColor="#94a3b8"
                   className="ml-2 flex-1 text-sm text-gray-900 dark:text-slate-100"
                   autoCapitalize="none"
@@ -1694,12 +1815,18 @@ function ProfilePageContent({ navigation, route }) {
               </View>
               {completedSearchActive && !noMatchingCompletedEvents ? (
                 <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">
-                  Showing {filteredCompletedEvents.length} of {completedEvents.length} completions
+                  Showing {visibleCompletedEvents.length} of {visibleCompletedBaseCount}{' '}
+                  {isHighlightsMode ? 'achievements' : 'completions'}
                 </Text>
               ) : null}
-              {noMatchingCompletedEvents ? (
+              {isHighlightsMode && noHighlightsAvailable ? (
                 <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
-                  No completed trails match "{trimmedCompletedTrailSearch}".
+                  No highlighted achievements yet. Switch to All to view your completed trails.
+                </Text>
+              ) : noMatchingCompletedEvents ? (
+                <Text className="mt-3 text-sm text-gray-500 dark:text-slate-400">
+                  No {isHighlightsMode ? 'achievements' : 'completed trails'} match "
+                  {trimmedCompletedTrailSearch}".
                 </Text>
               ) : (
                 <View className="mt-3">
@@ -1710,7 +1837,7 @@ function ProfilePageContent({ navigation, route }) {
                     style={completedTrailsScrollStyle || undefined}
                     contentContainerStyle={completedTrailsScrollContentStyle || undefined}
                   >
-                    {filteredCompletedEvents.map((completion, index) => {
+                    {visibleCompletedEvents.map((completion, index) => {
                       if (!completion) {
                         return null;
                       }
@@ -1721,13 +1848,14 @@ function ProfilePageContent({ navigation, route }) {
                           key={completionKey}
                           completion={completion}
                           onPress={handleCompletionPress}
+                          variant={isHighlightsMode ? 'highlight' : 'default'}
                         />
                       );
                     })}
                   </ScrollView>
                   {hasOverflowingCompletedEvents ? (
                     <Text className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
-                      Scroll to see more completed trails
+                      Scroll to see more {isHighlightsMode ? 'achievements' : 'completed trails'}
                     </Text>
                   ) : null}
                 </View>
