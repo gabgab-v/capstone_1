@@ -1243,6 +1243,11 @@ export default function EventDetailsPage({ route, navigation }) {
                 {locationLabel}
               </Text>
             </View>
+            {event.mountainTag ? (
+              <View style={styles.mountainTagChip}>
+                <Text style={styles.mountainTagText}>{event.mountainTag}</Text>
+              </View>
+            ) : null}
           </View>
 
           {ageNotice ? (
@@ -1693,6 +1698,15 @@ const styles = StyleSheet.create({
   },
   locationChipText: { color: '#166534', fontSize: 13, fontWeight: '600', flexShrink: 1 },
   locationIcon: { marginRight: 6 },
+  mountainTagChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+    marginTop: 8,
+  },
+  mountainTagText: { color: '#0f172a', fontSize: 12, fontWeight: '700' },
   ageNotice: {
     borderWidth: 1,
     borderRadius: 12,

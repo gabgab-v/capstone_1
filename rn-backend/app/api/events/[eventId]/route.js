@@ -135,10 +135,19 @@ async function findOwnedTrail(userId, trailId) {
 const EVENT_STATUSES = new Set(["DRAFT", "PUBLISHED", "CLOSED", "COMPLETED", "CANCELLED"]);
 const ATTENDEE_STATUSES = new Set(["APPROVED", "CONFIRMED"]);
 
+async function ensureEventColumns() {
+  try {
+    await prisma.$executeRawUnsafe('ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;');
+  } catch (error) {
+    console.error('ensureEventColumns error:', error);
+  }
+}
+
 export async function GET(request, { params }) {
   const { eventId } = params;
 
   try {
+    await ensureEventColumns();
     const user = await getUserFromToken(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -381,6 +390,8 @@ export async function PATCH(request, { params }) {
 
     const hasTrailTypeField = Object.prototype.hasOwnProperty.call(body, "trailType");
     const normalizedTrailType = hasTrailTypeField ? sanitizeString(body?.trailType) : null;
+    const hasMountainTagField = Object.prototype.hasOwnProperty.call(body, "mountainTag");
+    const normalizedMountainTag = hasMountainTagField ? sanitizeString(body?.mountainTag) : null;
 
     const updateData = {
       title,
@@ -410,6 +421,7 @@ export async function PATCH(request, { params }) {
       announceAt,
       minAge,
       trailType: hasTrailTypeField ? normalizedTrailType : existingEvent.trailType,
+      mountainTag: hasMountainTagField ? normalizedMountainTag : existingEvent.mountainTag,
       trailId: selectedTrail.id,
       trailGeoJson: selectedTrail.geoJson ?? sanitizeGeoJson(body?.trailGeoJson) ?? existingEvent.trailGeoJson,
       trailDistanceMeters:

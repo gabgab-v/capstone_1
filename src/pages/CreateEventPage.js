@@ -20,6 +20,7 @@ import { decode } from 'base64-arraybuffer';
 import { get, post, patch } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../context/NotificationContext';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useUserTrails } from '../hooks/useUserTrails';
 import TrailMapPicker from '../components/TrailMapPicker';
@@ -432,6 +433,7 @@ export default function CreateEventPage({ route, navigation }) {
   const [selectedTrailId, setSelectedTrailId] = useState(() => eventFromParams?.trailId ?? null);
   const [trailType, setTrailType] = useState(() => eventFromParams?.trailType ?? '');
   const [locationName, setLocationName] = useState(() => eventFromParams?.locationName ?? '');
+  const [mountainTag, setMountainTag] = useState(() => eventFromParams?.mountainTag ?? '');
 
   const initialLatitude = Number(eventFromParams?.locationLatitude);
   const initialLongitude = Number(eventFromParams?.locationLongitude);
@@ -511,6 +513,14 @@ export default function CreateEventPage({ route, navigation }) {
   }, [trails, selectedTrailId, isEditMode, editingEvent, eventFromParams]);
 
   const activeEvent = editingEvent ?? eventFromParams ?? null;
+  const { user } = useAuth();
+  const mountainSuggestions = useMemo(
+    () =>
+      Array.isArray(user?.preferredMountains)
+        ? user.preferredMountains.map((entry) => ({ label: entry, value: entry }))
+        : [],
+    [user?.preferredMountains],
+  );
 
   useEffect(() => {
     if (!isEditMode || !activeEvent || hasPrefilledRef.current) {
@@ -537,6 +547,7 @@ export default function CreateEventPage({ route, navigation }) {
     setDifficulty(resolveDifficultyValue(activeEvent.difficulty));
     setGcashNumber(sanitizeGcashInput(activeEvent.gcashNumber ?? ''));
     setTrailType(activeEvent.trailType ?? '');
+    setMountainTag(activeEvent.mountainTag ?? '');
 
     setSelectedImage(activeEvent.imageUrl ? { uri: activeEvent.imageUrl } : null);
     setSelectedTrailId(activeEvent.trailId ?? null);
@@ -722,6 +733,7 @@ export default function CreateEventPage({ route, navigation }) {
   const handleSubmit = useCallback(async () => {
     const trimmedTitle = trimOrNull(title);
     const normalizedTrailType = trimOrNull(trailType);
+    const normalizedMountainTag = trimOrNull(mountainTag);
     if (!trimmedTitle) {
       Alert.alert('Missing Information', 'Please add a title for your event.');
       setActiveTab('overview');
@@ -952,6 +964,7 @@ export default function CreateEventPage({ route, navigation }) {
         maxParticipants: normalizedMaxParticipants,
         status: normalizedStatus,
         trailType: normalizedTrailType,
+        mountainTag: normalizedMountainTag,
         minAge: normalizedMinAge,
       };
 
@@ -1024,6 +1037,7 @@ export default function CreateEventPage({ route, navigation }) {
     minParticipants,
     maxParticipants,
     status,
+    mountainTag,
     scheduleNotification,
     isEditMode,
     activeEvent,
@@ -1253,6 +1267,45 @@ export default function CreateEventPage({ route, navigation }) {
                 />
                 <Text style={styles.helperText}>
                   This helps us match the event to hikers who prefer that terrain.
+                </Text>
+              </View>
+
+              <View style={styles.infoFieldFull}>
+                <Text style={styles.infoLabel}>Mountain/Trail Tag (optional)</Text>
+                {mountainSuggestions.length ? (
+                  <View style={styles.chipRow}>
+                    {mountainSuggestions.map((option) => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.suggestionChip,
+                          mountainTag === option.value && styles.suggestionChipActive,
+                        ]}
+                        onPress={() => setMountainTag(option.value)}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[
+                            styles.suggestionChipText,
+                            mountainTag === option.value && styles.suggestionChipTextActive,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+                <TextInput
+                  style={styles.input}
+                  value={mountainTag}
+                  onChangeText={setMountainTag}
+                  placeholder="e.g., Mt. Pulag"
+                  placeholderTextColor="#94a3b8"
+                />
+                <Text style={styles.helperText}>
+                  Tag the primary mountain/trail for this event. We highlight it to hikers who saved
+                  this mountain in their profile.
                 </Text>
               </View>
             </View>
@@ -1630,6 +1683,22 @@ function createStyles(theme) {
       fontSize: 13,
       marginBottom: 12,
     },
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
+    suggestionChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: theme.surfaceMuted,
+      marginRight: 8,
+      marginBottom: 8,
+    },
+    suggestionChipActive: {
+      backgroundColor: theme.accentSurface,
+      borderWidth: 1,
+      borderColor: theme.accent,
+    },
+    suggestionChipText: { color: theme.textPrimary, fontSize: 13 },
+    suggestionChipTextActive: { color: theme.accent },
     subSection: {
       marginTop: 24,
       paddingTop: 20,

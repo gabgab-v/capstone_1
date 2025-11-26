@@ -85,6 +85,14 @@ function toDate(value) {
 const EVENT_STATUSES = new Set(['DRAFT', 'PUBLISHED', 'CLOSED', 'COMPLETED', 'CANCELLED']);
 const CLOSING_SOON_THRESHOLD_HOURS = 72;
 
+async function ensureEventColumns() {
+  try {
+    await prisma.$executeRawUnsafe('ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;');
+  } catch (error) {
+    console.error('ensureEventColumns error:', error);
+  }
+}
+
 function sanitizeBounds(bounds) {
   if (!bounds || typeof bounds !== 'object') {
     return null;
@@ -125,6 +133,7 @@ function sanitizeGeoJson(value) {
 
 export async function POST(req) {
   try {
+    await ensureEventColumns();
     const user = await getUserFromToken(req);
     if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
@@ -211,6 +220,7 @@ export async function POST(req) {
     const locationLatitude = toFloat(body?.locationLatitude);
     const locationLongitude = toFloat(body?.locationLongitude);
     const trailType = sanitizeString(body?.trailType);
+    const mountainTag = sanitizeString(body?.mountainTag);
 
     const minParticipants = Math.max(0, toInt(body?.minParticipants) ?? 0);
     const maxParticipantsRaw = toInt(body?.maxParticipants);
@@ -271,6 +281,7 @@ export async function POST(req) {
       trailDistanceMeters:
         selectedTrail?.totalDistanceMeters ?? toFloat(body?.trailDistanceMeters),
       trailType,
+      mountainTag,
       organizerId: user.id,
       minParticipants,
       maxParticipants,
@@ -308,6 +319,7 @@ export async function POST(req) {
 
 export async function GET() {
   const [events, approvedCounts, totalCounts] = await Promise.all([
+    ensureEventColumns(),
     prisma.event.findMany({
       include: {
         organizer: { select: { id: true, email: true, name: true } },

@@ -101,6 +101,7 @@ model Event {
   trailGeoJson         Json?
   trailDistanceMeters  Float?
   trailType            String?
+  mountainTag          String?
 
   organizer            User     @relation(fields: [organizerId], references: [id])
   gcashNumber          String?

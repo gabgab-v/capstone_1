@@ -398,6 +398,7 @@ function extractTrailDescriptor(event) {
 
 function buildMountainHaystack(event) {
   const parts = [
+    event?.mountainTag,
     event?.title,
     event?.trail?.label,
     event?.locationName,
@@ -1333,11 +1334,18 @@ export default function DiscoverPage() {
                   </Text>
                 )}
               </View>
-              {matchChipConfig && (
-                <View style={[styles.matchChip, matchChipConfig.container]}>
-                  <Text style={matchChipConfig.text}>{matchChipConfig.label}</Text>
-                </View>
-              )}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: matchChipConfig ? 8 : 0 }}>
+                {matchChipConfig ? (
+                  <View style={[styles.matchChip, matchChipConfig.container]}>
+                    <Text style={matchChipConfig.text}>{matchChipConfig.label}</Text>
+                  </View>
+                ) : null}
+                {event.mountainTag ? (
+                  <View style={styles.mountainTagChip}>
+                    <Text style={styles.mountainTagText}>{event.mountainTag}</Text>
+                  </View>
+                ) : null}
+              </View>
               {breakdownEntries.length > 0 && (
                 <View style={styles.matchBreakdownContainer}>
                   {breakdownEntries.map((entry, index) => (
@@ -1761,6 +1769,20 @@ function createStyles(theme, isDarkMode) {
     },
     matchChipWeakText: {
       color: theme.warningText,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    mountainTagChip: {
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: theme.surfaceMuted,
+      marginLeft: 8,
+      marginBottom: 10,
+    },
+    mountainTagText: {
+      color: theme.textPrimary,
       fontSize: 11,
       fontWeight: "700",
     },
