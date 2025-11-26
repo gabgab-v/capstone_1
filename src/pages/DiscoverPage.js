@@ -591,7 +591,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     Boolean(preferredTrail) &&
     (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
   const preferredMountains = Array.isArray(user?.preferredMountains) ? user.preferredMountains : [];
-  const mountainsEnabled =
+  const mountainsEnabledFlag =
     user?.mountainSuggestionsEnabled !== false && preferredMountains.length > 0;
 
   const context = {
@@ -612,7 +612,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     eventTrailType,
     matchesTrail,
     preferredMountains,
-    mountainsEnabled,
+    mountainsEnabled: mountainsEnabledFlag,
     mountainMatch,
   };
 
