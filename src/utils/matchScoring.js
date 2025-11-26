@@ -5,6 +5,8 @@ const LEVEL_SCORE_MAP = {
   expert: 1,
 };
 
+const DIFFICULTY_ORDER = ['Beginner', 'Intermediate', 'Technical', 'Expert'];
+
 const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
 const MAX_DISTANCE_KM = 40;
@@ -105,6 +107,14 @@ function levelToScore(label) {
     return 0;
   }
   return LEVEL_SCORE_MAP[normalized.toLowerCase()] ?? 0;
+}
+
+function getDifficultyIndex(label) {
+  const normalized = normalizeDifficultyValue(label);
+  if (!normalized) {
+    return -1;
+  }
+  return DIFFICULTY_ORDER.findIndex((item) => item.toLowerCase() === normalized.toLowerCase());
 }
 
 function inferDifficultyFromMetrics(event) {
@@ -680,8 +690,106 @@ function buildMatchBreakdown({
     .sort((a, b) => b.contribution - a.contribution);
 }
 
+function evaluateEventReadiness(user, event) {
+  const warnings = [];
+  const blockers = [];
+  const eventDifficulty = getEventDifficultyLabel(event);
+  const experienceLevel = normalizeDifficultyValue(user?.experienceLevel);
+  const preferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
+  const readinessLevel = experienceLevel || preferredDifficulty || null;
+
+  const eventDifficultyIndex = getDifficultyIndex(eventDifficulty);
+  const readinessDifficultyIndex = getDifficultyIndex(readinessLevel);
+
+  if (eventDifficultyIndex >= 0 && readinessDifficultyIndex >= 0) {
+    const gap = eventDifficultyIndex - readinessDifficultyIndex;
+    if (gap >= 2) {
+      blockers.push(
+        `Organizer marked this as ${eventDifficulty}. Your profile is ${readinessLevel}, which is below the required readiness.`,
+      );
+    } else if (gap === 1) {
+      warnings.push(
+        `This hike is ${eventDifficulty.toLowerCase()}, one level above your ${readinessLevel.toLowerCase()} profile.`,
+      );
+    }
+  } else if (eventDifficultyIndex >= 0 && readinessDifficultyIndex === -1) {
+    const message =
+      eventDifficultyIndex >= 2
+        ? 'Set your experience level before booking technical or expert events so we can confirm readiness.'
+        : 'Set your experience level so we can confirm you meet the difficulty.';
+    warnings.push(message);
+  }
+
+  if (!user?.preferencesComplete) {
+    warnings.push('Complete your hiking preferences so we can check if this event fits you.');
+  }
+
+  const minAge = Number(event?.minAge);
+  const userAge = deriveUserAgeYears(user);
+  if (Number.isFinite(minAge) && minAge > 0) {
+    if (Number.isFinite(userAge)) {
+      const roundedAge = Math.floor(userAge);
+      if (roundedAge < minAge) {
+        blockers.push(
+          `Minimum age is ${minAge}. Your profile age is ${roundedAge}, which is below the requirement.`,
+        );
+      } else if (roundedAge - minAge <= 1) {
+        warnings.push(
+          `Minimum age is ${minAge}. You're ${roundedAge}, so plan accordingly and bring guardian clearance if needed.`,
+        );
+      }
+    } else {
+      warnings.push(`Minimum age is ${minAge}. Add your birthdate to confirm you're eligible.`);
+    }
+  }
+
+  const preferredDuration = Number(user?.preferredDurationHrs);
+  const eventDuration = Number(event?.durationHrs);
+  if (Number.isFinite(eventDuration) && Number.isFinite(preferredDuration) && preferredDuration > 0) {
+    const diff = eventDuration - preferredDuration;
+    if (Math.abs(diff) >= 0.5) {
+      const direction = diff > 0 ? 'longer' : 'shorter';
+      warnings.push(
+        `Runs ${eventDuration.toFixed(1)} hrs, about ${Math.abs(diff).toFixed(1)} hrs ${direction} than your ${preferredDuration.toFixed(1)}-hr preference.`,
+      );
+    }
+  }
+
+  const preferredDistance = Number(user?.preferredDistanceKm);
+  const eventDistance = Number(event?.distanceKm);
+  if (Number.isFinite(eventDistance) && Number.isFinite(preferredDistance) && preferredDistance > 0) {
+    const diff = eventDistance - preferredDistance;
+    if (Math.abs(diff) >= 1) {
+      const direction = diff > 0 ? 'more' : 'less';
+      warnings.push(
+        `Distance is ${eventDistance.toFixed(1)} km, around ${Math.abs(diff).toFixed(1)} km ${direction} than your usual ${preferredDistance.toFixed(1)} km.`,
+      );
+    }
+  }
+
+  const preferredElevation = Number(user?.preferredElevationM);
+  const eventElevation = Number(event?.elevationM);
+  if (Number.isFinite(eventElevation) && Number.isFinite(preferredElevation) && preferredElevation > 0) {
+    const diff = eventElevation - preferredElevation;
+    if (Math.abs(diff) >= 100) {
+      const direction = diff > 0 ? 'more' : 'less';
+      warnings.push(
+        `Elevation gain is ${Math.round(eventElevation)} m, roughly ${Math.round(Math.abs(diff))} m ${direction} than your preferred ${Math.round(preferredElevation)} m.`,
+      );
+    }
+  }
+
+  return {
+    warnings,
+    blockers,
+    eventDifficulty,
+    readinessLevel,
+  };
+}
+
 export {
   LEVEL_SCORE_MAP,
+  DIFFICULTY_ORDER,
   MAX_DURATION_HOURS,
   MAX_PRICE_PHP,
   MAX_DISTANCE_KM,
@@ -690,6 +798,7 @@ export {
   MIN_BREAKDOWN_SHARE,
   normalizeDifficultyValue,
   levelToScore,
+  getDifficultyIndex,
   inferDifficultyFromMetrics,
   getEventDifficultyLabel,
   deriveEventDifficultyScore,
@@ -705,6 +814,7 @@ export {
   magnitude,
   cosineSimilarity,
   buildMatchBreakdown,
+  evaluateEventReadiness,
   formatPhp,
   deriveUserAgeYears,
   normalizeAgeYears,

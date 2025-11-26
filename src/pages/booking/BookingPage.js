@@ -11,8 +11,9 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { useNotifications } from "../../context/NotificationContext";
+import { useAuth } from "../../context/AuthContext";
 import { createIdempotencyKey, postFormData } from "../../lib/api";
-import { getEventDifficultyLabel } from "../../utils/matchScoring";
+import { evaluateEventReadiness, getEventDifficultyLabel } from "../../utils/matchScoring";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/jpg"];
 const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_RECEIPT_TYPES, "application/pdf"];
@@ -56,6 +57,7 @@ const OPTIONAL_DOCUMENTS_BY_DIFFICULTY = {
 
 export default function BookingPage({ route, navigation }) {
   const { event } = route.params;
+  const { user } = useAuth();
   const [receipt, setReceipt] = useState(null);
   const [documents, setDocuments] = useState({
     waiver: null,
@@ -68,6 +70,7 @@ export default function BookingPage({ route, navigation }) {
   const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
   const [safetyWaiverAccepted, setSafetyWaiverAccepted] = useState(false);
   const [bookingRequestKey, setBookingRequestKey] = useState(() => createIdempotencyKey());
+  const [warningsAcknowledged, setWarningsAcknowledged] = useState(false);
 
   const requiresReceipt = useMemo(() => Number(event?.price ?? 0) > 0, [event?.price]);
   const eventDifficulty = useMemo(() => getEventDifficultyLabel(event), [event]);
@@ -102,6 +105,13 @@ export default function BookingPage({ route, navigation }) {
   }, [optionalDocuments, requiredDocuments]);
   const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
   const isSafetyWaiverPending = !safetyWaiverAccepted;
+  const readinessAssessment = useMemo(
+    () => evaluateEventReadiness(user, event),
+    [event, user],
+  );
+  const readinessBlockers = readinessAssessment?.blockers ?? [];
+  const readinessWarnings = readinessAssessment?.warnings ?? [];
+  const hasReadinessBlockers = readinessBlockers.length > 0;
 
   useEffect(() => {
     setExpertWaiverAccepted(false);
@@ -109,7 +119,12 @@ export default function BookingPage({ route, navigation }) {
     setBookingRequestKey(createIdempotencyKey());
     setDocuments({ waiver: null, medicalCertificate: null, experienceProof: [], trailPolicy: null });
     setReceipt(null);
+    setWarningsAcknowledged(false);
   }, [event?.id, eventDifficulty]);
+
+  useEffect(() => {
+    setWarningsAcknowledged(false);
+  }, [readinessWarnings.join('|'), user?.id]);
 
   const priceLabel = useMemo(() => {
     const amount = Number(event?.price ?? 0);
@@ -248,6 +263,14 @@ export default function BookingPage({ route, navigation }) {
       return;
     }
 
+    if (hasReadinessBlockers) {
+      const message = readinessBlockers.length
+        ? `Resolve these before booking:\n• ${readinessBlockers.join('\n• ')}`
+        : 'Booking is locked until you meet the organizer requirements.';
+      Alert.alert('Booking locked', message);
+      return;
+    }
+
     if (requiresReceipt && !receipt) {
       Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
       return;
@@ -339,39 +362,72 @@ export default function BookingPage({ route, navigation }) {
       return;
     }
 
-    if (requiresReceipt && !receipt) {
-      Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
-      return;
-    }
-
     const missingDocumentLabels = requiredDocuments
       .filter((docKey) => !hasDocument(docKey))
       .map((docKey) => DOCUMENT_CONFIG[docKey]?.label || docKey);
-    if (missingDocumentLabels.length) {
-      Alert.alert(
-        "Documentation Required",
-        `Please upload the following before submitting: ${missingDocumentLabels.join(", ")}.`,
-      );
+
+    const runSubmissionChecks = () => {
+      if (requiresReceipt && !receipt) {
+        Alert.alert("Receipt Required", "Please upload your payment receipt before submitting.");
+        return;
+      }
+
+      if (missingDocumentLabels.length) {
+        Alert.alert(
+          "Documentation Required",
+          `Please upload the following before submitting: ${missingDocumentLabels.join(", ")}.`,
+        );
+        return;
+      }
+
+      if (isSafetyWaiverPending) {
+        Alert.alert(
+          "Safety Waiver Required",
+          "Please acknowledge the trail warnings and confirm that you are responsible for your health during the hike.",
+        );
+        return;
+      }
+
+      if (isExpertGatePending) {
+        Alert.alert(
+          "Acknowledgement Needed",
+          "This event is rated Expert difficulty. Please acknowledge that you understand the risks before booking.",
+        );
+        return;
+      }
+
+      submitBooking();
+    };
+
+    if (hasReadinessBlockers) {
+      const message = readinessBlockers.length
+        ? `Resolve these before booking:\n• ${readinessBlockers.join('\n• ')}`
+        : 'Booking is locked until you meet the organizer requirements.';
+      Alert.alert('Booking locked', message);
       return;
     }
 
-    if (isSafetyWaiverPending) {
-      Alert.alert(
-        "Safety Waiver Required",
-        "Please acknowledge the trail warnings and confirm that you are responsible for your health during the hike.",
-      );
+    if (readinessWarnings.length && !warningsAcknowledged) {
+      const warningBody = `We noticed:\n• ${readinessWarnings.join('\n• ')}`;
+      Alert.alert('Check your fit', warningBody, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Update preferences',
+          onPress: () => navigation.navigate('PreferencesSetup'),
+        },
+        {
+          text: 'Proceed anyway',
+          style: 'destructive',
+          onPress: () => {
+            setWarningsAcknowledged(true);
+            runSubmissionChecks();
+          },
+        },
+      ]);
       return;
     }
 
-    if (isExpertGatePending) {
-      Alert.alert(
-        "Acknowledgement Needed",
-        "This event is rated Expert difficulty. Please acknowledge that you understand the risks before booking.",
-      );
-      return;
-    }
-
-    submitBooking();
+    runSubmissionChecks();
   };
 
   return (
@@ -399,6 +455,34 @@ export default function BookingPage({ route, navigation }) {
             : "This event is free, but you can still upload a receipt or note for the organizer."}
         </Text>
       </View>
+
+      {hasReadinessBlockers ? (
+        <View style={[styles.readinessGate, styles.readinessGateBlocked]}>
+          <Text style={styles.readinessGateTitle}>Booking locked for this event</Text>
+          {readinessBlockers.map((message, index) => (
+            <Text key={`blocker-${index}`} style={styles.readinessGateItem}>
+              • {message}
+            </Text>
+          ))}
+          <Text style={styles.readinessGateNote}>
+            Update your hiking preferences or choose another event that matches your readiness.
+          </Text>
+        </View>
+      ) : null}
+
+      {!hasReadinessBlockers && readinessWarnings.length ? (
+        <View style={[styles.readinessGate, styles.readinessGateWarning]}>
+          <Text style={styles.readinessGateTitle}>Heads up before you book</Text>
+          {readinessWarnings.map((message, index) => (
+            <Text key={`warning-${index}`} style={styles.readinessGateItem}>
+              • {message}
+            </Text>
+          ))}
+          <Text style={styles.readinessGateNote}>
+            We will remind you about these differences before submitting your booking.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.safetyCard}>
         <Text style={styles.safetyCardTitle}>Trail Safety Waiver</Text>
@@ -556,7 +640,11 @@ export default function BookingPage({ route, navigation }) {
       ) : null}
 
       <TouchableOpacity
-        style={[styles.confirmBtn, (loading || isExpertGatePending || isSafetyWaiverPending) && styles.disabledBtn]}
+        style={[
+          styles.confirmBtn,
+          (loading || isExpertGatePending || isSafetyWaiverPending) && styles.disabledBtn,
+          hasReadinessBlockers && styles.confirmBlocked,
+        ]}
         onPress={handleConfirmPress}
         disabled={loading}
         activeOpacity={0.9}
@@ -610,6 +698,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: "#4b5563",
   },
+  readinessGate: {
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  readinessGateBlocked: { backgroundColor: "#fef2f2", borderColor: "#fca5a5" },
+  readinessGateWarning: { backgroundColor: "#fff7ed", borderColor: "#fcd34d" },
+  readinessGateTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 6 },
+  readinessGateItem: { fontSize: 13, color: "#1f2937", lineHeight: 19 },
+  readinessGateNote: { marginTop: 8, fontSize: 12, color: "#6b7280" },
   safetyCard: {
     marginBottom: 20,
     padding: 16,
@@ -697,6 +796,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     marginBottom: 12,
+  },
+  confirmBlocked: {
+    backgroundColor: "#9ca3af",
   },
   confirmText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
   disabledBtn: {

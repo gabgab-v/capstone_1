@@ -29,6 +29,7 @@ import {
   magnitude,
   deriveUserAgeYears,
   getEventDifficultyLabel,
+  evaluateEventReadiness,
 } from '../../utils/matchScoring';
 
 const BASE_TABS = [
@@ -546,6 +547,11 @@ export default function EventDetailsPage({ route, navigation }) {
     };
   }, [preferenceVector, event, user]);
 
+  const readinessAssessment = useMemo(() => evaluateEventReadiness(user, event), [event, user]);
+  const readinessBlockers = readinessAssessment?.blockers ?? [];
+  const readinessWarnings = readinessAssessment?.warnings ?? [];
+  const hasReadinessBlockers = readinessBlockers.length > 0;
+
   const userAgeYears = useMemo(() => deriveUserAgeYears(user), [user]);
   const eventMinAge = useMemo(() => {
     const value = Number(event?.minAge);
@@ -887,6 +893,45 @@ export default function EventDetailsPage({ route, navigation }) {
       setEventChatLoading(false);
     }
   }, [event?.id, navigation, user?.id]);
+
+  const handleBookPress = useCallback(() => {
+    if (!viewerCanBook) {
+      return;
+    }
+
+    if (hasReadinessBlockers) {
+      const message = readinessBlockers.length
+        ? `Please resolve before booking:\n• ${readinessBlockers.join('\n• ')}`
+        : 'This event is locked until you meet the organizer requirements.';
+      Alert.alert('Booking locked', message, [
+        {
+          text: 'Update preferences',
+          onPress: () => navigation.navigate('PreferencesSetup'),
+        },
+        { text: 'OK', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    if (readinessWarnings.length) {
+      const warningBody = `Before booking:\n• ${readinessWarnings.join('\n• ')}`;
+      Alert.alert('Check your fit', warningBody, [
+        { text: 'Keep browsing', style: 'cancel' },
+        {
+          text: 'Update preferences',
+          onPress: () => navigation.navigate('PreferencesSetup'),
+        },
+        {
+          text: 'Proceed to booking',
+          style: 'destructive',
+          onPress: () => navigation.navigate('BookingPage', { event }),
+        },
+      ]);
+      return;
+    }
+
+    navigation.navigate('BookingPage', { event });
+  }, [event, hasReadinessBlockers, navigation, readinessBlockers, readinessWarnings, viewerCanBook]);
 
   const handleNavigateToProfile = useCallback(
     (userId) => {
@@ -1273,6 +1318,34 @@ export default function EventDetailsPage({ route, navigation }) {
             </View>
           ) : null}
 
+          {readinessBlockers.length ? (
+            <View style={[styles.readinessGate, styles.readinessGateBlocked]}>
+              <Text style={styles.readinessGateTitle}>Booking locked for safety</Text>
+              {readinessBlockers.map((message, index) => (
+                <Text key={`blocker-${index}`} style={styles.readinessGateItem}>
+                  • {message}
+                </Text>
+              ))}
+              <Text style={styles.readinessGateFooter}>
+                Update your hiking profile or pick another event to unlock booking.
+              </Text>
+            </View>
+          ) : null}
+
+          {!readinessBlockers.length && readinessWarnings.length ? (
+            <View style={[styles.readinessGate, styles.readinessGateWarning]}>
+              <Text style={styles.readinessGateTitle}>Review before booking</Text>
+              {readinessWarnings.map((message, index) => (
+                <Text key={`warning-${index}`} style={styles.readinessGateItem}>
+                  • {message}
+                </Text>
+              ))}
+              <Text style={styles.readinessGateFooter}>
+                We will remind you about these differences before you confirm a booking.
+              </Text>
+            </View>
+          ) : null}
+
           {matchInsight && (
             <View
               style={[
@@ -1590,8 +1663,9 @@ export default function EventDetailsPage({ route, navigation }) {
 
       {viewerCanBook ? (
         <TouchableOpacity
-          style={styles.bookButton}
-          onPress={() => navigation.navigate('BookingPage', { event })}
+          style={[styles.bookButton, hasReadinessBlockers ? styles.bookButtonDisabled : null]}
+          onPress={handleBookPress}
+          activeOpacity={0.85}
         >
           <Text style={styles.bookText}>Book Now</Text>
         </TouchableOpacity>
@@ -1728,6 +1802,17 @@ const styles = StyleSheet.create({
   },
   readinessTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
   readinessBody: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
+  readinessGate: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  readinessGateWarning: { backgroundColor: '#FEFCE8', borderColor: '#FACC15' },
+  readinessGateBlocked: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  readinessGateTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
+  readinessGateItem: { fontSize: 13, lineHeight: 19, color: '#1F2937' },
+  readinessGateFooter: { marginTop: 6, fontSize: 12, color: '#6B7280' },
   matchCard: {
     borderWidth: 1,
     borderRadius: 16,
@@ -2031,6 +2116,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#2E7D32',
     padding: 18,
     alignItems: 'center',
+  },
+  bookButtonDisabled: {
+    backgroundColor: '#A3E1AC',
   },
   attendeeInfo: { fontSize: 12, color: '#64748b', marginBottom: 12 },
   attendeeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
