@@ -1,6 +1,25 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 
+async function ensureMountainColumns() {
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "preferredMountains" TEXT[] DEFAULT \'{}\'::text[];',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "mountainSuggestionsEnabled" BOOLEAN NOT NULL DEFAULT TRUE;',
+    );
+    await prisma.$executeRawUnsafe(
+      'UPDATE "User" SET "preferredMountains" = COALESCE("preferredMountains", \'{}\'::text[]);',
+    );
+    await prisma.$executeRawUnsafe(
+      'UPDATE "User" SET "mountainSuggestionsEnabled" = COALESCE("mountainSuggestionsEnabled", TRUE);',
+    );
+  } catch (error) {
+    console.error('ensureMountainColumns error:', error);
+  }
+}
+
 // This endpoint is called AFTER a user is created in Supabase Auth
 export async function POST(req) {
   try {
@@ -34,17 +53,31 @@ export async function POST(req) {
 
     // Create a new user profile in your Prisma DB,
     // linking it with the Supabase Auth ID.
-    const newUser = await prisma.user.create({
-      data: {
-        id: id, // Use the ID from Supabase Auth
-        supabaseUserId: id, // Also store it in the dedicated sync column
-        email: trimmedEmail,
-        name: trimmedName,
-        preferredMountains: trimmedVisited ? [trimmedVisited] : [],
-        mountainSuggestionsEnabled: true,
-        // You don't store the password here anymore
-      },
-    });
+    const createUser = async () =>
+      prisma.user.create({
+        data: {
+          id: id, // Use the ID from Supabase Auth
+          supabaseUserId: id, // Also store it in the dedicated sync column
+          email: trimmedEmail,
+          name: trimmedName,
+          preferredMountains: trimmedVisited ? [trimmedVisited] : [],
+          mountainSuggestionsEnabled: true,
+          // You don't store the password here anymore
+        },
+      });
+
+    let newUser = null;
+    try {
+      newUser = await createUser();
+    } catch (createError) {
+      if (createError?.code === 'P2022') {
+        // DB is missing new columns (legacy deploy). Patch columns then retry once.
+        await ensureMountainColumns();
+        newUser = await createUser();
+      } else {
+        throw createError;
+      }
+    }
 
     return NextResponse.json({ success: true, user: newUser });
   } catch (error) {
