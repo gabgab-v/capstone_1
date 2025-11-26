@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
@@ -19,14 +20,23 @@ import SafePicker from '../components/SafePicker';
 import { useTheme } from '../context/ThemeContext';
 
 export default function SignupPage({ navigation }) {
-  const { colors } = useTheme();
+  const { colors, isDarkMode } = useTheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [birthday, setBirthday] = useState(null);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasAcceptedPolicies, setHasAcceptedPolicies] = useState(false);
   const [visitedTrail, setVisitedTrail] = useState(null);
+  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
+
+  const defaultBirthday = useMemo(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 21);
+    date.setHours(12, 0, 0, 0);
+    return date;
+  }, []);
 
   const mountainOptions = useMemo(
     () => [
@@ -47,13 +57,28 @@ export default function SignupPage({ navigation }) {
     [hasAcceptedPolicies],
   );
 
+  const formatBirthday = (date) => {
+    if (!date) return '';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  };
+
   const handleOpenLegal = (documentKey) => {
     navigation.navigate('LegalDocument', { documentKey });
   };
 
+  const handleToggleBirthdayPicker = () => {
+    setShowBirthdayPicker(true);
+  };
+
+  const handleBirthdayChange = (_, selectedDate) => {
+    if (Platform.OS === 'android') setShowBirthdayPicker(false);
+    if (selectedDate) setBirthday(selectedDate);
+  };
+
   async function handleSignup() {
-    if (!name || !email || !password || !confirm) {
-      Alert.alert('Error', 'Please fill out all fields.');
+    if (!name || !email || !password || !confirm || !birthday) {
+      Alert.alert('Error', 'Please fill out all fields, including your birthday.');
       return;
     }
     if (password !== confirm) {
@@ -81,6 +106,7 @@ export default function SignupPage({ navigation }) {
         email: authData.user.email,
         name,
         visitedTrail,
+        birthday: birthday.toISOString().split('T')[0],
       });
 
       Alert.alert(
@@ -137,6 +163,45 @@ export default function SignupPage({ navigation }) {
             keyboardType="email-address"
             autoCapitalize="none"
           />
+
+          <View className="mb-4">
+            <Text className="mb-2 text-base font-semibold text-gray-800 dark:text-slate-100">Birthday</Text>
+            <TouchableOpacity
+              className="flex-row items-center justify-between rounded-xl border border-gray-300 bg-white p-4 dark:border-slate-600 dark:bg-slate-800"
+              activeOpacity={0.85}
+              onPress={handleToggleBirthdayPicker}
+            >
+              <Text className="text-base text-gray-800 dark:text-slate-100">
+                {birthday ? formatBirthday(birthday) : 'Select your birthday'}
+              </Text>
+              <Feather name="calendar" size={18} color={colors.icon} />
+            </TouchableOpacity>
+            <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Helps us suggest age-appropriate events and preferences.
+            </Text>
+          </View>
+
+          {showBirthdayPicker ? (
+            <View className="mb-4 rounded-xl border border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800">
+              <DateTimePicker
+                value={birthday || defaultBirthday}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={handleBirthdayChange}
+                themeVariant={isDarkMode ? 'dark' : 'light'}
+              />
+              {Platform.OS === 'ios' ? (
+                <TouchableOpacity
+                  className="border-t border-gray-200 px-4 py-3 dark:border-slate-700"
+                  onPress={() => setShowBirthdayPicker(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text className="text-center font-semibold text-green-700">Done</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
 
           <TextInput
             className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
