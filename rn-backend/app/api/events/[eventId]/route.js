@@ -135,11 +135,26 @@ async function findOwnedTrail(userId, trailId) {
 const EVENT_STATUSES = new Set(["DRAFT", "PUBLISHED", "CLOSED", "COMPLETED", "CANCELLED"]);
 const ATTENDEE_STATUSES = new Set(["APPROVED", "CONFIRMED"]);
 
+const EVENT_COLUMN_QUERIES = [
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "trailType" TEXT;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "trailGeoJson" JSONB;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "trailDistanceMeters" DOUBLE PRECISION;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "locationZoomLevel" DOUBLE PRECISION;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "locationBounds" JSONB;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "announceAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "announceSentAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "attendanceCheckSentAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "gcashNumber" TEXT;',
+];
+
 async function ensureEventColumns() {
-  try {
-    await prisma.$executeRawUnsafe('ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;');
-  } catch (error) {
-    console.error('ensureEventColumns error:', error);
+  for (const query of EVENT_COLUMN_QUERIES) {
+    try {
+      await prisma.$executeRawUnsafe(query);
+    } catch (error) {
+      console.error('ensureEventColumns error:', { query, message: error?.message || error });
+    }
   }
 }
 
