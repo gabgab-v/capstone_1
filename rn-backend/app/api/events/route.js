@@ -318,8 +318,10 @@ export async function POST(req) {
 }
 
 export async function GET() {
+  // Ensure schema is up to date before querying
+  await ensureEventColumns();
+
   const [events, approvedCounts, totalCounts] = await Promise.all([
-    ensureEventColumns(),
     prisma.event.findMany({
       include: {
         organizer: { select: { id: true, email: true, name: true } },
