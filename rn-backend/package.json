@@ -9,6 +9,7 @@
     "lint": "next lint",
     "deactivate:inactive": "dotenv -e .env -- node scripts/deactivate-inactive-users.js",
     "cleanup:messages": "dotenv -e .env -- node scripts/cleanup-messages.js",
+    "remind:events": "dotenv -e .env -- node scripts/send-event-reminders.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

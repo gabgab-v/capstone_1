@@ -90,6 +90,8 @@ model Event {
   completedAt          DateTime?
 
   announceAt           DateTime?
+  announceSentAt       DateTime?
+  attendanceCheckSentAt DateTime?
 
   locationName         String?
   locationLatitude     Float?
@@ -132,6 +134,8 @@ model Booking {
   event       Event    @relation(fields: [eventId], references: [id])
   eventId     String
   status      String   @default("PENDING")
+  attendanceStatus      String   @default("PENDING")
+  attendanceRespondedAt DateTime?
   paymentUrl  String?
   totalAmount Float
   waiverUrl   String?

@@ -142,6 +142,50 @@ function formatCommentTimestamp(value) {
   return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function formatShortDateTimeLabel(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+const ATTENDANCE_STATUS_META = {
+  GOING: { label: 'Confirmed', color: '#166534', background: '#DCFCE7' },
+  NOT_GOING: { label: 'Not joining', color: '#991B1B', background: '#FEE2E2' },
+  UNSURE: { label: 'Unsure', color: '#92400E', background: '#FEF3C7' },
+  PENDING: { label: 'Awaiting reply', color: '#1D4ED8', background: '#E0F2FE' },
+};
+
+function formatAttendanceStatus(status) {
+  if (!status) {
+    return ATTENDANCE_STATUS_META.PENDING.label;
+  }
+  const normalized = String(status).trim().toUpperCase();
+  return ATTENDANCE_STATUS_META[normalized]?.label ?? ATTENDANCE_STATUS_META.PENDING.label;
+}
+
+function buildPollStatusCopy(pollWindow) {
+  if (!pollWindow) {
+    return null;
+  }
+  if (pollWindow.locked) {
+    return 'Attendance check closed once the event started.';
+  }
+  if (pollWindow.isOpen) {
+    const closesAt = formatShortDateTimeLabel(pollWindow.closesAt);
+    return closesAt ? `Attendance check is open until ${closesAt}.` : 'Attendance check is open.';
+  }
+  const opensAt = formatShortDateTimeLabel(pollWindow.opensAt);
+  if (opensAt) {
+    return `Attendance check opens on ${opensAt}.`;
+  }
+  return 'Attendance check opens on the day of the event.';
+}
+
 function formatPrice(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) {
@@ -440,6 +484,11 @@ export default function EventDetailsPage({ route, navigation }) {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [eventChatLoading, setEventChatLoading] = useState(false);
+  const [attendancePoll, setAttendancePoll] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState(null);
+  const [attendanceSubmitting, setAttendanceSubmitting] = useState(null);
+  const [reminderSending, setReminderSending] = useState(null);
 
   const organizerId = useMemo(
     () => event?.organizer?.id ?? event?.organizerId ?? null,
@@ -497,6 +546,11 @@ export default function EventDetailsPage({ route, navigation }) {
     }
     return APPROVED_BOOKING_STATUSES.has(viewerBookingStatus);
   }, [event?.id, isOrganizer, user?.id, viewerBookingStatus]);
+
+  const attendanceViewerStatus = useMemo(
+    () => (attendancePoll?.viewer?.attendanceStatus ? attendancePoll.viewer.attendanceStatus : 'PENDING'),
+    [attendancePoll?.viewer?.attendanceStatus],
+  );
 
   const preferenceVector = useMemo(() => {
     if (!user?.preferencesComplete) {
@@ -600,6 +654,23 @@ export default function EventDetailsPage({ route, navigation }) {
       message: `You're ${age}. This organizer did not set age guidance, so choose responsibly based on your ability.`,
     };
   }, [eventMinAge, userAgeYears]);
+
+  const attendanceWindowCopy = useMemo(
+    () => buildPollStatusCopy(attendancePoll?.pollWindow),
+    [attendancePoll?.pollWindow],
+  );
+  const attendancePromptSentLabel = useMemo(
+    () => formatShortDateTimeLabel(attendancePoll?.event?.attendanceCheckSentAt),
+    [attendancePoll?.event?.attendanceCheckSentAt],
+  );
+  const startReminderSentLabel = useMemo(
+    () => formatShortDateTimeLabel(attendancePoll?.event?.announceSentAt),
+    [attendancePoll?.event?.announceSentAt],
+  );
+  const startReminderScheduledLabel = useMemo(
+    () => formatShortDateTimeLabel(event?.announceAt),
+    [event?.announceAt],
+  );
 
   const physicalReminder = useMemo(() => {
     if (!event) {
@@ -757,6 +828,33 @@ export default function EventDetailsPage({ route, navigation }) {
     };
   }, [event?.id, user?.id, isOrganizer]);
 
+  const fetchAttendancePoll = useCallback(async () => {
+    if (!event?.id || !user?.id) {
+      setAttendancePoll(null);
+      setAttendanceError(null);
+      setAttendanceLoading(false);
+      return;
+    }
+
+    setAttendanceLoading(true);
+    setAttendanceError(null);
+    try {
+      const data = await get(`/api/events/${event.id}/attendance`);
+      setAttendancePoll(data);
+    } catch (error) {
+      setAttendancePoll(null);
+      setAttendanceError(
+        error?.body?.error || error?.message || 'Unable to load the attendance check right now.',
+      );
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [event?.id, user?.id]);
+
+  useEffect(() => {
+    fetchAttendancePoll();
+  }, [fetchAttendancePoll]);
+
   const fetchComments = useCallback(async () => {
     if (!event?.id) {
       setComments([]);
@@ -893,6 +991,56 @@ export default function EventDetailsPage({ route, navigation }) {
       setEventChatLoading(false);
     }
   }, [event?.id, navigation, user?.id]);
+
+  const handleSendReminder = useCallback(
+    async (type) => {
+      if (!event?.id || reminderSending) {
+        return;
+      }
+      setReminderSending(type);
+      try {
+        const data = await post(`/api/events/${event.id}/reminders`, { type });
+        const successMessage =
+          type === 'attendance'
+            ? 'Attendance reminder sent to the event chat.'
+            : 'Start reminder sent to the event chat.';
+        Alert.alert('Reminder sent', data?.messageBody || successMessage);
+        fetchAttendancePoll();
+      } catch (error) {
+        console.error('Unable to send reminder:', error);
+        Alert.alert(
+          'Reminder failed',
+          error?.body?.error || error?.message || 'Unable to send a chat reminder right now.',
+        );
+      } finally {
+        setReminderSending(null);
+      }
+    },
+    [event?.id, fetchAttendancePoll, reminderSending],
+  );
+
+  const handleAttendanceSubmit = useCallback(
+    async (status) => {
+      if (!event?.id || !attendancePoll?.canRespond || attendanceSubmitting) {
+        return;
+      }
+      setAttendanceSubmitting(status);
+      try {
+        const data = await post(`/api/events/${event.id}/attendance`, { status });
+        setAttendancePoll(data);
+        setAttendanceError(null);
+      } catch (error) {
+        console.error('Failed to submit attendance:', error);
+        Alert.alert(
+          'Attendance not saved',
+          error?.body?.error || error?.message || 'Unable to update your attendance right now.',
+        );
+      } finally {
+        setAttendanceSubmitting(null);
+      }
+    },
+    [attendancePoll?.canRespond, attendanceSubmitting, event?.id],
+  );
 
   const handleBookPress = useCallback(() => {
     if (!viewerCanBook) {
@@ -1470,6 +1618,171 @@ export default function EventDetailsPage({ route, navigation }) {
                     Confirmed attendees are visible to everyone once the organizer approves them.
                   </Text>
                 )}
+                <View style={styles.attendanceCard}>
+                  <View style={styles.attendanceHeader}>
+                    <Text style={styles.attendanceTitle}>Attendance check-in</Text>
+                    {attendancePoll?.summary ? (
+                      <Text style={styles.attendanceHeadline}>
+                        {attendancePoll.summary.going} going · {attendancePoll.summary.pending} pending
+                      </Text>
+                    ) : null}
+                  </View>
+                  {attendanceLoading ? (
+                    <View style={styles.attendeeLoading}>
+                      <ActivityIndicator size="small" color="#2E7D32" />
+                      <Text style={styles.attendeeLoadingText}>Loading attendance...</Text>
+                    </View>
+                  ) : attendanceError ? (
+                    <Text style={styles.attendeeError}>{attendanceError}</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.attendanceCopy}>
+                        Quick poll to verify headcount before the hike starts. Responses notify the organizer.
+                      </Text>
+                      {attendanceWindowCopy ? (
+                        <Text style={styles.attendanceMetaText}>{attendanceWindowCopy}</Text>
+                      ) : null}
+                      {attendancePoll?.viewerEligible ? (
+                        <>
+                          {attendancePoll?.canRespond ? (
+                            <View style={styles.attendanceActions}>
+                              {['GOING', 'NOT_GOING', 'UNSURE'].map((status) => {
+                                const meta =
+                                  ATTENDANCE_STATUS_META[status] ?? ATTENDANCE_STATUS_META.PENDING;
+                                const isActive = attendanceViewerStatus === status;
+                                const isLoading = attendanceSubmitting === status;
+                                return (
+                                  <TouchableOpacity
+                                    key={status}
+                                    style={[
+                                      styles.attendanceButton,
+                                      isActive ? styles.attendanceButtonActive : null,
+                                    ]}
+                                    onPress={() => handleAttendanceSubmit(status)}
+                                    disabled={Boolean(attendanceSubmitting)}
+                                    activeOpacity={0.85}
+                                  >
+                                    {isLoading ? (
+                                      <ActivityIndicator size="small" color="#ffffff" />
+                                    ) : (
+                                      <Text
+                                        style={[
+                                          styles.attendanceButtonText,
+                                          isActive ? styles.attendanceButtonTextActive : null,
+                                        ]}
+                                      >
+                                        {meta.label}
+                                      </Text>
+                                    )}
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : null}
+                          {attendancePoll?.viewer ? (
+                            <View style={styles.attendanceStatusRow}>
+                              <View
+                                style={[
+                                  styles.attendanceBadge,
+                                  {
+                                    backgroundColor:
+                                      ATTENDANCE_STATUS_META[attendanceViewerStatus]?.background ||
+                                      '#E5E7EB',
+                                    borderColor:
+                                      ATTENDANCE_STATUS_META[attendanceViewerStatus]?.color ||
+                                      '#374151',
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.attendanceBadgeText,
+                                    {
+                                      color:
+                                        ATTENDANCE_STATUS_META[attendanceViewerStatus]?.color ||
+                                        '#374151',
+                                    },
+                                  ]}
+                                >
+                                  {formatAttendanceStatus(attendanceViewerStatus)}
+                                </Text>
+                              </View>
+                              {attendancePoll?.viewer?.respondedAt ? (
+                                <Text style={styles.attendanceMetaText}>
+                                  Updated {formatShortDateTimeLabel(attendancePoll.viewer.respondedAt)}
+                                </Text>
+                              ) : null}
+                            </View>
+                          ) : null}
+                        </>
+                      ) : (
+                        <Text style={styles.attendanceMetaText}>
+                          Attendance check is available to organizers and approved hikers.
+                        </Text>
+                      )}
+                      {isOrganizer && attendancePoll?.summary ? (
+                        <View style={styles.reminderCard}>
+                          <View style={styles.attendanceSummaryRow}>
+                            <Text style={styles.attendanceSummaryChip}>
+                              Going: {attendancePoll.summary.going}
+                            </Text>
+                            <Text style={styles.attendanceSummaryChip}>
+                              Unsure: {attendancePoll.summary.unsure}
+                            </Text>
+                            <Text style={styles.attendanceSummaryChip}>
+                              Not going: {attendancePoll.summary.notGoing}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[
+                              styles.reminderButton,
+                              reminderSending === 'attendance' && styles.reminderButtonDisabled,
+                            ]}
+                            onPress={() => handleSendReminder('attendance')}
+                            disabled={Boolean(reminderSending)}
+                            activeOpacity={0.85}
+                          >
+                            {reminderSending === 'attendance' ? (
+                              <ActivityIndicator size="small" color="#ffffff" />
+                            ) : (
+                              <Text style={styles.reminderButtonText}>Remind via chat</Text>
+                            )}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.reminderGhostButton,
+                              reminderSending === 'start' && styles.reminderGhostButtonDisabled,
+                            ]}
+                            onPress={() => handleSendReminder('start')}
+                            disabled={Boolean(reminderSending)}
+                            activeOpacity={0.85}
+                          >
+                            {reminderSending === 'start' ? (
+                              <ActivityIndicator size="small" color="#065f46" />
+                            ) : (
+                              <Text style={styles.reminderGhostButtonText}>Send start reminder</Text>
+                            )}
+                          </TouchableOpacity>
+                          <Text style={styles.attendanceMetaText}>
+                            {attendancePromptSentLabel
+                              ? `Attendance prompt last sent ${attendancePromptSentLabel}.`
+                              : 'No attendance prompt sent to chat yet.'}
+                          </Text>
+                          {startReminderScheduledLabel ? (
+                            <Text style={styles.attendanceMetaText}>
+                              Start reminder scheduled for {startReminderScheduledLabel}.
+                            </Text>
+                          ) : null}
+                          {startReminderSentLabel ? (
+                            <Text style={styles.attendanceMetaText}>
+                              Last start reminder sent {startReminderSentLabel}.
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
                 {viewerCanAccessEventChat ? (
                   <TouchableOpacity
                     style={[styles.eventChatButton, (!viewerCanAccessEventChat || eventChatLoading) && styles.eventChatButtonDisabled]}
@@ -2120,6 +2433,83 @@ const styles = StyleSheet.create({
   bookButtonDisabled: {
     backgroundColor: '#A3E1AC',
   },
+  attendanceCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  attendanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  attendanceTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  attendanceHeadline: { fontSize: 12, color: '#475569', fontWeight: '600' },
+  attendanceCopy: { fontSize: 13, color: '#1f2937', lineHeight: 19, marginBottom: 6 },
+  attendanceMetaText: { fontSize: 12, color: '#64748b', marginTop: 4 },
+  attendanceActions: { flexDirection: 'row', marginTop: 10, marginBottom: 6 },
+  attendanceButton: {
+    flex: 1,
+    marginRight: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  attendanceButtonActive: { backgroundColor: '#166534', borderColor: '#166534' },
+  attendanceButtonText: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  attendanceButtonTextActive: { color: '#ffffff' },
+  attendanceStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  attendanceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginRight: 10,
+  },
+  attendanceBadgeText: { fontSize: 12, fontWeight: '700' },
+  attendanceSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  attendanceSummaryChip: {
+    marginRight: 8,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+    color: '#0F172A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reminderCard: { marginTop: 10 },
+  reminderButton: {
+    backgroundColor: '#0F766E',
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reminderButtonDisabled: { opacity: 0.7 },
+  reminderButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  reminderGhostButton: {
+    borderWidth: 1,
+    borderColor: '#065f46',
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  reminderGhostButtonDisabled: { opacity: 0.7 },
+  reminderGhostButtonText: { color: '#065f46', fontSize: 13, fontWeight: '700' },
   attendeeInfo: { fontSize: 12, color: '#64748b', marginBottom: 12 },
   attendeeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
   attendeeLoadingText: { marginLeft: 10, color: '#4b5563', fontSize: 14 },
