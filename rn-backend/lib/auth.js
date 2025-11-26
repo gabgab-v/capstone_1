@@ -4,6 +4,53 @@ import { prisma } from '@/lib/prisma';
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 const ADMIN_JWT_SECRET = process.env.JWT_SECRET || SUPABASE_JWT_SECRET;
 
+export async function ensureUserColumns() {
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "preferredMountains" TEXT[] DEFAULT \'{}\'::text[];',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ALTER COLUMN "preferredMountains" SET DEFAULT \'{}\'::text[];',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "mountainSuggestionsEnabled" BOOLEAN NOT NULL DEFAULT TRUE;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "lastActiveAt" TIMESTAMP DEFAULT NOW();',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "deactivatedAt" TIMESTAMP;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "deactivationReason" TEXT;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "reactivationChecklist" JSONB;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "termsVersionAccepted" TEXT;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "emailVerifiedAt" TIMESTAMP;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phoneVerifiedAt" TIMESTAMP;',
+    );
+
+    await prisma.$executeRawUnsafe(
+      'UPDATE "User" SET "preferredMountains" = COALESCE("preferredMountains", \'{}\'::text[]);',
+    );
+    await prisma.$executeRawUnsafe(
+      'UPDATE "User" SET "mountainSuggestionsEnabled" = COALESCE("mountainSuggestionsEnabled", TRUE);',
+    );
+    await prisma.$executeRawUnsafe(
+      'UPDATE "User" SET "lastActiveAt" = COALESCE("lastActiveAt", NOW());',
+    );
+  } catch (error) {
+    console.error('ensureUserColumns error:', error);
+  }
+}
+
 export async function getUserFromToken(request) {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) return null;
@@ -17,6 +64,7 @@ export async function getUserFromToken(request) {
   }
 
   try {
+    await ensureUserColumns();
     const payload = jwt.verify(token, SUPABASE_JWT_SECRET);
 
     const emailFromToken =
