@@ -318,49 +318,67 @@ export async function POST(req) {
 }
 
 export async function GET() {
-  // Ensure schema is up to date before querying
-  await ensureEventColumns();
+  try {
+    // Ensure schema is up to date before querying
+    await ensureEventColumns();
 
-  const [events, approvedCounts, totalCounts] = await Promise.all([
-    prisma.event.findMany({
-      include: {
-        organizer: { select: { id: true, email: true, name: true } },
-        trail: { select: { id: true, label: true, totalDistanceMeters: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.booking.groupBy({
-      by: ['eventId'],
-      where: {
-        status: {
-          in: ATTENDEE_STATUSES,
+    const [events, approvedCounts, totalCounts] = await Promise.all([
+      prisma.event.findMany({
+        include: {
+          organizer: { select: { id: true, email: true, name: true } },
+          trail: { select: { id: true, label: true, totalDistanceMeters: true } },
         },
-      },
-      _count: { _all: true },
-    }),
-    prisma.booking.groupBy({
-      by: ['eventId'],
-      _count: { _all: true },
-    }),
-  ]);
+        orderBy: { createdAt: 'desc' },
+      }),
+      // Gracefully fall back if bookings table is missing or misconfigured
+      prisma.booking
+        .groupBy({
+          by: ['eventId'],
+          where: {
+            status: {
+              in: ATTENDEE_STATUSES,
+            },
+          },
+          _count: { _all: true },
+        })
+        .catch((err) => {
+          console.error('GET /api/events approvedCounts error:', err?.message || err);
+          return [];
+        }),
+      prisma.booking
+        .groupBy({
+          by: ['eventId'],
+          _count: { _all: true },
+        })
+        .catch((err) => {
+          console.error('GET /api/events totalCounts error:', err?.message || err);
+          return [];
+        }),
+    ]);
 
-  const approvedCountMap = new Map(
-    approvedCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
-  );
-  const totalCountMap = new Map(
-    totalCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
-  );
+    const approvedCountMap = new Map(
+      approvedCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
+    );
+    const totalCountMap = new Map(
+      totalCounts.map((entry) => [entry.eventId, entry._count?._all ?? 0]),
+    );
 
-  const enrichedEvents = events.map((event) => ({
-    ...event,
-    approvedAttendeeCount: approvedCountMap.get(event.id) ?? 0,
-    totalBookingCount: totalCountMap.get(event.id) ?? 0,
-    isClosingSoon: computeIsClosingSoon(event),
-    registrationClosed: computeIsRegistrationClosed(event),
-    isFull: computeIsFull(event, approvedCountMap.get(event.id)),
-  }));
+    const enrichedEvents = events.map((event) => ({
+      ...event,
+      approvedAttendeeCount: approvedCountMap.get(event.id) ?? 0,
+      totalBookingCount: totalCountMap.get(event.id) ?? 0,
+      isClosingSoon: computeIsClosingSoon(event),
+      registrationClosed: computeIsRegistrationClosed(event),
+      isFull: computeIsFull(event, approvedCountMap.get(event.id)),
+    }));
 
-  return new Response(JSON.stringify(enrichedEvents));
+    return new Response(JSON.stringify(enrichedEvents));
+  } catch (err) {
+    console.error('GET /api/events error:', err);
+    return new Response(JSON.stringify({ error: 'Failed to fetch events', details: err?.message }), {
+      status: 500,
+    });
+  }
 }
 
 function computeIsClosingSoon(event) {
