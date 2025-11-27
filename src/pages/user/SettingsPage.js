@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensureAvatarUri } from '../../utils/media';
 import ScreenHeader from '../../components/ScreenHeader';
 import { del, put } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 function statusMeta(status) {
   switch (status) {
@@ -47,6 +48,13 @@ export default function SettingsPage({ navigation }) {
   const [locationServices, setLocationServices] = useState(true);
   const [shareActivityStatus, setShareActivityStatus] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [mfaFactors, setMfaFactors] = useState([]);
+  const [loadingMfa, setLoadingMfa] = useState(true);
+  const [enrollingMfa, setEnrollingMfa] = useState(false);
+  const [pendingEnrollment, setPendingEnrollment] = useState(null);
+  const [mfaVerifyCode, setMfaVerifyCode] = useState('');
+  const [mfaDeviceLabel, setMfaDeviceLabel] = useState('');
+  const [removingFactorId, setRemovingFactorId] = useState(null);
   const { themePreference, setThemePreference } = useTheme();
   const [mountains, setMountains] = useState(user?.preferredMountains ?? []);
   const [mountainInput, setMountainInput] = useState('');
@@ -96,10 +104,43 @@ export default function SettingsPage({ navigation }) {
       : 'Turn on notifications to get booking confirmations and event reminders.';
   }, [isNativeModuleAvailable, isPhysicalDevice, notificationsEnabled]);
 
+  const formatMfaDate = useCallback((value) => {
+    if (!value) return 'Recently added';
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return 'Recently added';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }, []);
+
   useEffect(() => {
     setMountains(Array.isArray(user?.preferredMountains) ? user.preferredMountains : []);
     setMountainSuggestionsEnabled(user?.mountainSuggestionsEnabled ?? true);
   }, [user?.preferredMountains, user?.mountainSuggestionsEnabled]);
+
+  const refreshMfaFactors = useCallback(async () => {
+    setLoadingMfa(true);
+    try {
+      if (!user) {
+        setMfaFactors([]);
+        setTwoFactorEnabled(false);
+        return;
+      }
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) {
+        throw error;
+      }
+      const factors = data?.totp ?? [];
+      setMfaFactors(factors);
+      setTwoFactorEnabled(factors.length > 0);
+    } catch (error) {
+      console.error('Failed to load two-factor devices:', error);
+    } finally {
+      setLoadingMfa(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    refreshMfaFactors();
+  }, [refreshMfaFactors]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -290,6 +331,168 @@ export default function SettingsPage({ navigation }) {
   const handleSavePreferences = () => {
     Alert.alert('Preferences saved', 'Your settings will be synced the next time you sign in.');
   };
+
+  const handleStartMfaEnrollment = useCallback(async () => {
+    setEnrollingMfa(true);
+    setMfaVerifyCode('');
+    try {
+      if (pendingEnrollment?.factorId) {
+        await supabase.auth.mfa.unenroll({ factorId: pendingEnrollment.factorId }).catch(() => {});
+      }
+
+      const friendlyName = (mfaDeviceLabel || '').trim() || 'Authenticator app';
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName,
+        issuer: 'Pabukid',
+      });
+      if (error) {
+        throw error;
+      }
+
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: data.id,
+      });
+      if (challengeError) {
+        throw challengeError;
+      }
+
+      setPendingEnrollment({
+        factorId: data.id,
+        challengeId: challengeData.id,
+        qrCode: data.totp?.qr_code ?? null,
+        secret: data.totp?.secret ?? '',
+        friendlyName: data.friendly_name ?? friendlyName,
+      });
+
+      Alert.alert(
+        'Scan or enter the code',
+        'Scan the QR code below (or enter the secret manually) in your authenticator app, then type the 6-digit code to finish.',
+      );
+    } catch (error) {
+      console.error('Failed to start 2FA enrollment:', error);
+      Alert.alert('Unable to start', error?.message ?? 'Please try again later.');
+    } finally {
+      setEnrollingMfa(false);
+    }
+  }, [mfaDeviceLabel, pendingEnrollment]);
+
+  const handleConfirmMfaEnrollment = useCallback(async () => {
+    if (!pendingEnrollment?.factorId || !pendingEnrollment?.challengeId) {
+      Alert.alert('Start setup first', 'Begin two-factor setup before entering a code.');
+      return;
+    }
+    if (!mfaVerifyCode.trim()) {
+      Alert.alert('Enter code', 'Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+
+    setEnrollingMfa(true);
+    try {
+      const { error } = await supabase.auth.mfa.verify({
+        factorId: pendingEnrollment.factorId,
+        challengeId: pendingEnrollment.challengeId,
+        code: mfaVerifyCode.trim(),
+      });
+      if (error) {
+        throw error;
+      }
+
+      setPendingEnrollment(null);
+      setMfaVerifyCode('');
+      setMfaDeviceLabel('');
+      await refreshMfaFactors();
+      Alert.alert('Two-factor enabled', 'Your authenticator is now linked to this account.');
+    } catch (error) {
+      console.error('Two-factor verification failed:', error);
+      Alert.alert('Verification failed', error?.message ?? 'The code was not accepted. Try again with a fresh code.');
+    } finally {
+      setEnrollingMfa(false);
+    }
+  }, [mfaVerifyCode, pendingEnrollment, refreshMfaFactors]);
+
+  const handleCancelEnrollment = useCallback(async () => {
+    if (pendingEnrollment?.factorId) {
+      try {
+        await supabase.auth.mfa.unenroll({ factorId: pendingEnrollment.factorId });
+      } catch (error) {
+        console.warn('Failed to clean up pending MFA enrollment:', error);
+      }
+    }
+    setPendingEnrollment(null);
+    setMfaVerifyCode('');
+  }, [pendingEnrollment]);
+
+  const handleRemoveFactor = useCallback(
+    (factorId) => {
+      Alert.alert(
+        'Remove authenticator',
+        'This authenticator app will no longer work for signing in.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              setRemovingFactorId(factorId);
+              try {
+                const { error } = await supabase.auth.mfa.unenroll({ factorId });
+                if (error) {
+                  throw error;
+                }
+                await refreshMfaFactors();
+                Alert.alert('Removed', 'The authenticator was removed from your account.');
+              } catch (error) {
+                console.error('Failed to remove MFA factor:', error);
+                Alert.alert('Unable to remove', error?.message ?? 'Please try again later.');
+              } finally {
+                setRemovingFactorId(null);
+              }
+            },
+          },
+        ],
+      );
+    },
+    [refreshMfaFactors],
+  );
+
+  const handleDisableTwoFactor = useCallback(() => {
+    if (!mfaFactors.length) {
+      Alert.alert('Two-factor is already off');
+      return;
+    }
+    Alert.alert(
+      'Turn off two-factor?',
+      'All authenticators will be removed from this account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Turn off',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingFactorId('ALL');
+            try {
+              for (const factor of mfaFactors) {
+                const { error } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+                if (error) {
+                  throw error;
+                }
+              }
+              setPendingEnrollment(null);
+              setMfaVerifyCode('');
+              await refreshMfaFactors();
+              Alert.alert('Two-factor disabled', 'All authenticators have been removed.');
+            } catch (error) {
+              console.error('Failed to disable two-factor:', error);
+              Alert.alert('Unable to disable', error?.message ?? 'Please try again later.');
+            } finally {
+              setRemovingFactorId(null);
+            }
+          },
+        },
+      ],
+    );
+  }, [mfaFactors, refreshMfaFactors]);
 
   const renderProfileCard = () => (
     <View className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
@@ -636,6 +839,170 @@ export default function SettingsPage({ navigation }) {
     </View>
   );
 
+  const renderMfaFactorList = () => {
+    if (!mfaFactors.length) {
+      return (
+        <View className="mt-3 rounded-xl bg-slate-100 p-3 dark:bg-slate-800/60">
+          <Text className="text-sm text-slate-700 dark:text-slate-200">No authenticators linked yet.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View className="mt-3">
+        {mfaFactors.map((factor, index) => (
+          <View
+            key={factor.id}
+            className={`flex-row items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900 ${index > 0 ? 'mt-2' : ''}`}
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                {factor.friendly_name || 'Authenticator app'}
+              </Text>
+              <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Added {formatMfaDate(factor.created_at)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="rounded-full border border-red-600 px-4 py-2"
+              onPress={() => handleRemoveFactor(factor.id)}
+              disabled={removingFactorId === factor.id || removingFactorId === 'ALL'}
+            >
+              {removingFactorId === factor.id ? (
+                <ActivityIndicator size="small" color="#dc2626" />
+              ) : (
+                <Text className="text-sm font-semibold text-red-600">Remove</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderMfaEnrollmentCard = () => {
+    if (!pendingEnrollment) return null;
+    return (
+      <View className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/40 dark:bg-amber-900/20">
+        <Text className="text-base font-semibold text-amber-800 dark:text-amber-100">Finish setup</Text>
+        <Text className="mt-1 text-sm text-amber-700 dark:text-amber-200">
+          Scan the QR code or enter the secret, then type the 6-digit code.
+        </Text>
+        {pendingEnrollment.qrCode ? (
+          <View className="mt-3 items-center">
+            <Image source={{ uri: pendingEnrollment.qrCode }} className="h-40 w-40" />
+          </View>
+        ) : null}
+        {pendingEnrollment.secret ? (
+          <View className="mt-3 rounded-lg bg-white p-3 dark:bg-slate-900">
+            <Text className="text-xs font-semibold uppercase text-amber-700 dark:text-amber-300">Manual code</Text>
+            <Text
+              className="mt-1 text-base font-semibold text-amber-900 dark:text-amber-100"
+              style={{ letterSpacing: 2 }}
+            >
+              {pendingEnrollment.secret}
+            </Text>
+          </View>
+        ) : null}
+        <TextInput
+          className="mt-3 rounded-xl border border-amber-200 bg-white p-3 text-base dark:border-amber-400/40 dark:bg-slate-950 dark:text-white"
+          placeholder="Enter 6-digit code"
+          placeholderTextColor="#a3a3a3"
+          value={mfaVerifyCode}
+          onChangeText={setMfaVerifyCode}
+          keyboardType="number-pad"
+          maxLength={6}
+        />
+        <TouchableOpacity
+          className="mt-3 rounded-xl bg-amber-600 py-3"
+          onPress={handleConfirmMfaEnrollment}
+          disabled={enrollingMfa}
+        >
+          {enrollingMfa ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-center font-semibold text-white">Verify & enable</Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity className="mt-2" onPress={handleCancelEnrollment} disabled={enrollingMfa}>
+          <Text className="text-center text-sm font-semibold text-amber-700 dark:text-amber-200">Cancel setup</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderTwoFactorCard = () => (
+    <View className="py-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-1 pr-3">
+          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Two-factor authentication</Text>
+          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Add an extra layer of security when signing in on new devices.
+          </Text>
+        </View>
+        <View
+          className={`rounded-full px-3 py-1 ${twoFactorEnabled ? 'bg-emerald-100' : 'bg-slate-200 dark:bg-slate-800'}`}
+        >
+          <Text
+            className={`text-xs font-semibold ${
+              twoFactorEnabled ? 'text-emerald-700' : 'text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            {twoFactorEnabled ? 'Enabled' : 'Off'}
+          </Text>
+        </View>
+      </View>
+      {loadingMfa ? (
+        <View className="mt-3 flex-row items-center">
+          <ActivityIndicator size="small" color="#2563eb" />
+          <Text className="ml-2 text-sm text-slate-600 dark:text-slate-300">Checking security...</Text>
+        </View>
+      ) : (
+        <>
+          {renderMfaEnrollmentCard()}
+          {!pendingEnrollment ? renderMfaFactorList() : null}
+          {!pendingEnrollment ? (
+            <>
+              <TextInput
+                className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                placeholder="Label this authenticator (optional)"
+                placeholderTextColor="#94a3b8"
+                value={mfaDeviceLabel}
+                onChangeText={setMfaDeviceLabel}
+              />
+              <TouchableOpacity
+                className="mt-3 rounded-xl bg-green-700 py-3"
+                onPress={handleStartMfaEnrollment}
+                disabled={enrollingMfa}
+              >
+                {enrollingMfa ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text className="text-center font-semibold text-white">
+                    {twoFactorEnabled ? 'Add another authenticator' : 'Set up authenticator'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              {twoFactorEnabled ? (
+                <TouchableOpacity
+                  className="mt-2 rounded-xl border border-red-600 py-3"
+                  onPress={handleDisableTwoFactor}
+                  disabled={removingFactorId === 'ALL'}
+                >
+                  {removingFactorId === 'ALL' ? (
+                    <ActivityIndicator color="#dc2626" />
+                  ) : (
+                    <Text className="text-center font-semibold text-red-600">Turn off two-factor</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+
   const renderPrivacySection = () => (
     <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
       <Text className="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Privacy & Safety</Text>
@@ -672,21 +1039,7 @@ export default function SettingsPage({ navigation }) {
           </View>
         </View>
         <View className="h-px bg-slate-100 dark:bg-slate-900" />
-        <View className="py-3">
-          <Text className="text-base font-medium text-slate-900 dark:text-slate-100">Two-factor authentication</Text>
-          <Text className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Add an extra layer of security when signing in on new devices.
-          </Text>
-          <View className="mt-2 flex-row justify-end">
-            <Switch
-              value={twoFactorEnabled}
-              onValueChange={setTwoFactorEnabled}
-              trackColor={{ false: '#d6d3d1', true: '#16a34a' }}
-              thumbColor={twoFactorEnabled ? '#15803d' : '#f4f3f4'}
-              ios_backgroundColor="#d6d3d1"
-            />
-          </View>
-        </View>
+        {renderTwoFactorCard()}
       </View>
     </View>
   );

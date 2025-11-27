@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,10 +17,18 @@ import { useTheme } from '../context/ThemeContext';
 export default function LoginPage({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPass] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [verifyingMfa, setVerifyingMfa] = useState(false);
+  const { login, pendingMfa, verifyMfaCode, restartMfaChallenge } = useAuth();
   const { isDarkMode } = useTheme();
   const placeholderColor = isDarkMode ? '#94a3b8' : '#888';
+  const hasPendingMfa = useMemo(() => Boolean(pendingMfa?.challengeId && pendingMfa?.factorId), [pendingMfa]);
+  const mfaDeviceName = useMemo(() => {
+    if (!pendingMfa?.factors?.length) return 'your authenticator app';
+    const target = pendingMfa.factors.find((factor) => factor.id === pendingMfa.factorId) ?? pendingMfa.factors[0];
+    return target?.friendly_name ? `${target.friendly_name} authenticator` : 'your authenticator app';
+  }, [pendingMfa]);
 
   async function handleLogin() {
     if (!email || !password) {
@@ -28,26 +36,56 @@ export default function LoginPage({ navigation }) {
       return;
     }
 
-    setLoading(true); // Start loading
+    setLoading(true);
+    setOtpCode('');
 
     try {
-      // 1. Call the login function from the context directly.
-      // This now calls supabase.auth.signInWithPassword(...)
-      const { error } = await login(email, password);
-
-      // If Supabase returns an error, show it.
+      const { error, mfaRequired } = await login(email, password);
       if (error) {
         throw error;
       }
-      // On success, the AuthContext and App.js will handle navigation automatically.
-
+      if (mfaRequired) {
+        Alert.alert('Two-factor verification needed', 'Enter the 6-digit code from your authenticator app.');
+      }
     } catch (e) {
       Alert.alert(`Login Failed`, e.message);
       console.error(e);
     } finally {
-      setLoading(false); // Stop loading
+      setLoading(false);
     }
   }
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim()) {
+      Alert.alert('Enter code', 'Please enter the 6-digit code from your authenticator app.');
+      return;
+    }
+
+    setVerifyingMfa(true);
+    try {
+      await verifyMfaCode(otpCode.trim());
+      setOtpCode('');
+    } catch (error) {
+      console.error('MFA verification failed:', error);
+      Alert.alert('Invalid code', error?.message ?? 'The verification code was not accepted.');
+    } finally {
+      setVerifyingMfa(false);
+    }
+  };
+
+  const handleResendChallenge = async () => {
+    setVerifyingMfa(true);
+    try {
+      await restartMfaChallenge();
+      setOtpCode('');
+      Alert.alert('New code requested', 'Enter the next code shown in your authenticator app.');
+    } catch (error) {
+      console.error('Failed to refresh MFA challenge:', error);
+      Alert.alert('Unable to refresh', error?.message ?? 'Could not request a new verification code right now.');
+    } finally {
+      setVerifyingMfa(false);
+    }
+  };
 
   const handleOpenLegal = (documentKey) => {
     navigation.navigate('LegalDocument', { documentKey });
@@ -102,7 +140,7 @@ export default function LoginPage({ navigation }) {
           <TouchableOpacity
             className="bg-green-700 rounded-xl py-4 mb-4"
             onPress={handleLogin}
-            disabled={loading}
+            disabled={loading || verifyingMfa}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
@@ -112,6 +150,40 @@ export default function LoginPage({ navigation }) {
               </Text>
             )}
           </TouchableOpacity>
+
+          {hasPendingMfa ? (
+            <View className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/40 dark:bg-amber-900/20">
+              <Text className="text-base font-semibold text-amber-800 dark:text-amber-100">Two-factor verification</Text>
+              <Text className="mt-1 text-sm text-amber-700 dark:text-amber-200">
+                Enter the 6-digit code from {mfaDeviceName} to finish signing in.
+              </Text>
+              <TextInput
+                className="mt-3 rounded-xl border border-amber-200 bg-white p-3 text-base dark:border-amber-400/40 dark:bg-slate-900 dark:text-white"
+                placeholder="123456"
+                placeholderTextColor={isDarkMode ? '#cbd5e1' : '#a3a3a3'}
+                value={otpCode}
+                onChangeText={setOtpCode}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
+              <TouchableOpacity
+                className="mt-3 rounded-xl bg-amber-600 py-3"
+                onPress={handleVerifyOtp}
+                disabled={verifyingMfa}
+              >
+                {verifyingMfa ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text className="text-center text-white font-semibold">Verify code</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity className="mt-2" onPress={handleResendChallenge} disabled={verifyingMfa}>
+                <Text className="text-center text-sm font-semibold text-amber-700 dark:text-amber-200">
+                  Trouble? Request a fresh code
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <Text className="text-center text-xs text-gray-500 dark:text-slate-400">
             By signing in you agree to our{' '}
