@@ -427,6 +427,8 @@ export default function ChatConversationPage({ route, navigation }) {
           editable={!sending}
           returnKeyType="send"
           onSubmitEditing={handleSend}
+          placeholderTextColor={colors.placeholder}
+          selectionColor={colors.accent}
         />
         <TouchableOpacity
           style={[styles.sendButton, !canSend ? styles.sendButtonDisabled : null]}
@@ -619,7 +621,7 @@ function createStyles(theme) {
       fontSize: 11,
     },
     messageMetaSelf: {
-      color: theme.accentSurface,
+      color: 'rgba(255,255,255,0.72)',
       textAlign: 'right',
     },
     messageMetaPeer: {

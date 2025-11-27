@@ -532,8 +532,6 @@ export default function EventDetailsPage({ route, navigation }) {
     return !INACTIVE_BOOKING_STATUSES.has(viewerBookingStatus);
   }, [viewerBookingStatus]);
 
-  const viewerCanBook = Boolean(event?.id && user?.id && !isOrganizer && !viewerHasActiveBooking);
-
   const viewerCanAccessEventChat = useMemo(() => {
     if (!event?.id || !user?.id) {
       return false;
@@ -1042,45 +1040,6 @@ export default function EventDetailsPage({ route, navigation }) {
     [attendancePoll?.canRespond, attendanceSubmitting, event?.id],
   );
 
-  const handleBookPress = useCallback(() => {
-    if (!viewerCanBook) {
-      return;
-    }
-
-    if (hasReadinessBlockers) {
-      const message = readinessBlockers.length
-        ? `Please resolve before booking:\n• ${readinessBlockers.join('\n• ')}`
-        : 'This event is locked until you meet the organizer requirements.';
-      Alert.alert('Booking locked', message, [
-        {
-          text: 'Update preferences',
-          onPress: () => navigation.navigate('PreferencesSetup'),
-        },
-        { text: 'OK', style: 'cancel' },
-      ]);
-      return;
-    }
-
-    if (readinessWarnings.length) {
-      const warningBody = `Before booking:\n• ${readinessWarnings.join('\n• ')}`;
-      Alert.alert('Check your fit', warningBody, [
-        { text: 'Keep browsing', style: 'cancel' },
-        {
-          text: 'Update preferences',
-          onPress: () => navigation.navigate('PreferencesSetup'),
-        },
-        {
-          text: 'Proceed to booking',
-          style: 'destructive',
-          onPress: () => navigation.navigate('BookingPage', { event }),
-        },
-      ]);
-      return;
-    }
-
-    navigation.navigate('BookingPage', { event });
-  }, [event, hasReadinessBlockers, navigation, readinessBlockers, readinessWarnings, viewerCanBook]);
-
   const handleNavigateToProfile = useCallback(
     (userId) => {
       if (!userId) {
@@ -1273,6 +1232,99 @@ export default function EventDetailsPage({ route, navigation }) {
       ? 'All current bookings approved'
       : `${attendeeStats.approved} confirmed attendee${attendeeStats.approved === 1 ? '' : 's'}`;
   }, [attendeeStats, isOrganizer]);
+
+  const capacityLimit = useMemo(() => {
+    const raw = Number(event?.maxParticipants);
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }, [event?.maxParticipants]);
+
+  const slotsLeft = useMemo(() => {
+    if (capacityLimit === null) {
+      return null;
+    }
+    const approvedCount = Math.max(0, attendeeStats.approved);
+    return Math.max(0, capacityLimit - approvedCount);
+  }, [attendeeStats.approved, capacityLimit]);
+
+  const isEventFull = useMemo(() => {
+    if (event?.isFull === true) {
+      return true;
+    }
+    if (capacityLimit === null) {
+      return false;
+    }
+    return (slotsLeft ?? capacityLimit) <= 0;
+  }, [capacityLimit, event?.isFull, slotsLeft]);
+
+  const slotsLabel = useMemo(() => {
+    if (capacityLimit === null) {
+      return 'Unlimited capacity';
+    }
+    if (slotsLeft > 0) {
+      return `${slotsLeft} slot${slotsLeft === 1 ? '' : 's'} left`;
+    }
+    return 'Fully booked';
+  }, [capacityLimit, slotsLeft]);
+
+  const viewerCanBook = useMemo(() => {
+    if (!event?.id || !user?.id || isOrganizer || viewerHasActiveBooking) {
+      return false;
+    }
+    if (isEventFull) {
+      return false;
+    }
+    return true;
+  }, [event?.id, isEventFull, isOrganizer, user?.id, viewerHasActiveBooking]);
+
+  const handleBookPress = useCallback(() => {
+    if (!viewerCanBook) {
+      if (isEventFull) {
+        Alert.alert('Fully booked', 'All slots are filled for this event. Please check back later or browse other adventures.');
+      }
+      return;
+    }
+
+    if (hasReadinessBlockers) {
+      const message = readinessBlockers.length
+        ? `Please resolve before booking:\n• ${readinessBlockers.join('\n• ')}`
+        : 'This event is locked until you meet the organizer requirements.';
+      Alert.alert('Booking locked', message, [
+        {
+          text: 'Update preferences',
+          onPress: () => navigation.navigate('PreferencesSetup'),
+        },
+        { text: 'OK', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    if (readinessWarnings.length) {
+      const warningBody = `Before booking:\n• ${readinessWarnings.join('\n• ')}`;
+      Alert.alert('Check your fit', warningBody, [
+        { text: 'Keep browsing', style: 'cancel' },
+        {
+          text: 'Update preferences',
+          onPress: () => navigation.navigate('PreferencesSetup'),
+        },
+        {
+          text: 'Proceed to booking',
+          style: 'destructive',
+          onPress: () => navigation.navigate('BookingPage', { event }),
+        },
+      ]);
+      return;
+    }
+
+    navigation.navigate('BookingPage', { event });
+  }, [
+    event,
+    hasReadinessBlockers,
+    isEventFull,
+    navigation,
+    readinessBlockers,
+    readinessWarnings,
+    viewerCanBook,
+  ]);
 
   const canViewOrganizerProfile = Boolean(organizerId);
   const handleViewOrganizerProfile = useCallback(() => {
@@ -1553,6 +1605,48 @@ export default function EventDetailsPage({ route, navigation }) {
               <View style={[styles.attendeeSummaryProgress, attendeeProgressStyle]} />
             </View>
             <Text style={styles.attendeeSummaryCaption}>{attendeeSummaryCaption}</Text>
+          </View>
+
+          <View
+            style={[
+              styles.capacityNotice,
+              capacityLimit === null
+                ? styles.capacityNoticeNeutral
+            : isEventFull
+            ? styles.capacityNoticeFull
+            : styles.capacityNoticeOpen,
+          ]}
+        >
+            <View
+              style={[
+                styles.capacityIconBadge,
+                capacityLimit === null
+                  ? styles.capacityIconNeutral
+                  : isEventFull
+                  ? styles.capacityIconFull
+                  : styles.capacityIconOpen,
+              ]}
+            >
+              <Icon
+                name={capacityLimit === null ? 'infinity' : 'users'}
+                size={16}
+                color="#ffffff"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.capacityTitle}>{slotsLabel}</Text>
+              <Text style={styles.capacitySubtitle}>
+                {capacityLimit === null
+                  ? 'Organizer has not set a headcount limit.'
+                  : slotsLeft > 0
+                  ? `${slotsLeft} of ${capacityLimit} slots remaining${
+                      isOrganizer ? '. Edit the event to adjust capacity.' : ''
+                    }`
+                  : `No slots left from ${capacityLimit} seats${
+                      isOrganizer ? '. Edit the event to open more slots.' : ''
+                    }`}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.tabRow}>
@@ -2225,6 +2319,33 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   attendeeSummaryCaption: { fontSize: 12, color: '#475569' },
+  capacityNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  capacityNoticeOpen: { backgroundColor: '#ECFDF3', borderColor: '#C3E7D2' },
+  capacityNoticeFull: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  capacityNoticeNeutral: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' },
+  capacityIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    backgroundColor: '#166534',
+  },
+  capacityIconOpen: { backgroundColor: '#166534' },
+  capacityIconFull: { backgroundColor: '#B91C1C' },
+  capacityIconNeutral: { backgroundColor: '#0F172A' },
+  capacityTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  capacitySubtitle: { fontSize: 12, color: '#475569', marginTop: 2 },
   tabRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,

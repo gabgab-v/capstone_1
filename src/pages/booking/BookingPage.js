@@ -12,7 +12,7 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import { useNotifications } from "../../context/NotificationContext";
 import { useAuth } from "../../context/AuthContext";
-import { createIdempotencyKey, postFormData } from "../../lib/api";
+import { createIdempotencyKey, get, postFormData } from "../../lib/api";
 import { evaluateEventReadiness, getEventDifficultyLabel } from "../../utils/matchScoring";
 
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/jpg"];
@@ -112,6 +112,39 @@ export default function BookingPage({ route, navigation }) {
   const readinessBlockers = readinessAssessment?.blockers ?? [];
   const readinessWarnings = readinessAssessment?.warnings ?? [];
   const hasReadinessBlockers = readinessBlockers.length > 0;
+
+  const capacityLimit = useMemo(() => {
+    const raw = Number(event?.maxParticipants);
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  }, [event?.maxParticipants]);
+  const approvedCount = useMemo(() => {
+    const raw = Number(event?.approvedAttendeeCount);
+    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  }, [event?.approvedAttendeeCount]);
+  const slotsLeft = useMemo(() => {
+    if (capacityLimit === null) {
+      return null;
+    }
+    return Math.max(0, capacityLimit - approvedCount);
+  }, [approvedCount, capacityLimit]);
+  const isEventFull = useMemo(() => {
+    if (event?.isFull === true) {
+      return true;
+    }
+    if (capacityLimit === null) {
+      return false;
+    }
+    return slotsLeft !== null ? slotsLeft <= 0 : false;
+  }, [capacityLimit, event?.isFull, slotsLeft]);
+  const slotsLabel = useMemo(() => {
+    if (capacityLimit === null) {
+      return "Unlimited capacity";
+    }
+    if (slotsLeft > 0) {
+      return `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} left`;
+    }
+    return "Fully booked";
+  }, [capacityLimit, slotsLeft]);
 
   useEffect(() => {
     setExpertWaiverAccepted(false);
@@ -290,6 +323,25 @@ export default function BookingPage({ route, navigation }) {
 
     setLoading(true);
     try {
+      const latestEvent = await get(`/api/events/${event.id}`);
+      const latestCapacity =
+        Number.isFinite(Number(latestEvent?.maxParticipants)) && Number(latestEvent.maxParticipants) > 0
+          ? Number(latestEvent.maxParticipants)
+          : capacityLimit;
+      const latestApproved = Number.isFinite(Number(latestEvent?.approvedAttendeeCount))
+        ? Number(latestEvent.approvedAttendeeCount)
+        : approvedCount;
+      const latestIsFull =
+        latestEvent?.isFull === true ||
+        (latestCapacity !== null &&
+          Number.isFinite(latestApproved) &&
+          latestApproved >= latestCapacity);
+
+      if (latestIsFull) {
+        Alert.alert("Fully Booked", "All slots are filled for this event. Please pick another event.");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("eventId", event.id);
       formData.append("amount", Number(event?.price ?? 0));
@@ -359,6 +411,11 @@ export default function BookingPage({ route, navigation }) {
 
   const handleConfirmPress = () => {
     if (loading) {
+      return;
+    }
+
+    if (isEventFull) {
+      Alert.alert("Fully Booked", "All slots are filled for this event. Please pick another event or contact the organizer.");
       return;
     }
 
@@ -435,6 +492,26 @@ export default function BookingPage({ route, navigation }) {
       <Image source={{ uri: event.imageUrl }} style={styles.image} />
       <Text style={styles.title}>{event.title}</Text>
       <Text style={styles.price}>{priceLabel}</Text>
+
+      <View
+        style={[
+          styles.slotBanner,
+          capacityLimit === null
+            ? styles.slotBannerNeutral
+            : isEventFull
+            ? styles.slotBannerFull
+            : styles.slotBannerOpen,
+        ]}
+      >
+        <Text style={styles.slotBannerTitle}>{slotsLabel}</Text>
+        <Text style={styles.slotBannerCaption}>
+          {capacityLimit === null
+            ? "Organizer has not set a headcount limit."
+            : slotsLeft > 0
+            ? `${slotsLeft} of ${capacityLimit} slots available.`
+            : `All ${capacityLimit} slots are filled.`}
+        </Text>
+      </View>
 
       <View style={styles.summary}>
         <Text style={styles.detailText}>
@@ -642,11 +719,11 @@ export default function BookingPage({ route, navigation }) {
       <TouchableOpacity
         style={[
           styles.confirmBtn,
-          (loading || isExpertGatePending || isSafetyWaiverPending) && styles.disabledBtn,
-          hasReadinessBlockers && styles.confirmBlocked,
+          (loading || isExpertGatePending || isSafetyWaiverPending || isEventFull) && styles.disabledBtn,
+          (hasReadinessBlockers || isEventFull) && styles.confirmBlocked,
         ]}
         onPress={handleConfirmPress}
-        disabled={loading}
+        disabled={loading || isEventFull}
         activeOpacity={0.9}
       >
         {loading ? (
@@ -677,6 +754,19 @@ const styles = StyleSheet.create({
   image: { width: "100%", height: 200, borderRadius: 10, marginBottom: 16 },
   title: { fontSize: 20, fontWeight: "bold", marginBottom: 6, color: "#111827" },
   price: { fontSize: 16, color: "#047857", marginBottom: 20, fontWeight: "600" },
+  slotBanner: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    backgroundColor: "#f9fafb",
+    borderColor: "#e5e7eb",
+  },
+  slotBannerOpen: { backgroundColor: "#ECFDF3", borderColor: "#BBF7D0" },
+  slotBannerFull: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  slotBannerNeutral: { backgroundColor: "#F9FAFB", borderColor: "#E5E7EB" },
+  slotBannerTitle: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  slotBannerCaption: { marginTop: 4, fontSize: 12, color: "#475569" },
   summary: {
     marginBottom: 20,
     padding: 16,

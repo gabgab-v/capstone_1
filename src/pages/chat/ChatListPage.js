@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/Feather';
 
 import { get } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { ensureAvatarUri } from '../../utils/media';
 
 function getPeerInitials(peer) {
@@ -57,7 +58,7 @@ function formatTimestamp(value) {
   return date.toLocaleDateString();
 }
 
-function ConversationItem({ conversation, currentUserId, onPress }) {
+function ConversationItem({ conversation, currentUserId, onPress, styles, colors }) {
   const isEventChat = Boolean(conversation?.event?.id);
   const primaryPeer = conversation?.peers?.[0] ?? null;
   const title = isEventChat
@@ -81,7 +82,7 @@ function ConversationItem({ conversation, currentUserId, onPress }) {
         ]}
       >
         {isEventChat ? (
-          <Icon name="users" size={20} color="#065f46" />
+          <Icon name="users" size={20} color={colors.accent} />
         ) : avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
         ) : (
@@ -122,6 +123,11 @@ function ConversationItem({ conversation, currentUserId, onPress }) {
 
 export default function ChatListPage({ navigation }) {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const accentColor = colors.accent ?? '#2E7D32';
+  const mutedIconColor = colors.textMuted ?? '#9CA3AF';
+
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -181,6 +187,8 @@ export default function ChatListPage({ navigation }) {
       <ConversationItem
         conversation={item}
         currentUserId={user?.id}
+        styles={styles}
+        colors={colors}
         onPress={() =>
           navigation.navigate('ChatConversation', {
             conversationId: item.id,
@@ -190,7 +198,7 @@ export default function ChatListPage({ navigation }) {
         }
       />
     ),
-    [navigation, user?.id],
+    [colors, navigation, styles, user?.id],
   );
 
   const emptyState = useMemo(() => {
@@ -199,12 +207,12 @@ export default function ChatListPage({ navigation }) {
     }
     return (
       <View style={styles.emptyContainer}>
-        <Icon name="message-circle" size={48} color="#9CA3AF" />
+        <Icon name="message-circle" size={48} color={mutedIconColor} />
         <Text style={styles.emptyTitle}>Start a conversation</Text>
         <Text style={styles.emptySubtitle}>Find hikers from events or profiles and send a message.</Text>
       </View>
     );
-  }, [loading]);
+  }, [loading, mutedIconColor, styles]);
 
   return (
     <View style={styles.screen}>
@@ -215,7 +223,7 @@ export default function ChatListPage({ navigation }) {
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#2E7D32" />
+          <ActivityIndicator size="large" color={accentColor} />
         </View>
       ) : (
         <FlatList
@@ -224,7 +232,12 @@ export default function ChatListPage({ navigation }) {
           renderItem={renderConversation}
           contentContainerStyle={conversations.length === 0 ? styles.listEmptyContent : styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2E7D32" />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={accentColor}
+              progressBackgroundColor={colors.surface}
+            />
           }
           ListEmptyComponent={emptyState}
         />
@@ -233,155 +246,157 @@ export default function ChatListPage({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  header: {
-    paddingTop: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  headerSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  loader: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  listEmptyContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 48,
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  itemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarEvent: {
-    backgroundColor: '#E0F2FE',
-  },
-  avatarWithImage: {
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 24,
-  },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  itemContent: {
-    flex: 1,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  eventBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: '#DBEAFE',
-    marginBottom: 4,
-  },
-  eventBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1D4ED8',
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginRight: 8,
-  },
-  itemTimestamp: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  itemFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  itemPreview: {
-    flex: 1,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  itemPreviewUnread: {
-    color: '#111827',
-    fontWeight: '600',
-  },
-  unreadBadge: {
-    marginLeft: 8,
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 11,
-    backgroundColor: '#16A34A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unreadBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    marginTop: 16,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    paddingHorizontal: 24,
-  },
-});
+function createStyles(theme) {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: theme.background,
+    },
+    header: {
+      paddingTop: 24,
+      paddingHorizontal: 20,
+      paddingBottom: 16,
+      backgroundColor: theme.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    headerSubtitle: {
+      marginTop: 4,
+      fontSize: 13,
+      color: theme.textMuted,
+    },
+    loader: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    listContent: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    listEmptyContent: {
+      paddingHorizontal: 16,
+      paddingVertical: 48,
+      flexGrow: 1,
+      justifyContent: 'center',
+    },
+    itemContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      marginBottom: 8,
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.positiveSurface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    avatarEvent: {
+      backgroundColor: theme.infoSurface,
+    },
+    avatarWithImage: {
+      backgroundColor: theme.surfaceMuted,
+      overflow: 'hidden',
+    },
+    avatarImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 24,
+    },
+    avatarText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.positiveText,
+    },
+    itemContent: {
+      flex: 1,
+    },
+    itemHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    eventBadge: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: theme.infoSurface,
+      marginBottom: 4,
+    },
+    eventBadgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: theme.infoText,
+    },
+    itemTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.textPrimary,
+      marginRight: 8,
+    },
+    itemTimestamp: {
+      fontSize: 12,
+      color: theme.textMuted,
+    },
+    itemFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    itemPreview: {
+      flex: 1,
+      fontSize: 13,
+      color: theme.textMuted,
+    },
+    itemPreviewUnread: {
+      color: theme.textPrimary,
+      fontWeight: '600',
+    },
+    unreadBadge: {
+      marginLeft: 8,
+      minWidth: 22,
+      height: 22,
+      paddingHorizontal: 6,
+      borderRadius: 11,
+      backgroundColor: theme.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    unreadBadgeText: {
+      color: theme.textInverse,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    emptyContainer: {
+      alignItems: 'center',
+    },
+    emptyTitle: {
+      marginTop: 16,
+      fontSize: 18,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    emptySubtitle: {
+      marginTop: 6,
+      fontSize: 13,
+      color: theme.textMuted,
+      textAlign: 'center',
+      paddingHorizontal: 24,
+    },
+  });
+}
