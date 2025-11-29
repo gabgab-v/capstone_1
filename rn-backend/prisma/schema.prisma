@@ -34,6 +34,8 @@ model User {
   mountainSuggestionsEnabled Boolean @default(true)
   budgetRange             String?
   previousPreferences     Json?
+  organizerTrustScore     Int?
+  organizerTrustTier      OrganizerTrustTier?
 
   bookings                Booking[]
   events                  Event[]

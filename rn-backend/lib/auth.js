@@ -41,6 +41,12 @@ export async function ensureUserColumns() {
     await prisma.$executeRawUnsafe(
       'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phoneVerifiedAt" TIMESTAMP;',
     );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "organizerTrustScore" INTEGER;',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "organizerTrustTier" "OrganizerTrustTier";',
+    );
 
     await prisma.$executeRawUnsafe(
       'UPDATE "User" SET "preferredMountains" = COALESCE("preferredMountains", \'{}\'::text[]);',
