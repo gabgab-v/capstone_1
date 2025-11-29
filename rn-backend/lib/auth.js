@@ -1,8 +1,13 @@
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '@/lib/prisma';
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 const ADMIN_JWT_SECRET = process.env.JWT_SECRET || SUPABASE_JWT_SECRET;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseService =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
 export async function ensureUserColumns() {
   try {
@@ -58,14 +63,41 @@ export async function getUserFromToken(request) {
   const token = header.split(' ')[1];
   if (!token) return null;
 
-  if (!SUPABASE_JWT_SECRET) {
-    console.error('Token verification failed: SUPABASE_JWT_SECRET is not configured.');
-    return null;
-  }
-
   try {
     await ensureUserColumns();
-    const payload = jwt.verify(token, SUPABASE_JWT_SECRET);
+    let payload = null;
+
+    if (SUPABASE_JWT_SECRET) {
+      try {
+        payload = jwt.verify(token, SUPABASE_JWT_SECRET);
+      } catch (error) {
+        console.error('Token verification failed with configured secret:', error.message);
+      }
+    } else {
+      console.warn('SUPABASE_JWT_SECRET is not configured; attempting Supabase service verification instead.');
+    }
+
+    if (!payload && supabaseService) {
+      try {
+        const { data, error } = await supabaseService.auth.getUser(token);
+        if (error) {
+          console.error('Supabase service user lookup failed:', error.message);
+        } else if (data?.user) {
+          payload = {
+            sub: data.user.id,
+            email: data.user.email,
+            user_metadata: data.user.user_metadata ?? data.user.app_metadata ?? {},
+          };
+        }
+      } catch (serviceError) {
+        console.error('Supabase service user lookup threw:', serviceError.message);
+      }
+    }
+
+    if (!payload) {
+      console.error('Token verification failed: no valid payload after all strategies.');
+      return null;
+    }
 
     const emailFromToken =
       payload.email ??
