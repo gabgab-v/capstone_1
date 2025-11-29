@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
+import { updateOrganizerTrustScore } from '@/lib/trustScore';
 
 const DEFAULT_FACE_MATCH_THRESHOLD = 0.85;
 
@@ -172,9 +173,12 @@ export async function POST(request) {
       create: { userId: user.id, ...data },
     });
 
+    const trust = await updateOrganizerTrustScore(user.id);
+
     return NextResponse.json({
       message: 'Identity verification saved.',
       verification: mapVerification(record),
+      trust,
     });
   } catch (error) {
     console.error('POST /api/users/identity-verification error:', error);

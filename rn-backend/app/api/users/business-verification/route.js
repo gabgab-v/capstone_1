@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
+import { updateOrganizerTrustScore } from '@/lib/trustScore';
 
 const TIN_PATTERN = /^\d{3}-\d{3}-\d{3}-\d{3}$/;
 
@@ -272,9 +273,12 @@ export async function POST(request) {
           },
         });
 
+    const trust = await updateOrganizerTrustScore(user.id);
+
     return NextResponse.json({
       message: existing ? 'Business verification updated.' : 'Business verification submitted.',
       verification: mapVerification(record),
+      trust,
     });
   } catch (error) {
     console.error('POST /api/users/business-verification error:', error);

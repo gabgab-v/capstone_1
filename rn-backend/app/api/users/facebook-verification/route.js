@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromToken } from '@/lib/auth';
+import { updateOrganizerTrustScore } from '@/lib/trustScore';
 
 const DEFAULT_SAMPLE_LIMIT = 25;
 const HIKING_KEYWORDS = [
@@ -240,9 +241,12 @@ export async function POST(request) {
       create: { userId: user.id, ...data },
     });
 
+    const trust = await updateOrganizerTrustScore(user.id);
+
     return NextResponse.json({
       message: 'Facebook page analyzed.',
       verification: mapVerification(record),
+      trust,
     });
   } catch (error) {
     console.error('POST /api/users/facebook-verification error:', error);

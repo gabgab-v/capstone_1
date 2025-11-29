@@ -114,6 +114,8 @@ const userSelect = {
       updatedAt: true,
     },
   },
+  organizerTrustScore: true,
+  organizerTrustTier: true,
 };
 
 export async function GET(request) {
@@ -155,6 +157,8 @@ export async function GET(request) {
         businessVerification: null,
         facebookVerification: null,
         identityVerification: null,
+        organizerTrustScore: null,
+        organizerTrustTier: null,
       };
 
     if (!dbUser?.email) {
@@ -297,6 +301,8 @@ export async function GET(request) {
       businessVerification,
       facebookVerification,
       identityVerification,
+      organizerTrustScore: dbUser.organizerTrustScore ?? null,
+      organizerTrustTier: dbUser.organizerTrustTier ?? null,
       profileComplete,
       preferencesComplete,
       followersCount,
