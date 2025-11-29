@@ -47,6 +47,7 @@ model User {
   expertApplication       ExpertApplication?
   reviewedExpertApplications ExpertApplication[] @relation("ExpertApplicationReviewer")
   businessVerification    BusinessVerification?
+  facebookVerification    FacebookVerification?
   identityVerification    IdentityVerification?
   followers               Follow[] @relation("FollowedUser")
   following               Follow[] @relation("FollowingUser")
@@ -235,6 +236,20 @@ enum IdentityVerificationStatus {
   NEEDS_RESUBMISSION
 }
 
+enum FacebookVerificationStatus {
+  PENDING
+  PROCESSING
+  VERIFIED
+  PARTIAL
+  FAILED
+}
+
+enum OrganizerTrustTier {
+  VERIFIED_ORGANIZER
+  PROVISIONAL
+  UNVERIFIED
+}
+
 model OrganizerApplication {
   id                   String                      @id @default(uuid())
   user                 User                        @relation(fields: [userId], references: [id])
@@ -313,6 +328,24 @@ model IdentityVerification {
   processedAt        DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
+}
+
+model FacebookVerification {
+  id              String                     @id @default(uuid())
+  user            User                       @relation(fields: [userId], references: [id])
+  userId          String                     @unique
+  pageId          String?
+  pageName        String?
+  pageUrl         String?
+  status          FacebookVerificationStatus @default(PENDING)
+  score           Int                        @default(0)
+  engagementScore Int?
+  hikingRatio     Float?
+  postSample      Json?
+  failureReasons  Json?
+  lastCheckedAt   DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
 }
 
 model Follow {

@@ -80,6 +80,23 @@ const userSelect = {
       updatedAt: true,
     },
   },
+  facebookVerification: {
+    select: {
+      id: true,
+      status: true,
+      pageId: true,
+      pageName: true,
+      pageUrl: true,
+      score: true,
+      engagementScore: true,
+      hikingRatio: true,
+      postSample: true,
+      failureReasons: true,
+      lastCheckedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
   identityVerification: {
     select: {
       id: true,
@@ -136,6 +153,7 @@ export async function GET(request) {
         organizerApplication: null,
         expertApplication: null,
         businessVerification: null,
+        facebookVerification: null,
         identityVerification: null,
       };
 
@@ -195,6 +213,18 @@ export async function GET(request) {
               ? [String(dbUser.businessVerification.failureReasons)]
               : [],
           validationFindings: dbUser.businessVerification.validationFindings ?? null,
+        }
+      : null;
+
+    const facebookVerification = dbUser.facebookVerification
+      ? {
+          ...dbUser.facebookVerification,
+          failureReasons: Array.isArray(dbUser.facebookVerification.failureReasons)
+            ? dbUser.facebookVerification.failureReasons
+            : dbUser.facebookVerification.failureReasons
+              ? [String(dbUser.facebookVerification.failureReasons)]
+              : [],
+          postSample: dbUser.facebookVerification.postSample ?? [],
         }
       : null;
 
@@ -265,6 +295,7 @@ export async function GET(request) {
       organizerApplication,
       expertApplication,
       businessVerification,
+      facebookVerification,
       identityVerification,
       profileComplete,
       preferencesComplete,

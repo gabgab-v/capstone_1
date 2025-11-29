@@ -20,6 +20,7 @@ import { ensureAvatarUri } from '../../utils/media';
 import ScreenHeader from '../../components/ScreenHeader';
 import { del, put } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import { useFacebookVerification } from '../../hooks/useFacebookVerification';
 
 function statusMeta(status) {
   switch (status) {
@@ -64,6 +65,21 @@ function identityStatusMeta(status) {
   }
 }
 
+function facebookStatusMeta(status) {
+  switch (status) {
+    case 'VERIFIED':
+      return { label: 'Mostly hiking page', textClass: 'text-emerald-700', chipBg: 'bg-emerald-100', helper: '>=80% posts about hiking.' };
+    case 'PARTIAL':
+      return { label: 'Partially hiking', textClass: 'text-amber-800', chipBg: 'bg-amber-100', helper: '40–79% posts about hiking.' };
+    case 'FAILED':
+      return { label: 'Low relevance', textClass: 'text-red-700', chipBg: 'bg-red-100', helper: '<40% posts about hiking.' };
+    case 'PROCESSING':
+    case 'PENDING':
+    default:
+      return { label: 'Not analyzed', textClass: 'text-blue-700', chipBg: 'bg-blue-100', helper: 'Link your Facebook page to analyze.' };
+  }
+}
+
 export default function SettingsPage({ navigation }) {
   const { user, isLoading, logout, refreshUser } = useAuth();
   const {
@@ -95,6 +111,11 @@ export default function SettingsPage({ navigation }) {
   );
   const [savingMountains, setSavingMountains] = useState(false);
   const [deletingMountain, setDeletingMountain] = useState(null);
+  const { verification: fbVerification, loading: fbLoading, analyze: analyzeFacebook } =
+    useFacebookVerification();
+  const [fbPageId, setFbPageId] = useState(fbVerification?.pageId ?? '');
+  const [fbPageUrl, setFbPageUrl] = useState(fbVerification?.pageUrl ?? '');
+  const [fbToken, setFbToken] = useState('');
   const insets = useSafeAreaInsets();
   const contentContainerStyle = useMemo(
     () => ({
@@ -146,7 +167,14 @@ export default function SettingsPage({ navigation }) {
   useEffect(() => {
     setMountains(Array.isArray(user?.preferredMountains) ? user.preferredMountains : []);
     setMountainSuggestionsEnabled(user?.mountainSuggestionsEnabled ?? true);
-  }, [user?.preferredMountains, user?.mountainSuggestionsEnabled]);
+    setFbPageId(user?.facebookVerification?.pageId ?? '');
+    setFbPageUrl(user?.facebookVerification?.pageUrl ?? '');
+  }, [user?.preferredMountains, user?.mountainSuggestionsEnabled, user?.facebookVerification?.pageId, user?.facebookVerification?.pageUrl]);
+
+  useEffect(() => {
+    setFbPageId(fbVerification?.pageId ?? user?.facebookVerification?.pageId ?? '');
+    setFbPageUrl(fbVerification?.pageUrl ?? user?.facebookVerification?.pageUrl ?? '');
+  }, [fbVerification?.pageId, fbVerification?.pageUrl, user?.facebookVerification?.pageId, user?.facebookVerification?.pageUrl]);
 
   const refreshMfaFactors = useCallback(async () => {
     setLoadingMfa(true);
@@ -604,6 +632,117 @@ export default function SettingsPage({ navigation }) {
           <Text className="text-center font-semibold text-white">
             {verification ? 'View or resubmit' : 'Start verification'}
           </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderFacebookVerificationSection = () => {
+    if (!user) return null;
+    const verification = fbVerification ?? user.facebookVerification ?? null;
+    const meta = facebookStatusMeta(verification?.status ?? 'PENDING');
+    const score = typeof verification?.score === 'number' ? verification.score : 0;
+    const engagementScore =
+      typeof verification?.engagementScore === 'number' ? verification.engagementScore : 0;
+    const hikingRatio =
+      typeof verification?.hikingRatio === 'number'
+        ? `${Math.round(verification.hikingRatio * 100)}%`
+        : '—';
+
+    const handleAnalyze = async () => {
+      try {
+        await analyzeFacebook({
+          pageId: fbPageId,
+          pageUrl: fbPageUrl,
+          pageAccessToken: fbToken || undefined,
+        });
+        Alert.alert('Analyzed', 'Facebook page analyzed for hiking content.');
+      } catch (error) {
+        const message = error?.body?.message || error?.message || 'Analysis failed.';
+        Alert.alert('Failed', message);
+      }
+    };
+
+    return (
+      <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+        <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">
+          Facebook social proof
+        </Text>
+        <Text className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Link your Facebook Page so we can auto-check if most recent posts are about hiking.
+        </Text>
+        <View className="mt-3 flex-row items-center justify-between">
+          <View className="flex-1 pr-4">
+            <Text className={`text-sm font-semibold ${meta.textClass}`}>{meta.label}</Text>
+            <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Hiking posts: {hikingRatio} • Score {score}/20 • Engagement {engagementScore || 0}/10
+            </Text>
+            {verification?.failureReasons?.length ? (
+              <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400" numberOfLines={2}>
+                Next actions: {verification.failureReasons.join('; ')}
+              </Text>
+            ) : null}
+            {verification?.lastCheckedAt ? (
+              <Text className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                Checked {new Date(verification.lastCheckedAt).toLocaleString()}
+              </Text>
+            ) : null}
+          </View>
+          <View className={`rounded-full px-3 py-1 ${meta.chipBg}`}>
+            <Text className={`text-xs font-semibold ${meta.textClass}`}>{meta.label}</Text>
+          </View>
+        </View>
+
+        <View className="mt-4">
+          <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">Page ID</Text>
+          <TextInput
+            className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+            value={fbPageId}
+            onChangeText={setFbPageId}
+            placeholder="facebook page id"
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
+
+        <View className="mt-3">
+          <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">Page URL</Text>
+          <TextInput
+            className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+            value={fbPageUrl}
+            onChangeText={setFbPageUrl}
+            placeholder="https://facebook.com/yourpage"
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
+
+        <View className="mt-3">
+          <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Page access token (optional)
+          </Text>
+          <TextInput
+            className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+            value={fbToken}
+            onChangeText={setFbToken}
+            placeholder="Provide if you want the app to fetch posts"
+            placeholderTextColor="#94a3b8"
+          />
+          <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            If omitted, you can pass sample posts from the client for testing. Tokens are not stored.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          className="mt-4 rounded-xl bg-blue-600 px-5 py-3"
+          onPress={handleAnalyze}
+          disabled={fbLoading}
+        >
+          {fbLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-center font-semibold text-white">
+              {verification ? 'Re-analyze page' : 'Link & analyze page'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -1321,6 +1460,8 @@ export default function SettingsPage({ navigation }) {
         {renderProfileCard()}
 
         {renderIdentityVerificationSection()}
+
+        {renderFacebookVerificationSection()}
 
         {renderBusinessVerificationSection()}
 
