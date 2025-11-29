@@ -28,6 +28,7 @@ import CreateEventPage from './src/pages/CreateEventPage';
 import SettingsPage from './src/pages/user/SettingsPage';
 import ApplyOrganizerPage from './src/pages/user/ApplyOrganizerPage';
 import ApplyExpertPage from './src/pages/user/ApplyExpertPage';
+import BusinessVerificationPage from './src/pages/user/BusinessVerificationPage';
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
@@ -74,6 +75,7 @@ function AppNavigator() {
           <Stack.Screen name="EventBookings" component={EventBookingsPage} />
           <Stack.Screen name="EditEvent" component={CreateEventPage} />
           <Stack.Screen name="Settings" component={SettingsPage} />
+          <Stack.Screen name="BusinessVerification" component={BusinessVerificationPage} />
           <Stack.Screen name="ApplyOrganizer" component={ApplyOrganizerPage} />
           <Stack.Screen name="ApplyExpert" component={ApplyExpertPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />

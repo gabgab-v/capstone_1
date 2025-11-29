@@ -106,8 +106,7 @@ export default function SignupPage({ navigation }) {
         email: authData.user.email,
         name,
         visitedTrail,
-        birthday: birthday.toISOString().split('T')[0],
-      });
+        birthday: birthday.toISOString().split('T')[0],      });
 
       Alert.alert(
         'Success!',

@@ -32,6 +32,23 @@ function statusMeta(status) {
   }
 }
 
+function businessStatusMeta(status) {
+  switch (status) {
+    case 'VERIFIED':
+      return { label: 'Verified business', textClass: 'text-emerald-700', chipBg: 'bg-emerald-100', helper: 'Ready for payouts and publishing.' };
+    case 'PARTIAL':
+      return { label: 'Partially verified', textClass: 'text-amber-700', chipBg: 'bg-amber-100', helper: 'Some checks passed; finish missing details.' };
+    case 'NEEDS_RESUBMISSION':
+      return { label: 'Needs resubmission', textClass: 'text-amber-800', chipBg: 'bg-amber-100', helper: 'Fix flagged items and reupload.' };
+    case 'REJECTED':
+      return { label: 'Rejected', textClass: 'text-red-700', chipBg: 'bg-red-100', helper: 'Document failed validation.' };
+    case 'PROCESSING':
+    case 'PENDING':
+    default:
+      return { label: 'Processing', textClass: 'text-blue-700', chipBg: 'bg-blue-100', helper: 'Auto-checks running after upload.' };
+  }
+}
+
 export default function SettingsPage({ navigation }) {
   const { user, isLoading, logout, refreshUser } = useAuth();
   const {
@@ -524,6 +541,58 @@ export default function SettingsPage({ navigation }) {
       </TouchableOpacity>
     </View>
   );
+
+  const renderBusinessVerificationSection = () => {
+    if (isLoading && !user) {
+      return null;
+    }
+
+    if (!user) {
+      return null;
+    }
+
+    const verification = user.businessVerification ?? null;
+    const meta = businessStatusMeta(verification?.status ?? 'PENDING');
+    const score = typeof verification?.score === 'number' ? verification.score : 0;
+
+    return (
+      <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+        <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Business verification</Text>
+        <Text className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Upload your DTI/permit so we can auto-check TIN, reference numbers, layout, and QR codes before you publish events.
+        </Text>
+        <View className="mt-3 flex-row items-center justify-between">
+          <View className="flex-1 pr-4">
+            <Text className={`text-sm font-semibold ${meta.textClass}`}>{meta.label}</Text>
+            <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Score {score}/40 • {meta.helper}
+            </Text>
+            {verification?.failureReasons?.length ? (
+              <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400" numberOfLines={2}>
+                Next actions: {verification.failureReasons.join('; ')}
+              </Text>
+            ) : null}
+            {verification?.processedAt ? (
+              <Text className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                Checked {new Date(verification.processedAt).toLocaleString()}
+              </Text>
+            ) : null}
+          </View>
+          <View className={`rounded-full px-3 py-1 ${meta.chipBg}`}>
+            <Text className={`text-xs font-semibold ${meta.textClass}`}>{meta.label}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          className="mt-4 rounded-xl bg-blue-600 px-5 py-3"
+          onPress={() => navigation.navigate('BusinessVerification')}
+        >
+          <Text className="text-center font-semibold text-white">
+            {verification ? 'View or resubmit' : 'Start verification'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const renderOrganizerSection = () => {
     if (isLoading && !user) {
@@ -1191,6 +1260,8 @@ export default function SettingsPage({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {renderProfileCard()}
+
+        {renderBusinessVerificationSection()}
 
         {renderOrganizerSection()}
 

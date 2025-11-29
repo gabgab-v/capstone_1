@@ -58,6 +58,28 @@ const userSelect = {
       updatedAt: true,
     },
   },
+  businessVerification: {
+    select: {
+      id: true,
+      status: true,
+      businessName: true,
+      businessAddress: true,
+      tin: true,
+      referenceNumber: true,
+      documentType: true,
+      documentUrls: true,
+      issueDate: true,
+      expiryDate: true,
+      qrData: true,
+      extractedFields: true,
+      validationFindings: true,
+      failureReasons: true,
+      score: true,
+      processedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
 };
 
 export async function GET(request) {
@@ -96,6 +118,7 @@ export async function GET(request) {
         organizerRequestPending: authUser.organizerRequestPending ?? false,
         organizerApplication: null,
         expertApplication: null,
+        businessVerification: null,
       };
 
     if (!dbUser?.email) {
@@ -142,9 +165,18 @@ export async function GET(request) {
         }
       : null;
 
-    const expertApplication = dbUser.expertApplication
+    const expertApplication = dbUser.expertApplication ? { ...dbUser.expertApplication } : null;
+
+    const businessVerification = dbUser.businessVerification
       ? {
-          ...dbUser.expertApplication,
+          ...dbUser.businessVerification,
+          documentUrls: dbUser.businessVerification.documentUrls ?? [],
+          failureReasons: Array.isArray(dbUser.businessVerification.failureReasons)
+            ? dbUser.businessVerification.failureReasons
+            : dbUser.businessVerification.failureReasons
+              ? [String(dbUser.businessVerification.failureReasons)]
+              : [],
+          validationFindings: dbUser.businessVerification.validationFindings ?? null,
         }
       : null;
 
@@ -201,6 +233,7 @@ export async function GET(request) {
       ...dbUser,
       organizerApplication,
       expertApplication,
+      businessVerification,
       profileComplete,
       preferencesComplete,
       followersCount,

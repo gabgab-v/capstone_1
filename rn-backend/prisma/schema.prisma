@@ -46,6 +46,7 @@ model User {
   reviewedOrganizerApplications OrganizerApplication[] @relation("OrganizerApplicationReviewer")
   expertApplication       ExpertApplication?
   reviewedExpertApplications ExpertApplication[] @relation("ExpertApplicationReviewer")
+  businessVerification    BusinessVerification?
   followers               Follow[] @relation("FollowedUser")
   following               Follow[] @relation("FollowingUser")
   conversations           ConversationParticipant[]
@@ -216,6 +217,15 @@ enum ExpertApplicationStatus {
   REJECTED
 }
 
+enum BusinessVerificationStatus {
+  PENDING
+  PROCESSING
+  VERIFIED
+  PARTIAL
+  REJECTED
+  NEEDS_RESUBMISSION
+}
+
 model OrganizerApplication {
   id                   String                      @id @default(uuid())
   user                 User                        @relation(fields: [userId], references: [id])
@@ -253,6 +263,29 @@ model ExpertApplication {
   reviewedAt     DateTime?
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
+}
+
+model BusinessVerification {
+  id                 String                      @id @default(uuid())
+  user               User                        @relation(fields: [userId], references: [id])
+  userId             String                      @unique
+  businessName       String
+  businessAddress    String?
+  tin                String?
+  referenceNumber    String?
+  documentType       String?
+  documentUrls       String[]                    @default([])
+  issueDate          DateTime?
+  expiryDate         DateTime?
+  qrData             Json?
+  extractedFields    Json?
+  validationFindings Json?
+  score              Int                         @default(0)
+  status             BusinessVerificationStatus  @default(PENDING)
+  failureReasons     Json?
+  processedAt        DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
 }
 
 model Follow {
