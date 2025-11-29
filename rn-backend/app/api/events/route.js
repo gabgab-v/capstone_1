@@ -84,6 +84,7 @@ function toDate(value) {
 
 const EVENT_STATUSES = new Set(['DRAFT', 'PUBLISHED', 'CLOSED', 'COMPLETED', 'CANCELLED']);
 const CLOSING_SOON_THRESHOLD_HOURS = 72;
+const VERIFIED_IDENTITY_STATUS = 'VERIFIED';
 
 const EVENT_COLUMN_QUERIES = [
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;',
@@ -146,12 +147,60 @@ function sanitizeGeoJson(value) {
   return null;
 }
 
+async function requireVerifiedIdentity(user) {
+  if (!user || user.role === 'ADMIN') {
+    return { allowed: true, status: VERIFIED_IDENTITY_STATUS };
+  }
+
+  let verification = null;
+  try {
+    verification = await prisma.identityVerification.findUnique({
+      where: { userId: user.id },
+      select: {
+        status: true,
+        score: true,
+      },
+    });
+  } catch (error) {
+    console.error('Identity verification lookup failed:', error);
+    return { allowed: false, status: 'UNAVAILABLE', error: 'Identity verification lookup failed.' };
+  }
+
+  const status = verification?.status ?? 'PENDING';
+  if (status !== VERIFIED_IDENTITY_STATUS) {
+    return {
+      allowed: false,
+      status,
+      score: verification?.score ?? null,
+    };
+  }
+
+  return { allowed: true, status };
+}
+
 export async function POST(req) {
   try {
     await ensureEventColumns();
     const user = await getUserFromToken(req);
     if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
+    const identityResult = await requireVerifiedIdentity(user);
+    if (!identityResult.allowed) {
+      const errorMessage =
+        identityResult.status === 'UNAVAILABLE'
+          ? 'Identity verification is unavailable. Please run the latest migrations and retry.'
+          : 'Complete organizer identity verification via AccuraScan before publishing events.';
+      return new Response(
+        JSON.stringify({
+          error: 'Identity verification required',
+          message: errorMessage,
+          status: identityResult.status,
+          score: identityResult.score,
+        }),
+        { status: 403 },
+      );
     }
 
     const body = await req.json();

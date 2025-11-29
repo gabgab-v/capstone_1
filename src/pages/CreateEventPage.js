@@ -23,6 +23,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useUserTrails } from '../hooks/useUserTrails';
+import { useIdentityVerification } from '../hooks/useIdentityVerification';
 import TrailMapPicker from '../components/TrailMapPicker';
 import SafePicker from '../components/SafePicker';
 import ScreenHeader from '../components/ScreenHeader';
@@ -514,6 +515,30 @@ export default function CreateEventPage({ route, navigation }) {
 
   const activeEvent = editingEvent ?? eventFromParams ?? null;
   const { user } = useAuth();
+  const {
+    verification: identityVerification,
+    loading: identityLoading,
+    refresh: refreshIdentity,
+  } = useIdentityVerification();
+  const isIdentityVerified = identityVerification?.status === 'VERIFIED';
+  const identityScoreLabel =
+    typeof identityVerification?.score === 'number'
+      ? `${identityVerification.score}/30`
+      : '0/30';
+  const identityMeta = useMemo(() => {
+    switch (identityVerification?.status) {
+      case 'VERIFIED':
+        return { label: 'Identity verified', color: '#047857', bg: '#dcfce7' };
+      case 'FAILED':
+        return { label: 'Identity failed', color: '#b91c1c', bg: '#fee2e2' };
+      case 'NEEDS_RESUBMISSION':
+        return { label: 'Needs resubmission', color: '#b45309', bg: '#ffedd5' };
+      case 'PROCESSING':
+        return { label: 'Processing', color: '#2563eb', bg: '#dbeafe' };
+      default:
+        return { label: 'Not verified', color: '#2563eb', bg: '#dbeafe' };
+    }
+  }, [identityVerification?.status]);
   const mountainSuggestions = useMemo(
     () =>
       Array.isArray(user?.preferredMountains)
@@ -731,6 +756,21 @@ export default function CreateEventPage({ route, navigation }) {
   }, []);
 
   const handleSubmit = useCallback(async () => {
+    if (!isIdentityVerified) {
+      Alert.alert(
+        'Verify your identity',
+        'Complete the AccuraScan identity check before creating or updating events.',
+        [
+          {
+            text: 'Go to verification',
+            onPress: () => navigation?.navigate?.('IdentityVerification'),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     const trimmedTitle = trimOrNull(title);
     const normalizedTrailType = trimOrNull(trailType);
     const normalizedMountainTag = trimOrNull(mountainTag);
@@ -1045,6 +1085,7 @@ export default function CreateEventPage({ route, navigation }) {
     onEventUpdated,
     navigation,
     minAge,
+    isIdentityVerified,
   ]);
 
   const selectedLocationText =
@@ -1081,6 +1122,36 @@ export default function CreateEventPage({ route, navigation }) {
     >
       <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
       <ScrollView style={styles.container}>
+      <View style={[styles.identityCard, { backgroundColor: identityMeta.bg }]}>
+        <View style={styles.identityCardHeader}>
+          <Text style={[styles.identityTitle, { color: identityMeta.color }]}>{identityMeta.label}</Text>
+          <Text style={[styles.identityScore, { color: identityMeta.color }]}>{identityScoreLabel}</Text>
+        </View>
+        <Text style={styles.identityHelper}>
+          We require AccuraScan identity verification (ID scan, selfie, liveness) before organizers can publish or edit events.
+        </Text>
+        <View style={styles.identityActions}>
+          <TouchableOpacity
+            style={styles.identityButton}
+            onPress={() => navigation?.navigate?.('IdentityVerification')}
+          >
+            <Text style={styles.identityButtonText}>
+              {isIdentityVerified ? 'View verification' : 'Verify identity'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.identityLink}
+            onPress={refreshIdentity}
+            disabled={identityLoading}
+          >
+            {identityLoading ? (
+              <ActivityIndicator size="small" color={colors?.accent ?? '#1d4ed8'} />
+            ) : (
+              <Text style={styles.identityLinkText}>Refresh</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
       <TouchableOpacity style={styles.headerImageContainer} onPress={pickImage}>
         {selectedImage ? (
           <Image source={{ uri: selectedImage.uri }} style={styles.selectedImage} />
@@ -1602,6 +1673,57 @@ function createStyles(theme) {
       paddingBottom: 4,
     },
     contentContainer: { padding: 20 },
+    identityCard: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      marginBottom: 12,
+      borderRadius: 12,
+      padding: 12,
+    },
+    identityCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    identityTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    identityScore: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    identityHelper: {
+      marginTop: 6,
+      fontSize: 13,
+      color: theme.textSecondary,
+    },
+    identityActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    identityButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: theme.surface,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    identityButtonText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: theme.textPrimary,
+    },
+    identityLink: {
+      marginLeft: 12,
+    },
+    identityLinkText: {
+      color: theme.accent,
+      fontWeight: '600',
+      fontSize: 13,
+    },
     detailsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',

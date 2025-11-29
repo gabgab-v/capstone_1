@@ -49,6 +49,21 @@ function businessStatusMeta(status) {
   }
 }
 
+function identityStatusMeta(status) {
+  switch (status) {
+    case 'VERIFIED':
+      return { label: 'Verified identity', textClass: 'text-emerald-700', chipBg: 'bg-emerald-100', helper: 'You can publish organizer events.' };
+    case 'NEEDS_RESUBMISSION':
+      return { label: 'Needs resubmission', textClass: 'text-amber-800', chipBg: 'bg-amber-100', helper: 'Run AccuraScan again to fix failed checks.' };
+    case 'FAILED':
+      return { label: 'Failed check', textClass: 'text-red-700', chipBg: 'bg-red-100', helper: 'Face match or liveness failed.' };
+    case 'PROCESSING':
+    case 'PENDING':
+    default:
+      return { label: 'Not verified', textClass: 'text-blue-700', chipBg: 'bg-blue-100', helper: 'Complete eKYC to unlock publishing.' };
+  }
+}
+
 export default function SettingsPage({ navigation }) {
   const { user, isLoading, logout, refreshUser } = useAuth();
   const {
@@ -588,6 +603,50 @@ export default function SettingsPage({ navigation }) {
         >
           <Text className="text-center font-semibold text-white">
             {verification ? 'View or resubmit' : 'Start verification'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderIdentityVerificationSection = () => {
+    if (!user) return null;
+    const verification = user.identityVerification ?? null;
+    const meta = identityStatusMeta(verification?.status ?? 'PENDING');
+    const score = typeof verification?.score === 'number' ? verification.score : 0;
+    return (
+      <View className="mt-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+        <Text className="text-base font-semibold text-slate-800 dark:text-slate-100">Identity verification</Text>
+        <Text className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Scan your government ID and selfie with liveness via AccuraScan to prove you are the business owner.
+        </Text>
+        <View className="mt-3 flex-row items-center justify-between">
+          <View className="flex-1 pr-4">
+            <Text className={`text-sm font-semibold ${meta.textClass}`}>{meta.label}</Text>
+            <Text className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Score {score}/30 • {meta.helper}
+            </Text>
+            {verification?.failureReasons?.length ? (
+              <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400" numberOfLines={2}>
+                Next actions: {verification.failureReasons.join('; ')}
+              </Text>
+            ) : null}
+            {verification?.processedAt ? (
+              <Text className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                Checked {new Date(verification.processedAt).toLocaleString()}
+              </Text>
+            ) : null}
+          </View>
+          <View className={`rounded-full px-3 py-1 ${meta.chipBg}`}>
+            <Text className={`text-xs font-semibold ${meta.textClass}`}>{meta.label}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          className="mt-4 rounded-xl bg-blue-600 px-5 py-3"
+          onPress={() => navigation.navigate('IdentityVerification')}
+        >
+          <Text className="text-center font-semibold text-white">
+            {verification ? 'View or rerun eKYC' : 'Start identity verification'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1260,6 +1319,8 @@ export default function SettingsPage({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {renderProfileCard()}
+
+        {renderIdentityVerificationSection()}
 
         {renderBusinessVerificationSection()}
 

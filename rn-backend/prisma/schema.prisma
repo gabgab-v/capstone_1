@@ -47,6 +47,7 @@ model User {
   expertApplication       ExpertApplication?
   reviewedExpertApplications ExpertApplication[] @relation("ExpertApplicationReviewer")
   businessVerification    BusinessVerification?
+  identityVerification    IdentityVerification?
   followers               Follow[] @relation("FollowedUser")
   following               Follow[] @relation("FollowingUser")
   conversations           ConversationParticipant[]
@@ -226,6 +227,14 @@ enum BusinessVerificationStatus {
   NEEDS_RESUBMISSION
 }
 
+enum IdentityVerificationStatus {
+  PENDING
+  PROCESSING
+  VERIFIED
+  FAILED
+  NEEDS_RESUBMISSION
+}
+
 model OrganizerApplication {
   id                   String                      @id @default(uuid())
   user                 User                        @relation(fields: [userId], references: [id])
@@ -283,6 +292,24 @@ model BusinessVerification {
   score              Int                         @default(0)
   status             BusinessVerificationStatus  @default(PENDING)
   failureReasons     Json?
+  processedAt        DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+}
+
+model IdentityVerification {
+  id                 String                      @id @default(uuid())
+  user               User                        @relation(fields: [userId], references: [id])
+  userId             String                      @unique
+  status             IdentityVerificationStatus  @default(PENDING)
+  score              Int                         @default(0)
+  faceMatchScore     Float?
+  livenessPassed     Boolean?
+  extractedFields    Json?
+  validationFindings Json?
+  failureReasons     Json?
+  documentUrls       String[]                    @default([])
+  selfieUrl          String?
   processedAt        DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt

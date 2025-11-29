@@ -80,6 +80,23 @@ const userSelect = {
       updatedAt: true,
     },
   },
+  identityVerification: {
+    select: {
+      id: true,
+      status: true,
+      score: true,
+      faceMatchScore: true,
+      livenessPassed: true,
+      extractedFields: true,
+      validationFindings: true,
+      failureReasons: true,
+      documentUrls: true,
+      selfieUrl: true,
+      processedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
 };
 
 export async function GET(request) {
@@ -119,6 +136,7 @@ export async function GET(request) {
         organizerApplication: null,
         expertApplication: null,
         businessVerification: null,
+        identityVerification: null,
       };
 
     if (!dbUser?.email) {
@@ -180,6 +198,19 @@ export async function GET(request) {
         }
       : null;
 
+    const identityVerification = dbUser.identityVerification
+      ? {
+          ...dbUser.identityVerification,
+          documentUrls: dbUser.identityVerification.documentUrls ?? [],
+          failureReasons: Array.isArray(dbUser.identityVerification.failureReasons)
+            ? dbUser.identityVerification.failureReasons
+            : dbUser.identityVerification.failureReasons
+              ? [String(dbUser.identityVerification.failureReasons)]
+              : [],
+          validationFindings: dbUser.identityVerification.validationFindings ?? null,
+        }
+      : null;
+
     let organizerRating = null;
     if (dbUser.role === 'ORGANIZER') {
       const [aggregate, recentReviews] = await Promise.all([
@@ -234,6 +265,7 @@ export async function GET(request) {
       organizerApplication,
       expertApplication,
       businessVerification,
+      identityVerification,
       profileComplete,
       preferencesComplete,
       followersCount,
