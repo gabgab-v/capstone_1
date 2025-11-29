@@ -113,7 +113,11 @@ export const AuthProvider = ({ children }) => {
       }
 
       setPendingMfa(null);
-      await fetchUserProfile();
+      const profile = await fetchUserProfile();
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error('Verification succeeded, but we could not load your profile. Please try again.');
+      }
       return true;
     },
     [fetchUserProfile, pendingMfa],
@@ -152,6 +156,7 @@ export const AuthProvider = ({ children }) => {
     isLoading,
     pendingMfa,
     login: async (email, password) => {
+      setPendingMfa(null);
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setPendingMfa(null);
@@ -160,6 +165,16 @@ export const AuthProvider = ({ children }) => {
 
       const session = data?.session ?? (await supabase.auth.getSession())?.data?.session ?? null;
       const status = await handleSessionChange(session);
+
+      if (status === 'profile_error') {
+        await supabase.auth.signOut();
+        return { error: new Error('Signed in, but failed to load your profile. Please try again.') };
+      }
+
+      if (status === 'signed_out') {
+        return { error: new Error('We could not establish a session. Please try again.') };
+      }
+
       return { error: null, mfaRequired: status === 'mfa_required' };
     },
     verifyMfaCode,
