@@ -17,8 +17,40 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
+import { useIdentityVerification } from '../../hooks/useIdentityVerification';
+import { useFacebookVerification } from '../../hooks/useFacebookVerification';
 
 const MAX_DOCUMENTS = 5;
+
+function identityStatusMeta(status) {
+  switch (status) {
+    case 'VERIFIED':
+      return { label: 'ID verified', color: '#047857', accent: '#dcfce7', helper: 'Ready for organizer publishing.' };
+    case 'NEEDS_RESUBMISSION':
+      return { label: 'Needs resubmission', color: '#b45309', accent: '#ffedd5', helper: 'Run AccuraScan again to fix failed checks.' };
+    case 'FAILED':
+      return { label: 'Identity failed', color: '#dc2626', accent: '#fee2e2', helper: 'Face match or liveness failed.' };
+    case 'PROCESSING':
+    case 'PENDING':
+    default:
+      return { label: 'Not verified yet', color: '#2563eb', accent: '#dbeafe', helper: 'Complete eKYC to continue.' };
+  }
+}
+
+function facebookStatusMeta(status) {
+  switch (status) {
+    case 'VERIFIED':
+      return { label: 'Mostly hiking page', color: '#047857', accent: '#dcfce7', helper: '>=80% of posts mention hiking.' };
+    case 'PARTIAL':
+      return { label: 'Partially hiking', color: '#b45309', accent: '#ffedd5', helper: '40–79% of posts mention hiking.' };
+    case 'FAILED':
+      return { label: 'Low relevance', color: '#dc2626', accent: '#fee2e2', helper: '<40% of posts mention hiking.' };
+    case 'PROCESSING':
+    case 'PENDING':
+    default:
+      return { label: 'Not analyzed', color: '#2563eb', accent: '#dbeafe', helper: 'Link your page to analyze hiking content.' };
+  }
+}
 
 function mapExistingDocuments(urls) {
   if (!Array.isArray(urls) || urls.length === 0) {
@@ -46,6 +78,15 @@ function extensionFromMime(mimeType) {
 export default function ApplyOrganizerPage({ navigation }) {
   const { user, refreshUser } = useAuth();
   const existingApplication = user?.organizerApplication ?? null;
+  const {
+    verification: identityVerification,
+    loading: identityLoading,
+  } = useIdentityVerification();
+  const {
+    verification: fbVerification,
+    loading: fbLoading,
+    analyze: analyzeFacebook,
+  } = useFacebookVerification();
 
   const [legalName, setLegalName] = useState(existingApplication?.legalName ?? user?.name ?? '');
   const [organizationName, setOrganizationName] = useState(existingApplication?.organizationName ?? '');
@@ -64,6 +105,9 @@ export default function ApplyOrganizerPage({ navigation }) {
     mapExistingDocuments(existingApplication?.documentUrls ?? []),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fbPageId, setFbPageId] = useState(user?.facebookVerification?.pageId ?? '');
+  const [fbPageUrl, setFbPageUrl] = useState(user?.facebookVerification?.pageUrl ?? '');
+  const [fbToken, setFbToken] = useState('');
 
   const statusMeta = useMemo(() => {
     if (!existingApplication) {
@@ -96,6 +140,11 @@ export default function ApplyOrganizerPage({ navigation }) {
     setAdditionalNotes(existingApplication.additionalNotes ?? '');
     setDocuments(mapExistingDocuments(existingApplication.documentUrls ?? []));
   }, [existingApplication?.id]);
+
+  useEffect(() => {
+    setFbPageId(fbVerification?.pageId ?? user?.facebookVerification?.pageId ?? '');
+    setFbPageUrl(fbVerification?.pageUrl ?? user?.facebookVerification?.pageUrl ?? '');
+  }, [fbVerification?.pageId, fbVerification?.pageUrl, user?.facebookVerification?.pageId, user?.facebookVerification?.pageUrl]);
 
   const pickDocument = useCallback(async () => {
     if (documents.length >= MAX_DOCUMENTS) {
@@ -244,6 +293,26 @@ export default function ApplyOrganizerPage({ navigation }) {
     user?.id,
   ]);
 
+  const identityMeta = useMemo(() => identityStatusMeta(identityVerification?.status ?? 'PENDING'), [identityVerification?.status]);
+  const fbMeta = useMemo(() => facebookStatusMeta(fbVerification?.status ?? 'PENDING'), [fbVerification?.status]);
+  const identityScore = typeof identityVerification?.score === 'number' ? identityVerification.score : 0;
+  const fbScore = typeof fbVerification?.score === 'number' ? fbVerification.score : 0;
+  const hikingRatio = typeof fbVerification?.hikingRatio === 'number' ? `${Math.round(fbVerification.hikingRatio * 100)}%` : '—';
+
+  const handleAnalyzeFacebook = useCallback(async () => {
+    try {
+      await analyzeFacebook({
+        pageId: fbPageId,
+        pageUrl: fbPageUrl,
+        pageAccessToken: fbToken || undefined,
+      });
+      Alert.alert('Analyzed', 'Facebook page analyzed for hiking content.');
+    } catch (error) {
+      const message = error?.body?.message || error?.message || 'Analysis failed.';
+      Alert.alert('Failed', message);
+    }
+  }, [analyzeFacebook, fbPageId, fbPageUrl, fbToken]);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -256,6 +325,88 @@ export default function ApplyOrganizerPage({ navigation }) {
           Share proof of your credentials and identity so admins can verify you as a legitimate
           organizer.
         </Text>
+
+        <View style={[styles.verificationCard, { backgroundColor: identityMeta.accent }]}>
+          <View style={styles.verificationHeader}>
+            <Text style={[styles.statusLabel, { color: identityMeta.color }]}>{identityMeta.label}</Text>
+            <Text style={[styles.statusPill, { color: identityMeta.color }]}>{identityScore}/30 pts</Text>
+          </View>
+          <Text style={styles.statusHelper}>{identityMeta.helper}</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('IdentityVerification')}
+            disabled={identityLoading}
+          >
+            {identityLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.actionButtonText}>Run eKYC (AccuraScan)</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.verificationCard, { backgroundColor: fbMeta.accent }]}>
+          <View style={styles.verificationHeader}>
+            <Text style={[styles.statusLabel, { color: fbMeta.color }]}>{fbMeta.label}</Text>
+            <Text style={[styles.statusPill, { color: fbMeta.color }]}>{fbScore}/20 pts</Text>
+          </View>
+          <Text style={styles.statusHelper}>{fbMeta.helper}</Text>
+          <Text style={styles.statusHelper}>Hiking posts: {hikingRatio}</Text>
+          <View style={styles.fbInputRow}>
+            <View style={styles.fbInputCol}>
+              <Text style={styles.fbLabel}>Facebook Page ID</Text>
+              <TextInput
+                style={styles.input}
+                value={fbPageId}
+                onChangeText={setFbPageId}
+                placeholder="Page ID"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+            <View style={styles.fbInputCol}>
+              <Text style={styles.fbLabel}>Page URL</Text>
+              <TextInput
+                style={styles.input}
+                value={fbPageUrl}
+                onChangeText={setFbPageUrl}
+                placeholder="https://facebook.com/yourpage"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+          <Text style={styles.fbLabel}>Page access token (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={fbToken}
+            onChangeText={setFbToken}
+            placeholder="Provide if you want us to fetch posts automatically"
+            placeholderTextColor="#94a3b8"
+          />
+          <TouchableOpacity
+            style={[styles.actionButton, { marginTop: 10 }]}
+            onPress={handleAnalyzeFacebook}
+            disabled={fbLoading}
+          >
+            {fbLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.actionButtonText}>Link & analyze page</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.verificationCard, { backgroundColor: '#e0f2fe' }]}>
+          <Text style={[styles.statusLabel, { color: '#0369a1' }]}>Business verification</Text>
+          <Text style={styles.statusHelper}>
+            Upload your DTI/permit for automated checks and to boost your trust score.
+          </Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('BusinessVerification')}
+          >
+            <Text style={styles.actionButtonText}>Start business verification</Text>
+          </TouchableOpacity>
+        </View>
 
         {statusMeta ? (
           <View style={[styles.statusCard, { backgroundColor: statusMeta.accent }]}>
@@ -491,6 +642,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     marginBottom: 12,
+  },
+  verificationCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  verificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  statusPill: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  statusHelper: {
+    fontSize: 13,
+    color: '#334155',
+    marginBottom: 8,
+  },
+  actionButton: {
+    marginTop: 6,
+    backgroundColor: '#2563eb',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  fbInputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  fbInputCol: {
+    width: '48%',
+  },
+  fbLabel: {
+    fontSize: 13,
+    color: '#0f172a',
+    fontWeight: '600',
+    marginTop: 6,
   },
   input: {
     backgroundColor: '#f1f5f9',
