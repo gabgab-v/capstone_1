@@ -8,9 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AccurascanKyc from 'accurascan_kyc';
-import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
+import * as ImagePicker from 'expo-image-picker';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useIdentityVerification } from '../../hooks/useIdentityVerification';
 import { useTheme } from '../../context/ThemeContext';
@@ -53,141 +51,65 @@ export default function IdentityVerificationPage({ navigation }) {
     return 'Liveness not recorded';
   }, [verification?.livenessPassed]);
 
-  const promisify = useCallback((fn, args = []) => {
-    return new Promise((resolve, reject) => {
-      try {
-        fn(...args, (error, response) => {
-          if (error) {
-            reject(typeof error === 'string' ? new Error(error) : error);
-          } else {
-            resolve(response);
-          }
-        });
-      } catch (err) {
-        reject(err);
-      }
+  const captureImage = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Camera required', 'Please allow camera access to continue.');
+      return null;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      base64: true,
+      quality: 0.8,
     });
+    if (result.canceled || !result.assets || !result.assets.length) {
+      return null;
+    }
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Capture failed', 'Could not read the captured image. Try again.');
+      return null;
+    }
+    return {
+      uri: asset.uri,
+      base64: asset.base64,
+      mimeType: asset.mimeType || 'image/jpeg',
+    };
   }, []);
 
-  const uploadBase64 = useCallback(
-    async (label, base64, mimeType = 'image/jpeg') => {
-      if (!base64 || !user?.id) return null;
-      const path = `identity/${user.id}/${label}-${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from('Capstone').upload(path, decode(base64), {
-        contentType: mimeType,
-      });
-      if (error) {
-        throw error;
-      }
-      const { data: urlData } = supabase.storage.from('Capstone').getPublicUrl(path);
-      return urlData.publicUrl;
-    },
-    [user?.id],
-  );
+  const [idCapture, setIdCapture] = useState(null);
+  const [selfieCapture, setSelfieCapture] = useState(null);
 
-  const startAccuraFlow = useCallback(async () => {
+  const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
+    if (!idCapture || !selfieCapture) {
+      Alert.alert('Missing images', 'Capture both ID and selfie to continue.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      // 1) Validate license and setup defaults
-      const meta = await promisify(AccurascanKyc.getMetaData);
-      if (!meta?.isValid) {
-        throw new Error('AccuraScan license invalid or missing key.license/accuraface.license.');
-      }
+      const idPath = `identity/${user?.id}/${Date.now()}-id.jpg`;
+      const selfiePath = `identity/${user?.id}/${Date.now()}-selfie.jpg`;
+      await Promise.all([
+        supabase.storage.from('Capstone').upload(idPath, decode(idCapture.base64), {
+          contentType: idCapture.mimeType || 'image/jpeg',
+        }),
+        supabase.storage.from('Capstone').upload(selfiePath, decode(selfieCapture.base64), {
+          contentType: selfieCapture.mimeType || 'image/jpeg',
+        }),
+      ]).catch(() => null);
 
-      const config = {
-        setFaceBlurPercentage: 80,
-        setHologramDetection: true,
-        setLowLightTolerance: 10,
-        setMotionThreshold: 25,
-        setMinGlarePercentage: 6,
-        setMaxGlarePercentage: 99,
-        setBlurPercentage: 60,
-        setCameraFacing: 0,
-      };
-      const accuraConfigs = {
-        enableLogs: __DEV__ ? 1 : 0,
-        setCameraFacing: 0,
-        isShowLogo: 0,
-      };
-      const accuraTitleMsg = {
-        SCAN_TITLE_OCR_FRONT: 'Scan front of document',
-        SCAN_TITLE_OCR_BACK: 'Scan back of document',
-      };
-      await promisify(AccurascanKyc.setupAccuraConfig, [[config, accuraConfigs, accuraTitleMsg]]);
-
-      // 2) Scan MRZ/OCR (using passport MRZ as default)
-      const mrzResult = await promisify(AccurascanKyc.startMRZ, [['passport_mrz']]);
-      const frontImgUri = mrzResult?.front_img || mrzResult?.front_image || null;
-      const faceUri = mrzResult?.face || null;
-      const idFields = mrzResult?.front_data || mrzResult?.back_data || {};
-
-      if (!frontImgUri) {
-        throw new Error('ID scan did not return an image. Please rescan with better lighting.');
-      }
-
-      // 3) Liveness selfie (guiding with ID face if available)
-      const lConfig = {
-        backGroundColor: '#FFC4C4C5',
-        closeIconColor: '#FF000000',
-        feedbackBackGroundColor: '#FFC4C4C5',
-        feedbackTextColor: '#FF000000',
-        setFeedbackTextSize: 18,
-        setFeedBackframeMessage: 'Frame Your Face',
-        setFeedBackAwayMessage: 'Move Phone Away',
-        setFeedBackOpenEyesMessage: 'Keep Your Eyes Open',
-        setFeedBackCloserMessage: 'Move Phone Closer',
-        setFeedBackCenterMessage: 'Move Phone Center',
-        setFeedbackMultipleFaceMessage: 'Multiple Face Detected',
-        setFeedBackFaceSteadymessage: 'Keep Your Head Straight',
-        setFeedBackBlurFaceMessage: 'Blur Detected Over Face',
-        setFeedBackGlareFaceMessage: 'Glare Detected',
-        setBlurPercentage: 80,
-        setGlarePercentage_0: -1,
-        setGlarePercentage_1: -1,
-        feedbackDialogMessage: 'Loading...',
-        feedBackProcessingMessage: 'Processing...',
-        isShowLogo: 0,
-      };
-      const livenessResult = await promisify(AccurascanKyc.startLiveness, [[{ face_uri: faceUri }, lConfig]]);
-      const selfieUri = livenessResult?.detect || livenessResult?.image || null;
-      const livenessScore = Number(livenessResult?.score ?? livenessResult?.Face_score ?? 0);
-
-      // 4) Face match (use liveness score as proxy if dedicated match not returned)
-      const faceMatchScore = Number(livenessResult?.score ?? 0);
-      const livenessPassed = livenessScore >= 0.5;
-
-      // 5) Upload images
-      const idBase64 = await FileSystem.readAsStringAsync(frontImgUri, { encoding: FileSystem.EncodingType.Base64 });
-      const selfieBase64 = selfieUri
-        ? await FileSystem.readAsStringAsync(selfieUri, { encoding: FileSystem.EncodingType.Base64 })
-        : null;
-      const [idUrl, selfieUrl] = await Promise.all([
-        uploadBase64('id', idBase64),
-        selfieBase64 ? uploadBase64('selfie', selfieBase64) : null,
-      ]);
-
-      // 6) Submit to backend
       await submit({
-        faceMatchScore,
-        livenessPassed,
-        idData: {
-          fullName: idFields?.fullName ?? idFields?.name ?? user?.name ?? null,
-          idNumber: idFields?.documentNumber ?? idFields?.idNumber ?? null,
-          dob: idFields?.dob ?? idFields?.birth_date ?? null,
-          expiry: idFields?.expiry ?? idFields?.expiry_date ?? null,
-        },
-        documentUrls: idUrl ? [idUrl] : [],
-        selfieUrl,
+        idImageBase64: idCapture.base64,
+        selfieImageBase64: selfieCapture.base64,
       });
       Alert.alert('Submitted', 'Identity verification sent.');
     } catch (error) {
-      console.error('Accura eKYC failed:', error);
-      Alert.alert('Verification failed', error?.message || 'Unable to complete eKYC. Try again.');
+      console.error('Identity submission failed:', error);
+      Alert.alert('Verification failed', error?.message || 'Unable to complete verification.');
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, promisify, submit, uploadBase64, user?.name]);
+  }, [idCapture, selfieCapture, isSubmitting, submit, user?.id]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
@@ -223,20 +145,53 @@ export default function IdentityVerificationPage({ navigation }) {
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.title}>Run AccuraScan eKYC</Text>
-          <Text style={styles.bodyText}>
-            We will scan your ID using the AccuraScan SDK, capture a live selfie with liveness, and send the
-            face-match score to our server. Make sure your key.license and accuraface.license files are in place.
-          </Text>
+          <Text style={styles.title}>Capture ID</Text>
+          <Text style={styles.bodyText}>Take a clear photo of your government ID.</Text>
           <TouchableOpacity
             style={[styles.primaryButton, (loading || isSubmitting) && styles.buttonDisabled]}
-            onPress={startAccuraFlow}
+            onPress={async () => setIdCapture(await captureImage())}
             disabled={loading || isSubmitting}
           >
             {loading || isSubmitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Start Accura eKYC</Text>
+              <Text style={styles.primaryButtonText}>
+                {idCapture ? 'Retake ID photo' : 'Capture ID'}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {idCapture ? <Text style={styles.statusDetail}>ID captured</Text> : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.title}>Capture selfie</Text>
+          <Text style={styles.bodyText}>Center your face with good lighting.</Text>
+          <TouchableOpacity
+            style={[styles.primaryButton, (loading || isSubmitting) && styles.buttonDisabled]}
+            onPress={async () => setSelfieCapture(await captureImage())}
+            disabled={loading || isSubmitting}
+          >
+            {loading || isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {selfieCapture ? 'Retake selfie' : 'Capture selfie'}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {selfieCapture ? <Text style={styles.statusDetail}>Selfie captured</Text> : null}
+        </View>
+
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={[styles.primaryButton, (loading || isSubmitting) && styles.buttonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading || isSubmitting}
+          >
+            {loading || isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Submit verification</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={refresh} disabled={loading}>
