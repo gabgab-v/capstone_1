@@ -47,8 +47,7 @@
     "react-native-url-polyfill": "^3.0.0",
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "^0.21.0",
-    "react-native-worklets": "0.5.1",
-    "expo-face-detector": "~12.1.2"
+    "react-native-worklets": "0.5.1"
   },
   "private": true,
   "devDependencies": {
