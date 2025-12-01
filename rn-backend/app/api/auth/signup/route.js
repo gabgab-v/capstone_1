@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@supabase/supabase-js';
 
+function normalizeFullName(firstName, lastName, fallbackName) {
+  const combined = `${firstName ?? ''} ${lastName ?? ''}`.replace(/\s+/g, ' ').trim();
+  const fallback = (fallbackName ?? '').replace(/\s+/g, ' ').trim();
+  return combined || fallback;
+}
+
 // Initialize the Supabase admin client for server-side actions
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,13 +24,19 @@ const emailRedirectTo = process.env.SUPABASE_EMAIL_CONFIRM_REDIRECT_TO || null;
 
 export async function POST(request) {
   try {
-    const { email, password, name } = await request.json();
+    const { email, password, name, firstName, lastName } = await request.json();
 
-    const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const trimmedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
+    const trimmedLastName = typeof lastName === 'string' ? lastName.trim() : '';
     const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const resolvedName = normalizeFullName(trimmedFirstName, trimmedLastName, trimmedName);
 
-    if (!trimmedEmail || !password || !trimmedName) {
-      return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 });
+    if (!trimmedEmail || !password || !resolvedName) {
+      return NextResponse.json(
+        { error: 'Email, password, and full name (first and last) are required' },
+        { status: 400 },
+      );
     }
 
     const existingEmail = await prisma.user.findFirst({
@@ -37,7 +49,7 @@ export async function POST(request) {
     }
 
     const existingName = await prisma.user.findFirst({
-      where: { name: trimmedName },
+      where: { name: resolvedName },
       select: { id: true },
     });
 
@@ -47,7 +59,7 @@ export async function POST(request) {
 
     // Step 1: Create the user in Supabase Authentication with email verification
     const signUpOptions = {
-      data: { name: trimmedName },
+      data: { name: resolvedName, firstName: trimmedFirstName, lastName: trimmedLastName },
       ...(emailRedirectTo ? { emailRedirectTo } : {}),
     };
 
@@ -76,7 +88,7 @@ export async function POST(request) {
         id: authData.user.id,        // Use the ID from Supabase as the primary key
         supabaseUserId: authData.user.id, // Also store it in the dedicated sync column
         email: trimmedEmail,
-        name: trimmedName,
+        name: resolvedName,
         // Password is NOT saved in this database
       },
       select: { id: true, email: true, name: true },

@@ -2,17 +2,29 @@ import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import { ensureUserColumns } from '@/lib/auth';
 
+function normalizeFullName(firstName, lastName, fallbackName) {
+  const combined = `${firstName ?? ''} ${lastName ?? ''}`.replace(/\s+/g, ' ').trim();
+  const fallback = (fallbackName ?? '').replace(/\s+/g, ' ').trim();
+  return combined || fallback;
+}
+
 // This endpoint is called AFTER a user is created in Supabase Auth
 export async function POST(req) {
   try {
-    const { id, email, name, visitedTrail } = await req.json();
+    const { id, email, name, firstName, lastName, visitedTrail } = await req.json();
 
-    const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const trimmedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
+    const trimmedLastName = typeof lastName === 'string' ? lastName.trim() : '';
     const trimmedName = typeof name === 'string' ? name.trim() : '';
     const trimmedVisited = typeof visitedTrail === 'string' ? visitedTrail.trim() : '';
+    const resolvedName = normalizeFullName(trimmedFirstName, trimmedLastName, trimmedName);
 
-    if (!id || !trimmedEmail || !trimmedName) {
-      return NextResponse.json({ message: 'User id, email, and name are required.' }, { status: 400 });
+    if (!id || !trimmedEmail || !resolvedName) {
+      return NextResponse.json(
+        { message: 'User id, email, and full name (first and last) are required.' },
+        { status: 400 },
+      );
     }
 
     const existingEmail = await prisma.user.findFirst({
@@ -25,7 +37,7 @@ export async function POST(req) {
     }
 
     const existingName = await prisma.user.findFirst({
-      where: { name: trimmedName },
+      where: { name: resolvedName },
       select: { id: true },
     });
 
@@ -41,7 +53,7 @@ export async function POST(req) {
           id: id, // Use the ID from Supabase Auth
           supabaseUserId: id, // Also store it in the dedicated sync column
           email: trimmedEmail,
-          name: trimmedName,
+          name: resolvedName,
           preferredMountains: trimmedVisited ? [trimmedVisited] : [],
           mountainSuggestionsEnabled: true,
           // You don't store the password here anymore

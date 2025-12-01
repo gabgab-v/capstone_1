@@ -21,7 +21,8 @@ import { useTheme } from '../context/ThemeContext';
 
 export default function SignupPage({ navigation }) {
   const { colors, isDarkMode } = useTheme();
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [birthday, setBirthday] = useState(null);
   const [password, setPassword] = useState('');
@@ -77,7 +78,20 @@ export default function SignupPage({ navigation }) {
   };
 
   async function handleSignup() {
-    if (!name || !email || !password || !confirm || !birthday) {
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`.replace(/\s+/g, ' ').trim();
+    const trimmedEmail = email.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
+
+    if (
+      !trimmedFirstName ||
+      !trimmedLastName ||
+      !normalizedEmail ||
+      !password ||
+      !confirm ||
+      !birthday
+    ) {
       Alert.alert('Error', 'Please fill out all fields, including your birthday.');
       return;
     }
@@ -93,9 +107,31 @@ export default function SignupPage({ navigation }) {
     setLoading(true);
 
     try {
+      const availability = await post('/api/auth/check-availability', {
+        email: normalizedEmail,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+      });
+
+      if (!availability?.emailAvailable || !availability?.nameAvailable) {
+        const reasons = [
+          availability?.emailAvailable ? null : 'That email is already registered.',
+          availability?.nameAvailable ? null : 'That name is already registered.',
+        ].filter(Boolean);
+        Alert.alert('Already registered', reasons.join('\n') || 'Please use a different email or name.');
+        return;
+      }
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
+        options: {
+          data: {
+            name: fullName,
+            firstName: trimmedFirstName,
+            lastName: trimmedLastName,
+          },
+        },
       });
 
       if (authError) throw authError;
@@ -103,10 +139,13 @@ export default function SignupPage({ navigation }) {
 
       await post('/api/auth/create-profile', {
         id: authData.user.id,
-        email: authData.user.email,
-        name,
+        email: authData.user.email ?? normalizedEmail,
+        name: fullName,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         visitedTrail,
-        birthday: birthday.toISOString().split('T')[0],      });
+        birthday: birthday.toISOString().split('T')[0],
+      });
 
       Alert.alert(
         'Success!',
@@ -144,15 +183,26 @@ export default function SignupPage({ navigation }) {
             Create Your Account
           </Text>
 
-          <TextInput
-            className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
-            style={{ color: colors.textPrimary }}
-            placeholder="Full Name"
-            placeholderTextColor={colors.textMuted}
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
+          <View className="mb-4 flex-row space-x-3">
+            <TextInput
+              className="flex-1 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+              style={{ color: colors.textPrimary }}
+              placeholder="First Name"
+              placeholderTextColor={colors.textMuted}
+              value={firstName}
+              onChangeText={setFirstName}
+              autoCapitalize="words"
+            />
+            <TextInput
+              className="flex-1 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+              style={{ color: colors.textPrimary }}
+              placeholder="Last Name"
+              placeholderTextColor={colors.textMuted}
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+            />
+          </View>
 
           <TextInput
             className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
