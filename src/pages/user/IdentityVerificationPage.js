@@ -82,6 +82,10 @@ export default function IdentityVerificationPage({ navigation }) {
 
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
+    if (!user?.id) {
+      Alert.alert('Not signed in', 'Please sign in again to continue verification.');
+      return;
+    }
     if (!idCapture || !selfieCapture) {
       Alert.alert('Missing images', 'Capture both ID and selfie to continue.');
       return;
@@ -90,21 +94,25 @@ export default function IdentityVerificationPage({ navigation }) {
     try {
       const idPath = `identity/${user?.id}/${Date.now()}-id.jpg`;
       const selfiePath = `identity/${user?.id}/${Date.now()}-selfie.jpg`;
-      await Promise.all([
+      const uploads = await Promise.all([
         supabase.storage.from('Capstone').upload(idPath, decode(idCapture.base64), {
           contentType: idCapture.mimeType || 'image/jpeg',
         }),
         supabase.storage.from('Capstone').upload(selfiePath, decode(selfieCapture.base64), {
           contentType: selfieCapture.mimeType || 'image/jpeg',
         }),
-      ]).catch(() => null);
+      ]);
+      const uploadError = uploads.find((entry) => entry?.error);
+      if (uploadError?.error) {
+        throw uploadError.error;
+      }
       const { data: idUrlData } = supabase.storage.from('Capstone').getPublicUrl(idPath);
       const { data: selfieUrlData } = supabase.storage.from('Capstone').getPublicUrl(selfiePath);
 
       await submit({
         faceMatchScore: 0.9,
         livenessPassed: true,
-        idData: {},
+        idData: null,
         documentUrls: idUrlData?.publicUrl ? [idUrlData.publicUrl] : [],
         selfieUrl: selfieUrlData?.publicUrl ?? null,
       });
