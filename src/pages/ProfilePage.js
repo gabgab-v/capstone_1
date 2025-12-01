@@ -33,6 +33,21 @@ function getAvatarUri(profile) {
   return ensureAvatarUri(profile?.avatarUrl, seed);
 }
 
+function getProfileDisplayName(profile) {
+  if (!profile) {
+    return 'Explorer';
+  }
+  const name = typeof profile.name === 'string' ? profile.name.trim() : '';
+  if (name) {
+    return name;
+  }
+  const email = typeof profile.email === 'string' ? profile.email.trim() : '';
+  if (email && email.includes('@')) {
+    return email.split('@')[0];
+  }
+  return 'Explorer';
+}
+
 function StatTile({ label, value, onPress }) {
   return (
     <TouchableOpacity
@@ -872,6 +887,10 @@ function ProfilePageContent({ navigation, route }) {
   }, [authUser?.id, routeUserId]);
 
   const isOwnProfile = profile ? profile.isSelf ?? authUser?.id === profile.id : authUser?.id === viewedUserId;
+  const profileDisplayName = useMemo(
+    () => getProfileDisplayName(profile),
+    [profile?.email, profile?.name],
+  );
   const previousPreferences = useMemo(() => {
     const snapshot = profile?.previousPreferences;
     if (!snapshot || typeof snapshot !== 'object') {
@@ -1111,10 +1130,10 @@ function ProfilePageContent({ navigation, route }) {
       navigation.navigate('ConnectionsList', {
         userId: profile.id,
         initialType: normalized,
-        profileName: profile.name ?? profile.email ?? 'Profile',
+        profileName: profileDisplayName || 'Profile',
       });
     },
-    [navigation, profile?.email, profile?.id, profile?.name],
+    [navigation, profile?.id, profileDisplayName],
   );
 
   const handleCompletionPress = useCallback((completion) => {
@@ -1510,7 +1529,7 @@ function ProfilePageContent({ navigation, route }) {
           <Text className="mt-2 text-xs text-gray-500 dark:text-slate-400">Tap to update photo</Text>
         ) : null}
         <Text className="mt-3 text-xl font-bold text-gray-900 dark:text-slate-100">
-          {profile.name ?? profile.email ?? 'Explorer'}
+          {profileDisplayName}
         </Text>
         {(profile.expertBadgeAwarded || profile.experienceLevelLocked) ? (
           <View className="mt-2 flex-row items-center rounded-full bg-amber-100 px-3 py-1 dark:bg-amber-500/20">
