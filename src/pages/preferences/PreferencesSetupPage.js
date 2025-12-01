@@ -360,6 +360,8 @@ export default function PreferencesSetupPage({ navigation }) {
       <TextInput
         placeholder="e.g., 3"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        style={{ color: colors.textPrimary }}
+        placeholderTextColor={colors.textMuted}
         value={duration}
         onChangeText={setDuration}
         keyboardType="numeric"
@@ -369,6 +371,8 @@ export default function PreferencesSetupPage({ navigation }) {
       <TextInput
         placeholder="e.g., 10"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        style={{ color: colors.textPrimary }}
+        placeholderTextColor={colors.textMuted}
         value={distance}
         onChangeText={setDistance}
         keyboardType="numeric"
@@ -378,6 +382,8 @@ export default function PreferencesSetupPage({ navigation }) {
       <TextInput
         placeholder="e.g., 800"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        style={{ color: colors.textPrimary }}
+        placeholderTextColor={colors.textMuted}
         value={elevation}
         onChangeText={setElevation}
         keyboardType="numeric"
@@ -387,6 +393,8 @@ export default function PreferencesSetupPage({ navigation }) {
       <TextInput
         placeholder="e.g., PHP 500 - 1000"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
+        style={{ color: colors.textPrimary }}
+        placeholderTextColor={colors.textMuted}
         value={budget}
         onChangeText={setBudget}
       />

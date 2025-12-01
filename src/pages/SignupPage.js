@@ -146,8 +146,9 @@ export default function SignupPage({ navigation }) {
 
           <TextInput
             className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+            style={{ color: colors.textPrimary }}
             placeholder="Full Name"
-            placeholderTextColor="#888"
+            placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -155,8 +156,9 @@ export default function SignupPage({ navigation }) {
 
           <TextInput
             className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+            style={{ color: colors.textPrimary }}
             placeholder="Email"
-            placeholderTextColor="#888"
+            placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -204,8 +206,9 @@ export default function SignupPage({ navigation }) {
 
           <TextInput
             className="mb-4 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+            style={{ color: colors.textPrimary }}
             placeholder="Password"
-            placeholderTextColor="#888"
+            placeholderTextColor={colors.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -213,8 +216,9 @@ export default function SignupPage({ navigation }) {
 
           <TextInput
             className="mb-6 rounded-xl border border-gray-300 p-4 dark:border-slate-600"
+            style={{ color: colors.textPrimary }}
             placeholder="Confirm Password"
-            placeholderTextColor="#888"
+            placeholderTextColor={colors.textMuted}
             secureTextEntry
             value={confirm}
             onChangeText={setConfirm}
