@@ -176,7 +176,7 @@ export default function SignupPage({ navigation }) {
         <View className="flex-1 px-6 pt-16">
           <View className="mb-10 flex-row items-center justify-center">
             <Image source={require('../../assets/Pabukid-Logo.png')} className="mr-2 h-8 w-8" />
-            <Text className="text-2xl font-bold text-green-700">Pabukid</Text>
+            <Text className="text-2xl font-bold text-green-700 dark:text-green-300">Pabukid</Text>
           </View>
 
           <Text className="mb-6 text-center text-2xl font-bold text-gray-800 dark:text-slate-100">
@@ -310,15 +310,15 @@ export default function SignupPage({ navigation }) {
             </View>
             <Text className="flex-1 text-sm text-slate-600 dark:text-slate-300">
               I have read and agree to the{' '}
-              <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('terms')}>
+              <Text className="font-semibold text-green-700 dark:text-green-300" onPress={() => handleOpenLegal('terms')}>
                 Terms of Use
               </Text>
               ,{' '}
-              <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('privacy')}>
+              <Text className="font-semibold text-green-700 dark:text-green-300" onPress={() => handleOpenLegal('privacy')}>
                 Privacy Notice
               </Text>
               , and{' '}
-              <Text className="font-semibold text-green-700" onPress={() => handleOpenLegal('eula')}>
+              <Text className="font-semibold text-green-700 dark:text-green-300" onPress={() => handleOpenLegal('eula')}>
                 End User License Agreement
               </Text>
               .

@@ -72,6 +72,10 @@ export default function PreferencesSetupPage({ navigation }) {
     }),
     [colors.border, colors.surface, colors.surfaceMuted, isDarkMode],
   );
+  const labelColorStyle = useMemo(
+    () => ({ color: colors.textPrimary }),
+    [colors.textPrimary],
+  );
   const difficultyOptions = useMemo(() => {
     const baseOptions = DIFFICULTY_OPTIONS.filter((option) => {
       if (!option.value) {
@@ -300,9 +304,13 @@ export default function PreferencesSetupPage({ navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-      <Text className="text-2xl font-bold mb-6 text-center">Set Up Your Preferences</Text>
+      <Text className="text-2xl font-bold mb-6 text-center" style={labelColorStyle}>
+        Set Up Your Preferences
+      </Text>
 
-      <Text className="font-medium mb-2">Experience Level</Text>
+      <Text className="font-medium mb-2" style={labelColorStyle}>
+        Experience Level
+      </Text>
       <View className="mb-2">
         <SafePicker
           options={experienceOptions}
@@ -321,7 +329,9 @@ export default function PreferencesSetupPage({ navigation }) {
         <Text className="text-sm text-slate-500 dark:text-slate-400 mb-4">{experienceHelperText}</Text>
       )}
 
-      <Text className="font-medium mt-4 mb-2">Preferred Difficulty</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Preferred Difficulty
+      </Text>
       <View className="mb-4">
         <SafePicker
           options={difficultyOptions}
@@ -341,7 +351,9 @@ export default function PreferencesSetupPage({ navigation }) {
         </Text>
       ) : null}
 
-      <Text className="font-medium mt-4 mb-2">Preferred Trail Type</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Preferred Trail Type
+      </Text>
       <View className="mb-4">
         <SafePicker
           options={trailTypeOptions}
@@ -356,7 +368,9 @@ export default function PreferencesSetupPage({ navigation }) {
         />
       </View>
 
-      <Text className="font-medium mt-4 mb-2">Preferred Duration (hours)</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Preferred Duration (hours)
+      </Text>
       <TextInput
         placeholder="e.g., 3"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
@@ -367,7 +381,9 @@ export default function PreferencesSetupPage({ navigation }) {
         keyboardType="numeric"
       />
 
-      <Text className="font-medium mt-4 mb-2">Preferred Distance (kilometers)</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Preferred Distance (kilometers)
+      </Text>
       <TextInput
         placeholder="e.g., 10"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
@@ -378,7 +394,9 @@ export default function PreferencesSetupPage({ navigation }) {
         keyboardType="numeric"
       />
 
-      <Text className="font-medium mt-4 mb-2">Preferred Elevation Gain (meters)</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Preferred Elevation Gain (meters)
+      </Text>
       <TextInput
         placeholder="e.g., 800"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
@@ -389,7 +407,9 @@ export default function PreferencesSetupPage({ navigation }) {
         keyboardType="numeric"
       />
 
-      <Text className="font-medium mt-4 mb-2">Budget Range</Text>
+      <Text className="font-medium mt-4 mb-2" style={labelColorStyle}>
+        Budget Range
+      </Text>
       <TextInput
         placeholder="e.g., PHP 500 - 1000"
         className="border border-gray-300 rounded-xl p-4 mb-4 dark:border-slate-600"
