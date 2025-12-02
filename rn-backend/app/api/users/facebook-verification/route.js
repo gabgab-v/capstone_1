@@ -74,7 +74,7 @@ function extractPageIdentifier(pageId, pageUrl) {
     }
 
     return segments[0];
-  } catch (error) {
+  } catch {
     const stripped = pageUrl.replace(/^https?:\/\//i, '').split('/')[0];
     return stripped || null;
   }
