@@ -75,16 +75,36 @@ function extensionFromMime(mimeType) {
   return 'jpg';
 }
 
+function formatErrorMessage(error, fallback) {
+  if (!error) {
+    return null;
+  }
+  if (error?.body?.message) {
+    return error.body.message;
+  }
+  if (error?.message) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return fallback;
+}
+
 export default function ApplyOrganizerPage({ navigation }) {
   const { user, refreshUser } = useAuth();
   const existingApplication = user?.organizerApplication ?? null;
   const {
     verification: identityVerification,
     loading: identityLoading,
+    error: identityError,
+    refresh: refreshIdentity,
   } = useIdentityVerification();
   const {
     verification: fbVerification,
     loading: fbLoading,
+    error: fbError,
+    refresh: refreshFacebook,
     analyze: analyzeFacebook,
   } = useFacebookVerification();
 
@@ -295,16 +315,33 @@ export default function ApplyOrganizerPage({ navigation }) {
 
   const identityMeta = useMemo(() => identityStatusMeta(identityVerification?.status ?? 'PENDING'), [identityVerification?.status]);
   const fbMeta = useMemo(() => facebookStatusMeta(fbVerification?.status ?? 'PENDING'), [fbVerification?.status]);
+  const identityErrorMessage = useMemo(
+    () => formatErrorMessage(identityError, 'Unable to load identity verification status right now.'),
+    [identityError],
+  );
+  const fbErrorMessage = useMemo(
+    () => formatErrorMessage(fbError, 'Unable to load Facebook verification status right now.'),
+    [fbError],
+  );
   const identityScore = typeof identityVerification?.score === 'number' ? identityVerification.score : 0;
   const fbScore = typeof fbVerification?.score === 'number' ? fbVerification.score : 0;
   const hikingRatio = typeof fbVerification?.hikingRatio === 'number' ? `${Math.round(fbVerification.hikingRatio * 100)}%` : '—';
 
   const handleAnalyzeFacebook = useCallback(async () => {
+    const pageId = (fbPageId ?? '').trim();
+    const pageUrl = (fbPageUrl ?? '').trim();
+    const pageAccessToken = (fbToken ?? '').trim();
+
+    if (!pageId && !pageUrl) {
+      Alert.alert('Missing page details', 'Enter your Facebook Page ID or URL to run the analysis.');
+      return;
+    }
+
     try {
       await analyzeFacebook({
-        pageId: fbPageId,
-        pageUrl: fbPageUrl,
-        pageAccessToken: fbToken || undefined,
+        pageId: pageId || undefined,
+        pageUrl: pageUrl || undefined,
+        pageAccessToken: pageAccessToken || undefined,
       });
       Alert.alert('Analyzed', 'Facebook page analyzed for hiking content.');
     } catch (error) {
@@ -343,6 +380,23 @@ export default function ApplyOrganizerPage({ navigation }) {
               <Text style={styles.actionButtonText}>Run eKYC (AccuraScan)</Text>
             )}
           </TouchableOpacity>
+          {identityErrorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorTitle}>Couldn't load identity status</Text>
+              <Text style={styles.errorText}>{identityErrorMessage}</Text>
+              <TouchableOpacity
+                style={[styles.retryButton, identityLoading && styles.buttonDisabled]}
+                onPress={refreshIdentity}
+                disabled={identityLoading}
+              >
+                {identityLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.retryButtonText}>Retry status</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={[styles.verificationCard, { backgroundColor: fbMeta.accent }]}>
@@ -393,6 +447,23 @@ export default function ApplyOrganizerPage({ navigation }) {
               <Text style={styles.actionButtonText}>Link & analyze page</Text>
             )}
           </TouchableOpacity>
+          {fbErrorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorTitle}>Couldn't load Facebook status</Text>
+              <Text style={styles.errorText}>{fbErrorMessage}</Text>
+              <TouchableOpacity
+                style={[styles.retryButton, fbLoading && styles.buttonDisabled]}
+                onPress={refreshFacebook}
+                disabled={fbLoading}
+              >
+                {fbLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.retryButtonText}>Retry status</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={[styles.verificationCard, { backgroundColor: '#e0f2fe' }]}>
@@ -642,6 +713,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     marginBottom: 12,
+  },
+  errorBanner: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecdd3',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+  },
+  errorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#991b1b',
+    marginTop: 4,
+  },
+  retryButton: {
+    marginTop: 10,
+    backgroundColor: '#b91c1c',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
   },
   verificationCard: {
     borderRadius: 12,

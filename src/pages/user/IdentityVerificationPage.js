@@ -16,6 +16,14 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
+function formatErrorMessage(error, fallback) {
+  if (!error) return null;
+  if (error?.body?.message) return error.body.message;
+  if (error?.message) return error.message;
+  if (typeof error === 'string') return error;
+  return fallback;
+}
+
 const STATUS_META = {
   VERIFIED: { label: 'Verified identity', color: '#047857', bg: '#dcfce7' },
   PROCESSING: { label: 'Processing', color: '#2563eb', bg: '#dbeafe' },
@@ -31,8 +39,9 @@ function statusMeta(status) {
 export default function IdentityVerificationPage({ navigation }) {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { verification, loading, refresh, submit } = useIdentityVerification();
+  const { verification, loading, refresh, submit, error } = useIdentityVerification();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const meta = useMemo(() => statusMeta(verification?.status ?? 'PENDING'), [verification?.status]);
   const scoreLabel = useMemo(() => {
@@ -51,30 +60,40 @@ export default function IdentityVerificationPage({ navigation }) {
     if (verification?.livenessPassed === false) return 'Liveness failed';
     return 'Liveness not recorded';
   }, [verification?.livenessPassed]);
+  const statusErrorMessage = useMemo(
+    () => formatErrorMessage(error, 'Unable to load verification status right now.'),
+    [error],
+  );
 
   const captureImage = useCallback(async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera required', 'Please allow camera access to continue.');
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Camera required', 'Please allow camera access to continue.');
+        return null;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        base64: true,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets || !result.assets.length) {
+        return null;
+      }
+      const asset = result.assets[0];
+      if (!asset.base64) {
+        Alert.alert('Capture failed', 'Could not read the captured image. Try again.');
+        return null;
+      }
+      return {
+        uri: asset.uri,
+        base64: asset.base64,
+        mimeType: asset.mimeType || 'image/jpeg',
+      };
+    } catch (err) {
+      console.error('Camera capture failed:', err);
+      Alert.alert('Camera unavailable', formatErrorMessage(err, 'Could not access the camera right now.'));
       return null;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      base64: true,
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets || !result.assets.length) {
-      return null;
-    }
-    const asset = result.assets[0];
-    if (!asset.base64) {
-      Alert.alert('Capture failed', 'Could not read the captured image. Try again.');
-      return null;
-    }
-    return {
-      uri: asset.uri,
-      base64: asset.base64,
-      mimeType: asset.mimeType || 'image/jpeg',
-    };
   }, []);
 
   const [idCapture, setIdCapture] = useState(null);
@@ -83,13 +102,16 @@ export default function IdentityVerificationPage({ navigation }) {
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
     if (!user?.id) {
-      Alert.alert('Not signed in', 'Please sign in again to continue verification.');
+      const message = 'Please sign in again to continue verification.';
+      Alert.alert('Not signed in', message);
+      setSubmitError(message);
       return;
     }
     if (!idCapture || !selfieCapture) {
       Alert.alert('Missing images', 'Capture both ID and selfie to continue.');
       return;
     }
+    setSubmitError(null);
     setIsSubmitting(true);
     try {
       const idPath = `identity/${user?.id}/${Date.now()}-id.jpg`;
@@ -108,18 +130,24 @@ export default function IdentityVerificationPage({ navigation }) {
       }
       const { data: idUrlData } = supabase.storage.from('Capstone').getPublicUrl(idPath);
       const { data: selfieUrlData } = supabase.storage.from('Capstone').getPublicUrl(selfiePath);
+      if (!idUrlData?.publicUrl || !selfieUrlData?.publicUrl) {
+        throw new Error('Could not generate public URLs for uploads.');
+      }
 
       await submit({
         faceMatchScore: 0.9,
         livenessPassed: true,
         idData: null,
-        documentUrls: idUrlData?.publicUrl ? [idUrlData.publicUrl] : [],
-        selfieUrl: selfieUrlData?.publicUrl ?? null,
+        documentUrls: [idUrlData.publicUrl],
+        selfieUrl: selfieUrlData.publicUrl,
       });
       Alert.alert('Submitted', 'Identity verification sent.');
+      setSubmitError(null);
     } catch (error) {
       console.error('Identity submission failed:', error);
-      Alert.alert('Verification failed', error?.message || 'Unable to complete verification.');
+      const message = formatErrorMessage(error, 'Unable to complete verification.');
+      setSubmitError(message);
+      Alert.alert('Verification failed', message);
     } finally {
       setIsSubmitting(false);
     }
@@ -155,6 +183,23 @@ export default function IdentityVerificationPage({ navigation }) {
                 • {reason}
               </Text>
             ))}
+          </View>
+        ) : null}
+        {statusErrorMessage ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorTitle}>Couldn't load status</Text>
+            <Text style={styles.errorText}>{statusErrorMessage}</Text>
+            <TouchableOpacity
+              style={[styles.retryButton, loading && styles.buttonDisabled]}
+              onPress={refresh}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.retryButtonText}>Retry status</Text>
+              )}
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -211,6 +256,12 @@ export default function IdentityVerificationPage({ navigation }) {
           <TouchableOpacity style={styles.secondaryButton} onPress={refresh} disabled={loading}>
             <Text style={styles.secondaryButtonText}>Refresh status</Text>
           </TouchableOpacity>
+          {submitError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorTitle}>Submission issue</Text>
+              <Text style={styles.errorText}>{submitError}</Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -267,6 +318,36 @@ const styles = StyleSheet.create({
   warningText: {
     fontSize: 13,
     color: '#9a3412',
+  },
+  errorBanner: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecdd3',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 12,
+  },
+  errorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#991b1b',
+    marginTop: 4,
+  },
+  retryButton: {
+    marginTop: 10,
+    backgroundColor: '#b91c1c',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
   },
   section: {
     marginTop: 12,

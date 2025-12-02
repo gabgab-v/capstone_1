@@ -44,6 +44,14 @@ function extensionFromMime(mimeType) {
   return 'jpg';
 }
 
+function formatErrorMessage(error, fallback) {
+  if (!error) return null;
+  if (error?.body?.message) return error.body.message;
+  if (error?.message) return error.message;
+  if (typeof error === 'string') return error;
+  return fallback;
+}
+
 function formatDateInput(value) {
   if (!value) return '';
   try {
@@ -101,6 +109,7 @@ export default function BusinessVerificationPage({ navigation }) {
     mapExistingDocuments(existingVerification?.documentUrls ?? []),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
     if (!existingVerification) return;
@@ -121,47 +130,55 @@ export default function BusinessVerificationPage({ navigation }) {
   }, [existingVerification]);
 
   const pickDocument = useCallback(async () => {
-    if (documents.length >= MAX_DOCUMENTS) {
-      Alert.alert('Limit reached', `You can upload up to ${MAX_DOCUMENTS} files.`);
-      return;
+    try {
+      if (documents.length >= MAX_DOCUMENTS) {
+        Alert.alert('Limit reached', `You can upload up to ${MAX_DOCUMENTS} files.`);
+        return;
+      }
+
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission required', 'We need access to your photos to continue.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      if (!asset.base64) {
+        Alert.alert('Selection failed', 'Could not read the selected image. Please try another file.');
+        return;
+      }
+
+      setSubmitError(null);
+      setDocuments((prev) => [
+        ...prev,
+        {
+          id: `local-${Date.now()}-${Math.random()}`,
+          uri: asset.uri,
+          base64: asset.base64,
+          mimeType: asset.mimeType || 'image/jpeg',
+          isExisting: false,
+          name:
+            asset.fileName ||
+            asset.uri?.split('/').pop()?.split('?')[0] ||
+            `business-doc-${prev.length + 1}.${extensionFromMime(asset.mimeType)}`,
+        },
+      ]);
+    } catch (err) {
+      console.error('Document picker failed:', err);
+      const message = formatErrorMessage(err, 'Could not pick a file right now.');
+      setSubmitError(message);
+      Alert.alert('File picker error', message);
     }
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission required', 'We need access to your photos to continue.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      base64: true,
-    });
-
-    if (result.canceled || !result.assets || result.assets.length === 0) {
-      return;
-    }
-
-    const asset = result.assets[0];
-    if (!asset.base64) {
-      Alert.alert('Selection failed', 'Could not read the selected image. Please try another file.');
-      return;
-    }
-
-    setDocuments((prev) => [
-      ...prev,
-      {
-        id: `local-${Date.now()}-${Math.random()}`,
-        uri: asset.uri,
-        base64: asset.base64,
-        mimeType: asset.mimeType || 'image/jpeg',
-        isExisting: false,
-        name:
-          asset.fileName ||
-          asset.uri?.split('/').pop()?.split('?')[0] ||
-          `business-doc-${prev.length + 1}.${extensionFromMime(asset.mimeType)}`,
-      },
-    ]);
   }, [documents.length]);
 
   const removeDocument = useCallback((id) => {
@@ -170,6 +187,12 @@ export default function BusinessVerificationPage({ navigation }) {
 
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
+    if (!user?.id) {
+      const message = 'Please sign in again to continue business verification.';
+      Alert.alert('Not signed in', message);
+      setSubmitError(message);
+      return;
+    }
 
     const trimmedName = businessName.trim();
     if (!trimmedName) {
@@ -187,6 +210,7 @@ export default function BusinessVerificationPage({ navigation }) {
       return;
     }
 
+    setSubmitError(null);
     setIsSubmitting(true);
 
     try {
@@ -223,6 +247,9 @@ export default function BusinessVerificationPage({ navigation }) {
         }
 
         const { data: urlData } = supabase.storage.from('Capstone').getPublicUrl(path);
+        if (!urlData?.publicUrl) {
+          throw new Error('Could not generate a public URL for an uploaded document.');
+        }
         uploadedUrls.push(urlData.publicUrl);
       }
 
@@ -231,7 +258,7 @@ export default function BusinessVerificationPage({ navigation }) {
         businessAddress: businessAddress.trim(),
         tin: tin.trim(),
         referenceNumber: referenceNumber.trim(),
-        documentType,
+        documentType: (documentType || '').trim() || 'DTI_CERTIFICATE',
         issueDate: issueDate?.trim() || null,
         expiryDate: expiryDate?.trim() || null,
         documentUrls: [...existingUrls, ...uploadedUrls],
@@ -243,10 +270,12 @@ export default function BusinessVerificationPage({ navigation }) {
       Alert.alert('Submitted', response?.message ?? 'Business verification submitted.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
+      setSubmitError(null);
     } catch (error) {
       console.error('Business verification failed:', error);
       const message =
-        error?.body?.message || error?.message || 'Something went wrong while submitting verification.';
+        formatErrorMessage(error, 'Something went wrong while submitting verification.');
+      setSubmitError(message);
       Alert.alert('Submission failed', message);
     } finally {
       setIsSubmitting(false);
@@ -302,6 +331,12 @@ export default function BusinessVerificationPage({ navigation }) {
                 • {reason}
               </Text>
             ))}
+          </View>
+        ) : null}
+        {submitError ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorTitle}>Submission issue</Text>
+            <Text style={styles.errorText}>{submitError}</Text>
           </View>
         ) : null}
 
@@ -522,6 +557,24 @@ const styles = StyleSheet.create({
   warningItem: {
     fontSize: 13,
     color: '#9a3412',
+  },
+  errorBanner: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecdd3',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#991b1b',
+    marginTop: 4,
   },
   section: {
     marginBottom: 18,
