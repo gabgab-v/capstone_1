@@ -8,6 +8,13 @@ function normalizeFullName(firstName, lastName, fallbackName) {
   return combined || fallback;
 }
 
+function parseBirthdate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 // Initialize the Supabase admin client for server-side actions
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -24,13 +31,15 @@ const emailRedirectTo = process.env.SUPABASE_EMAIL_CONFIRM_REDIRECT_TO || null;
 
 export async function POST(request) {
   try {
-    const { email, password, name, firstName, lastName } = await request.json();
+    const { email, password, name, firstName, lastName, birthday, visitedTrail } = await request.json();
 
     const trimmedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
     const trimmedLastName = typeof lastName === 'string' ? lastName.trim() : '';
     const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const trimmedVisited = typeof visitedTrail === 'string' ? visitedTrail.trim() : '';
     const resolvedName = normalizeFullName(trimmedFirstName, trimmedLastName, trimmedName);
+    const parsedBirthdate = parseBirthdate(birthday);
 
     if (!trimmedEmail || !password || !resolvedName) {
       return NextResponse.json(
@@ -89,6 +98,9 @@ export async function POST(request) {
         supabaseUserId: authData.user.id, // Also store it in the dedicated sync column
         email: trimmedEmail,
         name: resolvedName,
+        birthdate: parsedBirthdate,
+        preferredMountains: trimmedVisited ? [trimmedVisited] : [],
+        mountainSuggestionsEnabled: true,
         // Password is NOT saved in this database
       },
       select: { id: true, email: true, name: true },

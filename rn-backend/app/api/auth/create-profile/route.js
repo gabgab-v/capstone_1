@@ -8,10 +8,17 @@ function normalizeFullName(firstName, lastName, fallbackName) {
   return combined || fallback;
 }
 
+function parseBirthdate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 // This endpoint is called AFTER a user is created in Supabase Auth
 export async function POST(req) {
   try {
-    const { id, email, name, firstName, lastName, visitedTrail } = await req.json();
+    const { id, email, name, firstName, lastName, visitedTrail, birthday } = await req.json();
 
     const trimmedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
@@ -19,6 +26,7 @@ export async function POST(req) {
     const trimmedName = typeof name === 'string' ? name.trim() : '';
     const trimmedVisited = typeof visitedTrail === 'string' ? visitedTrail.trim() : '';
     const resolvedName = normalizeFullName(trimmedFirstName, trimmedLastName, trimmedName);
+    const parsedBirthdate = parseBirthdate(birthday);
 
     if (!id || !trimmedEmail || !resolvedName) {
       return NextResponse.json(
@@ -54,6 +62,7 @@ export async function POST(req) {
           supabaseUserId: id, // Also store it in the dedicated sync column
           email: trimmedEmail,
           name: resolvedName,
+          birthdate: parsedBirthdate,
           preferredMountains: trimmedVisited ? [trimmedVisited] : [],
           mountainSuggestionsEnabled: true,
           // You don't store the password here anymore

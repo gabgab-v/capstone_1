@@ -19,6 +19,14 @@ import { post } from '../lib/api';
 import SafePicker from '../components/SafePicker';
 import { useTheme } from '../context/ThemeContext';
 
+function formatErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  if (error?.body?.message) return error.body.message;
+  if (error?.message) return error.message;
+  if (typeof error === 'string') return error;
+  return fallback;
+}
+
 export default function SignupPage({ navigation }) {
   const { colors, isDarkMode } = useTheme();
   const [firstName, setFirstName] = useState('');
@@ -83,6 +91,7 @@ export default function SignupPage({ navigation }) {
     const fullName = `${trimmedFirstName} ${trimmedLastName}`.replace(/\s+/g, ' ').trim();
     const trimmedEmail = email.trim();
     const normalizedEmail = trimmedEmail.toLowerCase();
+    const birthdayIso = birthday ? birthday.toISOString().split('T')[0] : null;
 
     if (
       !trimmedFirstName ||
@@ -107,45 +116,70 @@ export default function SignupPage({ navigation }) {
     setLoading(true);
 
     try {
-      const availability = await post('/api/auth/check-availability', {
-        email: normalizedEmail,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-      });
-
-      if (!availability?.emailAvailable || !availability?.nameAvailable) {
-        const reasons = [
-          availability?.emailAvailable ? null : 'That email is already registered.',
-          availability?.nameAvailable ? null : 'That name is already registered.',
-        ].filter(Boolean);
-        Alert.alert('Already registered', reasons.join('\n') || 'Please use a different email or name.');
-        return;
-      }
-
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const payload = {
         email: normalizedEmail,
         password,
-        options: {
-          data: {
-            name: fullName,
-            firstName: trimmedFirstName,
-            lastName: trimmedLastName,
-          },
-        },
-      });
-
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('Signup failed, no user created in Supabase.');
-
-      await post('/api/auth/create-profile', {
-        id: authData.user.id,
-        email: authData.user.email ?? normalizedEmail,
         name: fullName,
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
         visitedTrail,
-        birthday: birthday.toISOString().split('T')[0],
-      });
+        birthday: birthdayIso,
+      };
+
+      // Prefer the unified backend signup; fall back to legacy flow if not available (404)
+      let completed = false;
+      try {
+        await post('/api/auth/signup', payload);
+        completed = true;
+      } catch (error) {
+        if (error?.status === 404) {
+          console.warn('Unified signup endpoint not found, falling back to legacy flow.', error);
+        } else {
+          throw error;
+        }
+      }
+
+      if (!completed) {
+        const availability = await post('/api/auth/check-availability', {
+          email: normalizedEmail,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+        });
+
+        if (!availability?.emailAvailable || !availability?.nameAvailable) {
+          const reasons = [
+            availability?.emailAvailable ? null : 'That email is already registered.',
+            availability?.nameAvailable ? null : 'That name is already registered.',
+          ].filter(Boolean);
+          Alert.alert('Already registered', reasons.join('\n') || 'Please use a different email or name.');
+          return;
+        }
+
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              name: fullName,
+              firstName: trimmedFirstName,
+              lastName: trimmedLastName,
+            },
+          },
+        });
+
+        if (authError) throw authError;
+        if (!authData.user) throw new Error('Signup failed, no user created in Supabase.');
+
+        await post('/api/auth/create-profile', {
+          id: authData.user.id,
+          email: authData.user.email ?? normalizedEmail,
+          name: fullName,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          visitedTrail,
+          birthday: birthdayIso,
+        });
+      }
 
       Alert.alert(
         'Success!',
@@ -154,7 +188,8 @@ export default function SignupPage({ navigation }) {
       navigation.replace('Login');
     } catch (error) {
       console.error('Signup failed:', error);
-      Alert.alert('Signup failed', error.message || 'An unknown error occurred.');
+      const message = formatErrorMessage(error, 'Could not complete signup. Please try again.');
+      Alert.alert('Signup failed', message);
     } finally {
       setLoading(false);
     }

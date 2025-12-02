@@ -7,8 +7,18 @@ const DEFAULT_SAMPLE_LIMIT = 25;
 const HIKING_KEYWORDS = [
   'hike',
   'hiking',
+  'hikes',
+  'hiker',
+  'hikers',
+  'hikingph',
+  'hikeph',
   'trek',
+  'trekker',
+  'trekkers',
   'trekking',
+  'climb',
+  'climbing',
+  'ascend',
   'trail',
   'summit',
   'peak',
@@ -33,13 +43,41 @@ const HIKING_KEYWORDS = [
   'mt. apo',
   'apo',
   'pulag',
-  'apo',
 ];
 
 function sanitizeString(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+}
+
+function extractPageIdentifier(pageId, pageUrl) {
+  if (pageId) return pageId;
+  if (!pageUrl) return null;
+
+  const normalized = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
+  try {
+    const url = new URL(normalized);
+    const queryId = url.searchParams.get('id');
+    if (queryId) return queryId;
+
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return null;
+
+    if (segments[0].toLowerCase() === 'pages') {
+      if (segments[2]) return segments[2];
+      if (segments[1]) return segments[1];
+    }
+
+    if (segments[0].toLowerCase() === 'groups' && segments[1]) {
+      return segments[1];
+    }
+
+    return segments[0];
+  } catch (error) {
+    const stripped = pageUrl.replace(/^https?:\/\//i, '').split('/')[0];
+    return stripped || null;
+  }
 }
 
 function mapVerification(record) {
@@ -63,14 +101,18 @@ function classifyPosts(posts) {
 
   posts.forEach((post) => {
     const message = typeof post.message === 'string' ? post.message : '';
-    const lower = message.toLowerCase();
+    const textContent =
+      typeof post.textContent === 'string' && post.textContent.trim()
+        ? post.textContent
+        : message;
+    const lower = textContent.toLowerCase();
     const isHiking = HIKING_KEYWORDS.some((keyword) => lower.includes(keyword));
     if (isHiking) {
       hikingCount += 1;
     }
     sample.push({
       id: post.id ?? null,
-      message: message.slice(0, 280),
+      message: textContent.slice(0, 280),
       created_time: post.created_time ?? null,
       permalink_url: post.permalink_url ?? null,
       hiking: isHiking,
@@ -124,7 +166,7 @@ async function fetchFacebookPosts({ pageId, pageAccessToken, limit = 50 }) {
   }
   const url = `https://graph.facebook.com/v19.0/${encodeURIComponent(
     pageId,
-  )}/posts?fields=message,created_time,permalink_url,shares,comments.summary(true),likes.summary(true)&limit=${limit}&access_token=${encodeURIComponent(
+  )}/posts?fields=message,story,created_time,permalink_url,shares,comments.summary(true),likes.summary(true),reactions.summary(true),attachments{description,title,name}&limit=${limit}&access_token=${encodeURIComponent(
     pageAccessToken,
   )}`;
 
@@ -138,15 +180,44 @@ async function fetchFacebookPosts({ pageId, pageAccessToken, limit = 50 }) {
 
 function normalizePosts(rawPosts) {
   if (!Array.isArray(rawPosts)) return [];
+
+  const attachmentText = (attachments) => {
+    if (!attachments?.data || !Array.isArray(attachments.data)) return '';
+    return attachments.data
+      .map((item) => {
+        const pieces = [];
+        ['title', 'name', 'description'].forEach((field) => {
+          const value = item?.[field];
+          if (typeof value === 'string' && value.trim()) {
+            pieces.push(value.trim());
+          }
+        });
+        return pieces.join(' ');
+      })
+      .filter(Boolean)
+      .join(' ');
+  };
+
   return rawPosts
     .map((post) => {
       if (!post) return null;
+      const message = typeof post.message === 'string' ? post.message : '';
+      const story = typeof post.story === 'string' ? post.story : '';
+      const mediaText = attachmentText(post.attachments);
+      const textContent = [message, story, mediaText]
+        .map((part) => (typeof part === 'string' ? part.trim() : ''))
+        .filter(Boolean)
+        .join(' ');
+
       return {
         id: post.id ?? null,
-        message: typeof post.message === 'string' ? post.message : '',
+        message,
+        textContent,
         created_time: post.created_time ?? null,
         permalink_url: post.permalink_url ?? null,
-        likes: Number(post?.likes?.summary?.total_count) || 0,
+        likes: Number(
+          post?.likes?.summary?.total_count ?? post?.reactions?.summary?.total_count,
+        ) || 0,
         comments: Number(post?.comments?.summary?.total_count) || 0,
         shares: Number(post?.shares?.count) || 0,
       };
@@ -190,17 +261,19 @@ export async function POST(request) {
       body?.pageAccessToken ?? process.env.FB_PAGE_ACCESS_TOKEN ?? '',
     );
 
-    if (!pageId && providedPosts.length === 0) {
+    const resolvedPageId = extractPageIdentifier(pageId, pageUrl);
+
+    if (!resolvedPageId && providedPosts.length === 0) {
       return NextResponse.json(
-        { message: 'Provide a Facebook pageId or post samples to analyze.' },
+        { message: 'Provide a Facebook page URL/ID or post samples to analyze.' },
         { status: 400 },
       );
     }
 
     let posts = providedPosts;
-    if (posts.length === 0 && pageId && pageAccessToken) {
+    if (posts.length === 0 && resolvedPageId && pageAccessToken) {
       try {
-        const fetched = await fetchFacebookPosts({ pageId, pageAccessToken });
+        const fetched = await fetchFacebookPosts({ pageId: resolvedPageId, pageAccessToken });
         posts = normalizePosts(fetched);
       } catch (error) {
         console.error('Facebook fetch failed:', error);
@@ -223,7 +296,7 @@ export async function POST(request) {
     });
 
     const data = {
-      pageId,
+      pageId: resolvedPageId,
       pageName,
       pageUrl,
       status: scoring.status,
