@@ -81,8 +81,17 @@ async function request(path, options = {}) {
     } catch (_) {
       // ignore non-JSON responses
     }
+
+    // Prefer explicit server-provided error messages (supports `message` or `error` keys)
+    const serverMessage =
+      typeof errorBody?.message === 'string' && errorBody.message.trim()
+        ? errorBody.message.trim()
+        : typeof errorBody?.error === 'string' && errorBody.error.trim()
+          ? errorBody.error.trim()
+          : null;
+
     console.error('[api] http error:', response.status, errorBody);
-    throw new ApiError(errorBody.message || 'An unknown API error occurred.', response.status, errorBody);
+    throw new ApiError(serverMessage || `Request failed with status: ${response.status}`, response.status, errorBody);
   }
 
   try {

@@ -22,6 +22,7 @@ import { useTheme } from '../context/ThemeContext';
 function formatErrorMessage(error, fallback) {
   if (!error) return fallback;
   if (error?.body?.message) return error.body.message;
+  if (error?.body?.error) return error.body.error;
   if (error?.message) return error.message;
   if (typeof error === 'string') return error;
   return fallback;
