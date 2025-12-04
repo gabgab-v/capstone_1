@@ -22,8 +22,8 @@ export default function TrailRecordingCard({
   }
 
   const durationMs = useMemo(
-    () => computeTrailDurationMs(trail.startedAt, trail.endedAt),
-    [trail.endedAt, trail.startedAt],
+    () => computeTrailDurationMs(trail.startedAt, trail.endedAt, trail.samples),
+    [trail.endedAt, trail.samples, trail.startedAt],
   );
   const distanceLabel = useMemo(
     () => formatTrailDistance(trail.totalDistanceMeters),

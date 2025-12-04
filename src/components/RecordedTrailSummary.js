@@ -64,8 +64,8 @@ export default function RecordedTrailSummary({ trail, onClose }) {
   }, [trail?.samples, lineString]);
 
   const durationMs = useMemo(
-    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt),
-    [trail?.startedAt, trail?.endedAt],
+    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt, trail?.samples),
+    [trail?.samples, trail?.startedAt, trail?.endedAt],
   );
 
   const handleShareToFeed = useCallback(async () => {

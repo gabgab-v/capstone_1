@@ -16,16 +16,37 @@ export function formatTrailDistance(distanceMeters) {
   return `${(value / 1000).toFixed(2)} km`;
 }
 
-export function computeTrailDurationMs(startedAt, endedAt) {
-  if (!startedAt) {
-    return 0;
+export function computeTrailDurationMs(startedAt, endedAt, samples = []) {
+  const toMs = (value) => {
+    if (!value) return null;
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const startMs = toMs(startedAt);
+  const endMs = toMs(endedAt);
+  if (startMs !== null && endMs !== null && endMs > startMs) {
+    return endMs - startMs;
   }
-  const start = new Date(startedAt).getTime();
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return 0;
+
+  const sampleTimes = Array.isArray(samples)
+    ? samples
+        .map((p) => toMs(p?.at))
+        .filter((ms) => ms !== null)
+        .sort((a, b) => a - b)
+    : [];
+  if (sampleTimes.length >= 2) {
+    const sampleDuration = sampleTimes[sampleTimes.length - 1] - sampleTimes[0];
+    if (sampleDuration > 0) {
+      // If we have a valid start timestamp, anchor to it when it makes sense.
+      if (startMs !== null && sampleTimes[sampleTimes.length - 1] > startMs) {
+        return sampleTimes[sampleTimes.length - 1] - startMs;
+      }
+      return sampleDuration;
+    }
   }
-  return end - start;
+
+  return 0;
 }
 
 export function formatTrailDuration(durationMs) {
@@ -60,7 +81,7 @@ export function formatTrailAverageSpeed(distanceMeters, durationMs) {
 export function buildTrailShareMessage(trail, { includeAppMention = true } = {}) {
   const label = normalizeLabel(trail);
   const labelPart = label ? `"${label}"` : 'a new trail';
-  const durationMs = computeTrailDurationMs(trail?.startedAt, trail?.endedAt);
+  const durationMs = computeTrailDurationMs(trail?.startedAt, trail?.endedAt, trail?.samples);
   const distanceLabel = formatTrailDistance(trail?.totalDistanceMeters);
   const durationLabel = formatTrailDuration(durationMs);
   const speedLabel = formatTrailAverageSpeed(trail?.totalDistanceMeters, durationMs);

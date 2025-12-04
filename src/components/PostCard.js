@@ -95,8 +95,8 @@ const TrailMapAttachment = ({ trail }) => {
   const lineString = useMemo(() => ensureLineStringFromTrail(trail), [trail]);
   const trailMeta = useMemo(() => computeLineStringMeta(lineString), [lineString]);
   const durationMs = useMemo(
-    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt),
-    [trail?.endedAt, trail?.startedAt],
+    () => computeTrailDurationMs(trail?.startedAt, trail?.endedAt, trail?.samples),
+    [trail?.samples, trail?.endedAt, trail?.startedAt],
   );
 
   useEffect(() => {
