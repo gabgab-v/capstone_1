@@ -55,6 +55,24 @@ function parseGpx(content) {
   return { label, points };
 }
 
+function applySyntheticTimestamps(points) {
+  const hasAnyTimestamps = points.some((p) => p.at);
+  if (hasAnyTimestamps) {
+    return points;
+  }
+
+  // Assume a conservative hiking speed of 2 km/h (~0.556 m/s)
+  const totalDistance = computeDistance(points);
+  const durationMs = Math.max(10 * 60 * 1000, (totalDistance / 0.556) * 1000);
+  const interval = durationMs / Math.max(1, points.length - 1);
+  const start = Date.now() - durationMs;
+
+  return points.map((p, idx) => ({
+    ...p,
+    at: new Date(start + idx * interval).toISOString(),
+  }));
+}
+
 function computeDistance(points) {
   if (!points || points.length < 2) return 0;
   let total = 0;
@@ -83,7 +101,8 @@ async function ensureOwner(email) {
 
 async function importFile(filePath, ownerId) {
   const content = fs.readFileSync(filePath, 'utf8');
-  const { label: rawLabel, points } = parseGpx(content);
+  const { label: rawLabel, points: rawPoints } = parseGpx(content);
+  const points = applySyntheticTimestamps(rawPoints);
 
   if (!points.length) {
     console.warn(`Skipping ${path.basename(filePath)}: no track points found.`);

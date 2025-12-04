@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "import:gpx": "dotenv -e .env -- node scripts/import-gpx.js",
+    "fix:trail-durations": "dotenv -e .env -- node scripts/fix-trail-durations.js",
     "deactivate:inactive": "dotenv -e .env -- node scripts/deactivate-inactive-users.js",
     "cleanup:messages": "dotenv -e .env -- node scripts/cleanup-messages.js",
     "remind:events": "dotenv -e .env -- node scripts/send-event-reminders.js",
