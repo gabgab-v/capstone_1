@@ -113,6 +113,46 @@ async function ensureOrganizer({ email, password, name, organizationName, review
     },
   });
 
+  await prisma.businessVerification.upsert({
+    where: { userId: user.id },
+    update: {
+      businessName: organizationName,
+      status: 'VERIFIED',
+      score: 40,
+      documentUrls: [],
+      processedAt: now,
+    },
+    create: {
+      userId: user.id,
+      businessName: organizationName,
+      status: 'VERIFIED',
+      score: 40,
+      documentUrls: [],
+      processedAt: now,
+    },
+  });
+
+  await prisma.facebookVerification.upsert({
+    where: { userId: user.id },
+    update: {
+      pageName: organizationName,
+      pageUrl: null,
+      status: 'VERIFIED',
+      score: 20,
+      engagementScore: 10,
+      lastCheckedAt: now,
+    },
+    create: {
+      userId: user.id,
+      pageName: organizationName,
+      pageUrl: null,
+      status: 'VERIFIED',
+      score: 20,
+      engagementScore: 10,
+      lastCheckedAt: now,
+    },
+  });
+
   console.log(`Seeded organizer ${organizationName} (${email}).`);
   return user;
 }
