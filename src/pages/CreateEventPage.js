@@ -759,7 +759,7 @@ export default function CreateEventPage({ route, navigation }) {
     if (!isIdentityVerified) {
       Alert.alert(
         'Verify your identity',
-        'Complete the AccuraScan identity check before creating or updating events.',
+        'Complete the Scan identity check before creating or updating events.',
         [
           {
             text: 'Go to verification',
@@ -1128,7 +1128,7 @@ export default function CreateEventPage({ route, navigation }) {
           <Text style={[styles.identityScore, { color: identityMeta.color }]}>{identityScoreLabel}</Text>
         </View>
         <Text style={styles.identityHelper}>
-          We require AccuraScan identity verification (ID scan, selfie, liveness) before organizers can publish or edit events.
+          We require Scan identity verification (ID scan, selfie, liveness) before organizers can publish or edit events.
         </Text>
         <View style={styles.identityActions}>
           <TouchableOpacity
