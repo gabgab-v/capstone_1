@@ -119,30 +119,30 @@ async function main() {
   const defaultPassword = 'Password1234';
 
   const adminUser = await ensureSeedUser({
-    email: 'admin101@example.com',
+    email: 'admin101@gmail.com',
     password: defaultPassword,
     name: 'Admin User',
     role: 'ADMIN',
   });
 
   await ensureSeedUser({
-    email: 'demo@example.com',
+    email: 'demo@gmail.com',
     password: defaultPassword,
     name: 'Demo User',
     role: 'USER',
   });
 
   const organizers = [
-    { email: 'anakbukid@example.com', name: 'Wenz Delgado', organizationName: 'Anak Bukid' },
-    { email: 'itrekkers@example.com', name: 'April Aranez', organizationName: 'I Trekkers' },
-    { email: 'totskie-adventure@example.com', name: 'Royled Erespe', organizationName: 'Totskie Adventure Travel & Tour' },
-    { email: 'dtravelsense@example.com', name: 'Merry Joy Astillero', organizationName: "D'Travel Sense Tour" },
-    { email: 'lakawnipaw@example.com', name: 'Ainz Aneeca', organizationName: 'Lakaw ni Paw' },
-    { email: 'hidenseak@example.com', name: 'Xyril Grace Beltran', organizationName: "Hide 'N' Seak" },
-    { email: 'summitseekers@example.com', name: 'Kim M. Socorro', organizationName: 'Summit Seekers Adventure' },
-    { email: 'dwandersteps@example.com', name: 'Dave Joshua Eli', organizationName: "D' Wander Steps" },
-    { email: 'sakataerp@example.com', name: 'Jayvee Dagandan', organizationName: 'Saka Ta Erp' },
-    { email: 'gabaysummit@example.com', name: 'Angelo A. Razon', organizationName: 'Gabay Summit' },
+    { email: 'anakbukid@gmail.com', name: 'Wenz Delgado', organizationName: 'Anak Bukid' },
+    { email: 'itrekkers@gmail.com', name: 'April Aranez', organizationName: 'I Trekkers' },
+    { email: 'totskie.adventure@gmail.com', name: 'Royled Erespe', organizationName: 'Totskie Adventure Travel & Tour' },
+    { email: 'dtravelsense@gmail.com', name: 'Merry Joy Astillero', organizationName: "D'Travel Sense Tour" },
+    { email: 'lakawnipaw@gmail.com', name: 'Ainz Aneeca', organizationName: 'Lakaw ni Paw' },
+    { email: 'hidenseak@gmail.com', name: 'Xyril Grace Beltran', organizationName: "Hide 'N' Seak" },
+    { email: 'summitseekers@gmail.com', name: 'Kim M. Socorro', organizationName: 'Summit Seekers Adventure' },
+    { email: 'dwandersteps@gmail.com', name: 'Dave Joshua Eli', organizationName: "D' Wander Steps" },
+    { email: 'sakataerp@gmail.com', name: 'Jayvee Dagandan', organizationName: 'Saka Ta Erp' },
+    { email: 'gabaysummit@gmail.com', name: 'Angelo A. Razon', organizationName: 'Gabay Summit' },
   ];
 
   for (const organizer of organizers) {
