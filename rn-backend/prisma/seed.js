@@ -9,6 +9,52 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+async function ensureSeedUser({ email, password, name, role }) {
+  const now = new Date();
+  let supabaseUser = await findSupabaseUserByEmail(email);
+
+  if (supabaseUser) {
+    console.log(`Found existing Supabase user: ${email}. Updating password and confirming email...`);
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(supabaseUser.id, {
+      password,
+      email_confirm: true,
+    });
+    if (error) throw error;
+  } else {
+    console.log(`Creating Supabase user: ${email} (auto-confirmed)...`);
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // confirm immediately so login works without email flow
+    });
+    if (error) throw error;
+    supabaseUser = data.user;
+  }
+
+  // Sync Prisma profile with confirmed email timestamp.
+  await prisma.user.upsert({
+    where: { email },
+    update: {
+      supabaseUserId: supabaseUser.id,
+      role,
+      name,
+      emailVerifiedAt: supabaseUser.email_confirmed_at
+        ? new Date(supabaseUser.email_confirmed_at)
+        : now,
+    },
+    create: {
+      id: supabaseUser.id,
+      supabaseUserId: supabaseUser.id,
+      email,
+      name,
+      role,
+      emailVerifiedAt: now,
+    },
+  });
+
+  console.log(`Seeded user ${email} with role ${role}.`);
+}
+
 async function findSupabaseUserByEmail(email) {
   const normalizedEmail = email.toLowerCase();
   let page = 1;
@@ -29,58 +75,15 @@ async function findSupabaseUserByEmail(email) {
 }
 
 async function main() {
-  const adminEmail = 'admin101@example.com';
-  const plainPassword = 'Password1234';
-
   console.log('Starting seed process...');
 
-  let supabaseUser = await findSupabaseUserByEmail(adminEmail);
+  const seedUsers = [
+    { email: 'admin101@example.com', password: 'Password1234', name: 'Admin User', role: 'ADMIN' },
+    { email: 'demo@example.com', password: 'Password1234', name: 'Demo User', role: 'USER' },
+  ];
 
-  if (supabaseUser) {
-    console.log(`Admin user already exists in Supabase Auth: ${adminEmail}`);
-
-    console.log('Updating password for existing Supabase admin user...');
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(supabaseUser.id, {
-      password: plainPassword,
-    });
-    if (updateError) throw updateError;
-    console.log('Supabase admin password updated successfully.');
-  } else {
-    console.log(`Creating admin user in Supabase Auth: ${adminEmail}...`);
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email: adminEmail,
-      password: plainPassword,
-      email_confirm: true,
-    });
-    if (error) throw error;
-    supabaseUser = data.user;
-    console.log('Supabase admin user created successfully.');
-  }
-
-  console.log('Syncing admin profile in local database...');
-  const existingUser = await prisma.user.findUnique({ where: { email: adminEmail } });
-
-  if (existingUser) {
-    await prisma.user.update({
-      where: { email: adminEmail },
-      data: {
-        supabaseUserId: supabaseUser.id,
-        role: 'ADMIN',
-        name: existingUser.name || 'Admin User',
-      },
-    });
-    console.log('Existing admin profile updated.');
-  } else {
-    await prisma.user.create({
-      data: {
-        id: supabaseUser.id,
-        supabaseUserId: supabaseUser.id,
-        email: adminEmail,
-        name: 'Admin User',
-        role: 'ADMIN',
-      },
-    });
-    console.log('Admin profile created in Prisma.');
+  for (const user of seedUsers) {
+    await ensureSeedUser(user);
   }
 
   console.log('Seed process finished successfully.');
