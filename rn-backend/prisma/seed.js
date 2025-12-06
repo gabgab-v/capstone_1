@@ -52,6 +52,10 @@ async function ensureSeedUser({ email, password, name, role }) {
   if (role === 'ORGANIZER') {
     updateData.organizerRequestPending = false;
     createData.organizerRequestPending = false;
+    updateData.organizerTrustScore = 100;
+    updateData.organizerTrustTier = 'VERIFIED_ORGANIZER';
+    createData.organizerTrustScore = 100;
+    createData.organizerTrustTier = 'VERIFIED_ORGANIZER';
   }
 
   const userRecord = await prisma.user.upsert({
@@ -87,6 +91,25 @@ async function ensureOrganizer({ email, password, name, organizationName, review
       reviewNotes: null,
       reviewedAt: now,
       documentUrls: [],
+    },
+  });
+
+  await prisma.identityVerification.upsert({
+    where: { userId: user.id },
+    update: {
+      status: 'VERIFIED',
+      score: 100,
+      livenessPassed: true,
+      processedAt: now,
+    },
+    create: {
+      userId: user.id,
+      status: 'VERIFIED',
+      score: 100,
+      livenessPassed: true,
+      processedAt: now,
+      documentUrls: [],
+      selfieUrl: null,
     },
   });
 
