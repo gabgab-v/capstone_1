@@ -9,7 +9,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function ensureSeedUser({ email, password, name, role }) {
+function randomScore(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function ensureSeedUser({ email, password, name, role, trustScore, trustTier }) {
   const now = new Date();
   let supabaseUser = await findSupabaseUserByEmail(email);
 
@@ -52,10 +56,10 @@ async function ensureSeedUser({ email, password, name, role }) {
   if (role === 'ORGANIZER') {
     updateData.organizerRequestPending = false;
     createData.organizerRequestPending = false;
-    updateData.organizerTrustScore = 100;
-    updateData.organizerTrustTier = 'VERIFIED_ORGANIZER';
-    createData.organizerTrustScore = 100;
-    createData.organizerTrustTier = 'VERIFIED_ORGANIZER';
+    updateData.organizerTrustScore = trustScore ?? 100;
+    updateData.organizerTrustTier = trustTier ?? 'VERIFIED_ORGANIZER';
+    createData.organizerTrustScore = trustScore ?? 100;
+    createData.organizerTrustTier = trustTier ?? 'VERIFIED_ORGANIZER';
   }
 
   const userRecord = await prisma.user.upsert({
@@ -69,7 +73,22 @@ async function ensureSeedUser({ email, password, name, role }) {
 }
 
 async function ensureOrganizer({ email, password, name, organizationName, reviewerId }) {
-  const user = await ensureSeedUser({ email, password, name, role: 'ORGANIZER' });
+  const businessScore = randomScore(35, 40);
+  const identityScore = randomScore(25, 30);
+  const facebookScore = randomScore(18, 20);
+  const engagementScore = randomScore(8, 10);
+
+  const trustScore = businessScore + identityScore + facebookScore + engagementScore;
+  const trustTier = 'VERIFIED_ORGANIZER';
+
+  const user = await ensureSeedUser({
+    email,
+    password,
+    name,
+    role: 'ORGANIZER',
+    trustScore,
+    trustTier,
+  });
   const now = new Date();
 
   await prisma.organizerApplication.upsert({
@@ -98,14 +117,14 @@ async function ensureOrganizer({ email, password, name, organizationName, review
     where: { userId: user.id },
     update: {
       status: 'VERIFIED',
-      score: 100,
+      score: identityScore * 3, // keep high to reflect a strong verification outcome
       livenessPassed: true,
       processedAt: now,
     },
     create: {
       userId: user.id,
       status: 'VERIFIED',
-      score: 100,
+      score: identityScore * 3,
       livenessPassed: true,
       processedAt: now,
       documentUrls: [],
@@ -118,7 +137,7 @@ async function ensureOrganizer({ email, password, name, organizationName, review
     update: {
       businessName: organizationName,
       status: 'VERIFIED',
-      score: 40,
+      score: businessScore,
       documentUrls: [],
       processedAt: now,
     },
@@ -126,7 +145,7 @@ async function ensureOrganizer({ email, password, name, organizationName, review
       userId: user.id,
       businessName: organizationName,
       status: 'VERIFIED',
-      score: 40,
+      score: businessScore,
       documentUrls: [],
       processedAt: now,
     },
@@ -138,8 +157,8 @@ async function ensureOrganizer({ email, password, name, organizationName, review
       pageName: organizationName,
       pageUrl: null,
       status: 'VERIFIED',
-      score: 20,
-      engagementScore: 10,
+      score: facebookScore,
+      engagementScore: engagementScore,
       lastCheckedAt: now,
     },
     create: {
@@ -147,8 +166,8 @@ async function ensureOrganizer({ email, password, name, organizationName, review
       pageName: organizationName,
       pageUrl: null,
       status: 'VERIFIED',
-      score: 20,
-      engagementScore: 10,
+      score: facebookScore,
+      engagementScore: engagementScore,
       lastCheckedAt: now,
     },
   });
