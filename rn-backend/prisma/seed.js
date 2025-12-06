@@ -32,27 +32,66 @@ async function ensureSeedUser({ email, password, name, role }) {
   }
 
   // Sync Prisma profile with confirmed email timestamp.
-  await prisma.user.upsert({
+  const updateData = {
+    supabaseUserId: supabaseUser.id,
+    role,
+    name,
+    emailVerifiedAt: supabaseUser.email_confirmed_at
+      ? new Date(supabaseUser.email_confirmed_at)
+      : now,
+  };
+  const createData = {
+    id: supabaseUser.id,
+    supabaseUserId: supabaseUser.id,
+    email,
+    name,
+    role,
+    emailVerifiedAt: now,
+  };
+
+  if (role === 'ORGANIZER') {
+    updateData.organizerRequestPending = false;
+    createData.organizerRequestPending = false;
+  }
+
+  const userRecord = await prisma.user.upsert({
     where: { email },
-    update: {
-      supabaseUserId: supabaseUser.id,
-      role,
-      name,
-      emailVerifiedAt: supabaseUser.email_confirmed_at
-        ? new Date(supabaseUser.email_confirmed_at)
-        : now,
-    },
-    create: {
-      id: supabaseUser.id,
-      supabaseUserId: supabaseUser.id,
-      email,
-      name,
-      role,
-      emailVerifiedAt: now,
-    },
+    update: updateData,
+    create: createData,
   });
 
   console.log(`Seeded user ${email} with role ${role}.`);
+  return userRecord;
+}
+
+async function ensureOrganizer({ email, password, name, organizationName, reviewerId }) {
+  const user = await ensureSeedUser({ email, password, name, role: 'ORGANIZER' });
+  const now = new Date();
+
+  await prisma.organizerApplication.upsert({
+    where: { userId: user.id },
+    update: {
+      legalName: name,
+      organizationName,
+      status: 'APPROVED',
+      reviewerId: reviewerId ?? null,
+      reviewNotes: null,
+      reviewedAt: now,
+    },
+    create: {
+      userId: user.id,
+      legalName: name,
+      organizationName,
+      status: 'APPROVED',
+      reviewerId: reviewerId ?? null,
+      reviewNotes: null,
+      reviewedAt: now,
+      documentUrls: [],
+    },
+  });
+
+  console.log(`Seeded organizer ${organizationName} (${email}).`);
+  return user;
 }
 
 async function findSupabaseUserByEmail(email) {
@@ -77,13 +116,41 @@ async function findSupabaseUserByEmail(email) {
 async function main() {
   console.log('Starting seed process...');
 
-  const seedUsers = [
-    { email: 'admin101@example.com', password: 'Password1234', name: 'Admin User', role: 'ADMIN' },
-    { email: 'demo@example.com', password: 'Password1234', name: 'Demo User', role: 'USER' },
+  const defaultPassword = 'Password1234';
+
+  const adminUser = await ensureSeedUser({
+    email: 'admin101@example.com',
+    password: defaultPassword,
+    name: 'Admin User',
+    role: 'ADMIN',
+  });
+
+  await ensureSeedUser({
+    email: 'demo@example.com',
+    password: defaultPassword,
+    name: 'Demo User',
+    role: 'USER',
+  });
+
+  const organizers = [
+    { email: 'anakbukid@example.com', name: 'Wenz Delgado', organizationName: 'Anak Bukid' },
+    { email: 'itrekkers@example.com', name: 'April Aranez', organizationName: 'I Trekkers' },
+    { email: 'totskie-adventure@example.com', name: 'Royled Erespe', organizationName: 'Totskie Adventure Travel & Tour' },
+    { email: 'dtravelsense@example.com', name: 'Merry Joy Astillero', organizationName: "D'Travel Sense Tour" },
+    { email: 'lakawnipaw@example.com', name: 'Ainz Aneeca', organizationName: 'Lakaw ni Paw' },
+    { email: 'hidenseak@example.com', name: 'Xyril Grace Beltran', organizationName: "Hide 'N' Seak" },
+    { email: 'summitseekers@example.com', name: 'Kim M. Socorro', organizationName: 'Summit Seekers Adventure' },
+    { email: 'dwandersteps@example.com', name: 'Dave Joshua Eli', organizationName: "D' Wander Steps" },
+    { email: 'sakataerp@example.com', name: 'Jayvee Dagandan', organizationName: 'Saka Ta Erp' },
+    { email: 'gabaysummit@example.com', name: 'Angelo A. Razon', organizationName: 'Gabay Summit' },
   ];
 
-  for (const user of seedUsers) {
-    await ensureSeedUser(user);
+  for (const organizer of organizers) {
+    await ensureOrganizer({
+      ...organizer,
+      password: defaultPassword,
+      reviewerId: adminUser?.id ?? null,
+    });
   }
 
   console.log('Seed process finished successfully.');
