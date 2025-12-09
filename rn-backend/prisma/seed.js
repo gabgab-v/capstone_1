@@ -225,6 +225,15 @@ async function main() {
     { email: 'dwandersteps@gmail.com', name: 'Dave Joshua Eli', organizationName: "D' Wander Steps" },
     { email: 'sakataerp@gmail.com', name: 'Jayvee Dagandan', organizationName: 'Saka Ta Erp' },
     { email: 'gabaysummit@gmail.com', name: 'Angelo A. Razon', organizationName: 'Gabay Summit' },
+    { email: 'travellersdiy@gmail.com', name: 'Kelloy Gets Alforque', organizationName: 'Travellers DIY' },
+    { email: 'boulevardhikeorig@gmail.com', name: 'Dmon Ray', organizationName: 'Boulevard Hike Orig' },
+    { email: 'johnmarkrafols@gmail.com', name: 'Johnmark Rafols', organizationName: 'Johnmark Rafols (Solo Guide)' },
+    { email: 'laaganadventures@gmail.com', name: 'Rub John Paul Boybanting', organizationName: 'Laagan Adventures' },
+    { email: 'viajenidro@gmail.com', name: 'Andro Nico Magno', organizationName: 'Viaje ni Dro' },
+    { email: 'tikangniyeye@gmail.com', name: 'Joniel Sorilla', organizationName: 'Tikang ni Yeye' },
+    { email: 'seekdiscomfortph@gmail.com', name: 'Brander Conoman', organizationName: 'Seek Discomfort PH' },
+    { email: 'trailbreakersph@gmail.com', name: 'Eriane Faith Tubog', organizationName: 'Trail Breakers' },
+    { email: 'kentravelph@gmail.com', name: 'Kenneth N. Lapiz', organizationName: 'Ken Travel' },
   ];
 
   for (const organizer of organizers) {
