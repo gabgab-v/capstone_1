@@ -13,6 +13,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - Event group chats are deleted 7 days after an event is marked completed. The same cleanup script enforces this and the event chat API returns days-remaining metadata so clients can warn users.
 - Schedule `npm run cleanup:messages` (cron/Render job) daily or weekly with `.env` loaded to keep retention rules enforced.
 
+## Email confirmations
+
+- Set `RESEND_API_KEY` and `EMAIL_FROM` to enable the branded confirmation email (Resend API). `EMAIL_REPLY_TO`, `SUPPORT_EMAIL`, `EMAIL_BRAND_COLOR`, and `BRAND_NAME` are optional branding controls.
+- If the provider is missing or fails, the signup flow falls back to Supabase's default confirmation template.
+
 ## Getting Started
 
 First, run the development server:
