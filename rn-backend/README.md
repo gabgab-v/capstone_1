@@ -4,8 +4,6 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 - A static confirmation page is available at `/confirmation-complete` for Supabase email verification redirects.
 - Set `SUPABASE_EMAIL_CONFIRM_REDIRECT_TO=https://your-domain.com/confirmation-complete` in your environment (Render and local) so confirmation emails point at the live page.
-- Optional: set `NEXT_PUBLIC_APP_LOGIN_URL` to control where the “Go to login” button sends users; defaults to `/`.
-- Optional: set `NEXT_PUBLIC_APP_DEEP_LINK` to your mobile deep link (e.g., `trailmeet://login`) so the “Open in the app” button attempts to launch the installed app before falling back to web login.
 - Optional: set `NEXT_PUBLIC_SUPPORT_EMAIL` to customize the support mailto link.
 
 ## Account inactivity safeguards

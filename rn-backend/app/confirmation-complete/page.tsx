@@ -1,7 +1,3 @@
-import { ActionButtons } from "./ActionButtons";
-
-const loginHref = process.env.NEXT_PUBLIC_APP_LOGIN_URL || "/";
-const appDeepLink = process.env.NEXT_PUBLIC_APP_DEEP_LINK || "trailmeet://login";
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@your-domain.com";
 
 export const metadata = {
@@ -38,18 +34,18 @@ export default function ConfirmationCompletePage() {
           </div>
 
           <p className="text-lg leading-relaxed text-slate-100/80">
-            Thanks for confirming your email. You can log in and pick up where you left off. If the app
-            is already open on another device, refresh it so your status updates immediately.
+            Thanks for confirming your email. Your account is ready. You can close this tab and open the app
+            to log in.
           </p>
-
-          <ActionButtons deepLink={appDeepLink} loginUrl={loginHref} supportEmailAddress={supportEmail} />
 
           <div className="rounded-2xl border border-white/10 bg-black/40 p-5 text-sm text-slate-100/80">
             <p className="mb-2 text-base font-semibold text-white">What happens next</p>
             <ul className="space-y-2 list-disc list-inside">
               <li>Keep this tab open until you see the app load.</li>
-              <li>If login fails, try refreshing or request a new confirmation email.</li>
-              <li>Still stuck? Contact support and include the email address you used to sign up.</li>
+              <li>If login fails later, request a new confirmation email.</li>
+              <li>
+                Still stuck? Contact support at <a className="underline" href={`mailto:${supportEmail}`}>{supportEmail}</a> and include the email you used to sign up.
+              </li>
             </ul>
           </div>
         </div>
