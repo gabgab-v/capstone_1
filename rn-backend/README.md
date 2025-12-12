@@ -1,5 +1,12 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Email confirmation landing page
+
+- A static confirmation page is available at `/confirmation-complete` for Supabase email verification redirects.
+- Set `SUPABASE_EMAIL_CONFIRM_REDIRECT_TO=https://your-domain.com/confirmation-complete` in your environment (Render and local) so confirmation emails point at the live page.
+- Optional: set `NEXT_PUBLIC_APP_LOGIN_URL` to control where the “Go to login” button sends users; defaults to `/`.
+- Optional: set `NEXT_PUBLIC_SUPPORT_EMAIL` to customize the support mailto link.
+
 ## Account inactivity safeguards
 
 - Users are automatically flagged for temporary deactivation after 12 months of inactivity. Run `npm run deactivate:inactive` (with `.env` loaded) to batch-mark inactive accounts for recovery.
