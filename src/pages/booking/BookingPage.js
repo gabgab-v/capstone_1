@@ -416,11 +416,16 @@ export default function BookingPage({ route, navigation }) {
       
       // Extract the most detailed error message available
       const errorMessage = err.body?.error || err.body?.message || err.message || "Something went wrong while booking.";
+      const errorDetails = err.body?.details
+        ? Object.entries(err.body.details)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join("\n")
+        : null;
       
       // Show a detailed alert with status and error
       Alert.alert(
         "Booking Failed", 
-        `${errorMessage}\n\nStatus: ${err.status || 'Unknown'}\n\nPlease check:\n• Event is published\n• Registration is open\n• Event hasn't started yet`,
+        `${errorMessage}\n\nStatus: ${err.status || 'Unknown'}${errorDetails ? `\n\nDetails:\n${errorDetails}` : ""}\n\nPlease check:\n• Event is published\n• Registration is open\n• Event hasn't started yet`,
         [{ text: "OK" }]
       );
       

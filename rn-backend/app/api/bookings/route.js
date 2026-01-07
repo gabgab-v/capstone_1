@@ -395,7 +395,13 @@ export async function POST(req) {
       console.warn(`[Booking] Rejecting booking: event status is "${normalizedStatus}", not PUBLISHED`);
       return respondWithLog(
         403,
-        { error: `Bookings are closed for this event. Event status: ${normalizedStatus}` },
+        {
+          error: `Bookings are closed for this event (status: ${normalizedStatus || "UNKNOWN"}).`,
+          details: {
+            eventId,
+            status: normalizedStatus,
+          },
+        },
         BookingRequestOutcome.REJECTED,
         "Event not published",
         { "X-Idempotency-Status": "REJECTED" },
@@ -409,7 +415,14 @@ export async function POST(req) {
         console.warn(`[Booking] Rejecting: event has already started`);
         return respondWithLog(
           403,
-          { error: "This event has already started or finished." },
+          {
+            error: "This event has already started or finished.",
+            details: {
+              eventId,
+              startsAt: startsAt.toISOString(),
+              now: now.toISOString(),
+            },
+          },
           BookingRequestOutcome.REJECTED,
           "Event already started",
           { "X-Idempotency-Status": "REJECTED" },
@@ -424,7 +437,14 @@ export async function POST(req) {
         console.warn(`[Booking] Rejecting: registration has not opened yet`);
         return respondWithLog(
           403,
-          { error: "Registration has not opened yet." },
+          {
+            error: "Registration has not opened yet.",
+            details: {
+              eventId,
+              registrationOpensAt: opensAt.toISOString(),
+              now: now.toISOString(),
+            },
+          },
           BookingRequestOutcome.REJECTED,
           "Registration not open",
           { "X-Idempotency-Status": "REJECTED" },
@@ -439,7 +459,14 @@ export async function POST(req) {
         console.warn(`[Booking] Rejecting: registration is already closed`);
         return respondWithLog(
           403,
-          { error: "Registration for this event is already closed." },
+          {
+            error: "Registration for this event is already closed.",
+            details: {
+              eventId,
+              registrationClosesAt: closesAt.toISOString(),
+              now: now.toISOString(),
+            },
+          },
           BookingRequestOutcome.REJECTED,
           "Registration closed",
           { "X-Idempotency-Status": "REJECTED" },

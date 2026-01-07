@@ -213,7 +213,16 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Event not found." }, { status: 404 });
     }
 
-    if (event.organizerId !== user.id && user.role !== "ADMIN") {
+    const isOrganizer = event.organizerId === user.id;
+    const userRole = typeof user.role === "string" ? user.role.trim().toUpperCase() : "";
+    const isAdmin = userRole === "ADMIN";
+    const normalizedStatus =
+      typeof event.status === "string" && event.status.trim()
+        ? event.status.trim().toUpperCase()
+        : "";
+    const isPublished = normalizedStatus === "PUBLISHED";
+
+    if (!isOrganizer && !isAdmin && !isPublished) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
