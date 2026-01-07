@@ -67,9 +67,15 @@ export async function POST(request) {
     }
 
     // Step 1: Create the user in Supabase Authentication with email verification
+    const inferredRedirect =
+      emailRedirectTo ||
+      request.headers.get('origin') ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+
     const signUpOptions = {
       data: { name: resolvedName, firstName: trimmedFirstName, lastName: trimmedLastName },
-      ...(emailRedirectTo ? { emailRedirectTo } : {}),
+      ...(inferredRedirect ? { emailRedirectTo: inferredRedirect } : {}),
     };
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({

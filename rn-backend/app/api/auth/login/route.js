@@ -2,12 +2,23 @@ import { compare } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { sign } from 'jsonwebtoken';
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import {
   INACTIVITY_REASON,
   buildReactivationChecklist,
   shouldDeactivateForInactivity,
   publicRecoveryRequirements,
 } from '@/lib/reactivation';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const emailRedirectTo = process.env.SUPABASE_EMAIL_CONFIRM_REDIRECT_TO || null;
+const supabaseAdmin =
+  supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+    : null;
 
 export async function POST(req) {
   try {
@@ -36,6 +47,55 @@ export async function POST(req) {
       return NextResponse.json({ message: 'User not synced with authentication provider.' }, { status: 401 });
     }
     console.log(`2. User found. Supabase User ID: ${user.supabaseUserId}`);
+
+    // 2c. Enforce email confirmation: fetch Supabase user and block if unconfirmed
+    if (!supabaseAdmin) {
+      console.error('🔴 Supabase admin client is not configured.');
+      return NextResponse.json({ message: 'Auth service unavailable.' }, { status: 503 });
+    }
+
+    const { data: supaUserResult, error: supaUserError } = await supabaseAdmin.auth.admin.getUserById(
+      user.supabaseUserId,
+    );
+
+    if (supaUserError) {
+      console.error('Failed to fetch Supabase user:', supaUserError);
+      return NextResponse.json({ message: 'Auth lookup failed. Please try again shortly.' }, { status: 503 });
+    }
+
+    const supabaseUser = supaUserResult?.user || null;
+    const emailConfirmedAt = supabaseUser?.email_confirmed_at
+      ? new Date(supabaseUser.email_confirmed_at)
+      : null;
+
+    if (!emailConfirmedAt) {
+      // Trigger a resend so the user immediately gets a fresh link.
+      const { error: resendError } = await supabaseAdmin.auth.resend({
+        type: 'signup',
+        email: user.email,
+        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      });
+
+      if (resendError) {
+        console.error('Failed to resend confirmation email:', resendError);
+      }
+
+      return NextResponse.json(
+        {
+          message: 'Please confirm your email before logging in. We just sent you a new confirmation link.',
+          code: 'EMAIL_NOT_CONFIRMED',
+        },
+        { status: 403 },
+      );
+    }
+
+    // Backfill local verification timestamp if missing
+    if (!user.emailVerifiedAt) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: emailConfirmedAt },
+      });
+    }
 
     // 2b. Automatically deactivate accounts that have been inactive for 12 months
     if (!user.deactivatedAt && shouldDeactivateForInactivity(user)) {

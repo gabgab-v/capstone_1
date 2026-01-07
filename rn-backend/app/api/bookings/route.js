@@ -382,7 +382,8 @@ export async function POST(req) {
     }
 
     const now = new Date();
-    const normalizedStatus = (event.status || "").toUpperCase();
+    const normalizedStatus =
+      typeof event.status === "string" ? event.status.trim().toUpperCase() : "";
     if (normalizedStatus !== "PUBLISHED") {
       return respondWithLog(
         403,
