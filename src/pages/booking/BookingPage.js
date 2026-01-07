@@ -413,8 +413,17 @@ export default function BookingPage({ route, navigation }) {
       console.error("Error status:", err.status);
       console.error("Error body:", err.body);
       console.error("Error message:", err.message);
-      const errorMessage = err.body?.error || err.message || "Something went wrong while booking.";
-      Alert.alert("Booking Failed", `${errorMessage} (Status: ${err.status || 'Unknown'})`);
+      
+      // Extract the most detailed error message available
+      const errorMessage = err.body?.error || err.body?.message || err.message || "Something went wrong while booking.";
+      
+      // Show a detailed alert with status and error
+      Alert.alert(
+        "Booking Failed", 
+        `${errorMessage}\n\nStatus: ${err.status || 'Unknown'}\n\nPlease check:\n• Event is published\n• Registration is open\n• Event hasn't started yet`,
+        [{ text: "OK" }]
+      );
+      
       const shouldRotateKey = typeof err?.status === "number" ? err.status !== 0 : true;
       if (shouldRotateKey) {
         setBookingRequestKey(createIdempotencyKey());

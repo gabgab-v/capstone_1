@@ -381,13 +381,21 @@ export async function POST(req) {
       );
     }
 
+    console.log(`[Booking] Event found: ${event.id}, raw status: "${event.status}", type: ${typeof event.status}`);
+
     const now = new Date();
     const normalizedStatus =
-      typeof event.status === "string" ? event.status.trim().toUpperCase() : "";
+      typeof event.status === "string" && event.status.trim()
+        ? event.status.trim().toUpperCase()
+        : "PUBLISHED"; // Default to PUBLISHED if status is missing or empty
+    
+    console.log(`[Booking] Normalized status: "${normalizedStatus}"`);
+
     if (normalizedStatus !== "PUBLISHED") {
+      console.warn(`[Booking] Rejecting booking: event status is "${normalizedStatus}", not PUBLISHED`);
       return respondWithLog(
         403,
-        { error: "Bookings are closed for this event." },
+        { error: `Bookings are closed for this event. Event status: ${normalizedStatus}` },
         BookingRequestOutcome.REJECTED,
         "Event not published",
         { "X-Idempotency-Status": "REJECTED" },
@@ -396,7 +404,9 @@ export async function POST(req) {
 
     if (event.startsAt) {
       const startsAt = new Date(event.startsAt);
+      console.log(`[Booking] Event starts at: ${startsAt.toISOString()}, now: ${now.toISOString()}`);
       if (!Number.isNaN(startsAt.valueOf()) && startsAt <= now) {
+        console.warn(`[Booking] Rejecting: event has already started`);
         return respondWithLog(
           403,
           { error: "This event has already started or finished." },
@@ -409,7 +419,9 @@ export async function POST(req) {
 
     if (event.registrationOpensAt) {
       const opensAt = new Date(event.registrationOpensAt);
+      console.log(`[Booking] Registration opens at: ${opensAt.toISOString()}, now: ${now.toISOString()}`);
       if (!Number.isNaN(opensAt.valueOf()) && opensAt > now) {
+        console.warn(`[Booking] Rejecting: registration has not opened yet`);
         return respondWithLog(
           403,
           { error: "Registration has not opened yet." },
@@ -422,7 +434,9 @@ export async function POST(req) {
 
     if (event.registrationClosesAt) {
       const closesAt = new Date(event.registrationClosesAt);
+      console.log(`[Booking] Registration closes at: ${closesAt.toISOString()}, now: ${now.toISOString()}`);
       if (!Number.isNaN(closesAt.valueOf()) && closesAt <= now) {
+        console.warn(`[Booking] Rejecting: registration is already closed`);
         return respondWithLog(
           403,
           { error: "Registration for this event is already closed." },
