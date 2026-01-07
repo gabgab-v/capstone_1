@@ -234,6 +234,7 @@ async function main() {
     { email: 'seekdiscomfortph@gmail.com', name: 'Brander Conoman', organizationName: 'Seek Discomfort PH' },
     { email: 'trailbreakersph@gmail.com', name: 'Eriane Faith Tubog', organizationName: 'Trail Breakers' },
     { email: 'kentravelph@gmail.com', name: 'Kenneth N. Lapiz', organizationName: 'Ken Travel' },
+    { email: 'itzmeyuna08@gmail.com', name: 'Yuna Capuz', organizationName: 'Pabukid Sata' },
   ];
 
   for (const organizer of organizers) {
