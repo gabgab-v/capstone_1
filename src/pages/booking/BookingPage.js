@@ -323,6 +323,18 @@ export default function BookingPage({ route, navigation }) {
 
     setLoading(true);
     try {
+      // Check for existing bookings to prevent duplicates
+      try {
+        const existingBookings = await get(`/api/bookings?eventId=${event.id}&userId=${user.id}`);
+        if (Array.isArray(existingBookings) && existingBookings.length > 0) {
+          Alert.alert("Already Booked", "You have already booked this event.");
+          return;
+        }
+      } catch (checkErr) {
+        console.warn("Could not check existing bookings, proceeding anyway:", checkErr);
+        // Proceed if check fails, but log it
+      }
+
       const latestEvent = await get(`/api/events/${event.id}`);
       const latestCapacity =
         Number.isFinite(Number(latestEvent?.maxParticipants)) && Number(latestEvent.maxParticipants) > 0
@@ -398,8 +410,11 @@ export default function BookingPage({ route, navigation }) {
       setBookingRequestKey(createIdempotencyKey());
     } catch (err) {
       console.error("Booking failed:", err);
+      console.error("Error status:", err.status);
+      console.error("Error body:", err.body);
+      console.error("Error message:", err.message);
       const errorMessage = err.body?.error || err.message || "Something went wrong while booking.";
-      Alert.alert("Booking Failed", errorMessage);
+      Alert.alert("Booking Failed", `${errorMessage} (Status: ${err.status || 'Unknown'})`);
       const shouldRotateKey = typeof err?.status === "number" ? err.status !== 0 : true;
       if (shouldRotateKey) {
         setBookingRequestKey(createIdempotencyKey());
