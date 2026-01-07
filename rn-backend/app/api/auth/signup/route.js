@@ -96,6 +96,24 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create user in authentication service.' }, { status: 500 });
     }
 
+    // Ensure the confirmation email is sent (Supabase can occasionally skip automatic sends for admin-initiated signups)
+    if (!authData.user.email_confirmed_at && typeof trimmedEmail === 'string' && trimmedEmail.length > 5) {
+      try {
+        const resendOptions = inferredRedirect ? { emailRedirectTo: inferredRedirect } : undefined;
+        const { error: resendError } = await supabaseAdmin.auth.resend({
+          type: 'signup',
+          email: trimmedEmail,
+          options: resendOptions,
+        });
+
+        if (resendError) {
+          console.error('Signup confirmation resend failed:', resendError);
+        }
+      } catch (resendErr) {
+        console.error('Signup confirmation resend threw error:', resendErr);
+      }
+    }
+
     // Step 2: Create the corresponding user profile in your Prisma database
     // We no longer store the password ourselves. Supabase handles that.
     const userProfile = await prisma.user.create({
