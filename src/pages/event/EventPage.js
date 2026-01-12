@@ -108,6 +108,268 @@ function formatDateTime(value) {
   return `${dateLabel} at ${timeLabel}`;
 }
 
+function formatEventDateTimeLabel(value) {
+  if (!value) {
+    return "time to be announced";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return "time to be announced";
+  }
+  const dateLabel = date.toLocaleDateString();
+  const timeLabel = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${dateLabel} at ${timeLabel}`;
+}
+
+function normalizeStatus(value) {
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+  return date.getTime();
+}
+
+function roundCoordinate(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return null;
+  }
+  return Math.round(numberValue * 10000) / 10000;
+}
+
+function buildLocationSignature(event) {
+  if (!event) {
+    return "unknown";
+  }
+  const name = normalizeText(event.locationName);
+  const lat = roundCoordinate(event.locationLatitude);
+  const lng = roundCoordinate(event.locationLongitude);
+  return `${name}|${lat ?? "x"}|${lng ?? "y"}`;
+}
+
+function getLocationLabelForNotification(event) {
+  if (!event) {
+    return "Location to follow";
+  }
+  const name = normalizeText(event.locationName);
+  if (name) {
+    return name;
+  }
+  const lat = roundCoordinate(event.locationLatitude);
+  const lng = roundCoordinate(event.locationLongitude);
+  if (lat === null || lng === null) {
+    return "Location to follow";
+  }
+  return `Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}`;
+}
+
+function buildRefundNoteForNotification(booking) {
+  const refundPercentage = normalizeNumber(booking?.refundPercentage);
+  const refundAmount = normalizeNumber(booking?.refundAmount);
+  const totalAmount = normalizeNumber(booking?.totalAmount);
+  const eventStatus = normalizeStatus(booking?.event?.status);
+
+  if (refundPercentage !== null) {
+    if (refundPercentage <= 0) {
+      return "No refund is available for this cancellation.";
+    }
+    if (refundAmount === null || refundAmount <= 0) {
+      return "This booking was free, so there is no payment to refund.";
+    }
+    return `Refund: ${formatCurrency(refundAmount)} (${Math.round(refundPercentage)}%).`;
+  }
+
+  if (eventStatus === "CANCELLED" && totalAmount && totalAmount > 0) {
+    return `Refund: ${formatCurrency(totalAmount)} (100%).`;
+  }
+
+  if (totalAmount && totalAmount > 0) {
+    return "Refunds follow the cancellation policy for this booking.";
+  }
+
+  return "This event was free, so no payment is due.";
+}
+
+function collectEventChangeLabels(previousEvent, nextEvent) {
+  if (!previousEvent || !nextEvent) {
+    return [];
+  }
+
+  const labels = [];
+
+  if (normalizeText(previousEvent.title) !== normalizeText(nextEvent.title)) {
+    labels.push("Title");
+  }
+  if (normalizeText(previousEvent.overview) !== normalizeText(nextEvent.overview)) {
+    labels.push("Overview");
+  }
+  if (normalizeText(previousEvent.itinerary) !== normalizeText(nextEvent.itinerary)) {
+    labels.push("Itinerary");
+  }
+  if (normalizeText(previousEvent.directions) !== normalizeText(nextEvent.directions)) {
+    labels.push("Directions");
+  }
+  if (normalizeNumber(previousEvent.price) !== normalizeNumber(nextEvent.price)) {
+    labels.push("Price");
+  }
+  if (normalizeText(previousEvent.difficulty) !== normalizeText(nextEvent.difficulty)) {
+    labels.push("Difficulty");
+  }
+  if (normalizeNumber(previousEvent.maxParticipants) !== normalizeNumber(nextEvent.maxParticipants)) {
+    labels.push("Capacity");
+  }
+  if (normalizeNumber(previousEvent.minAge) !== normalizeNumber(nextEvent.minAge)) {
+    labels.push("Age limit");
+  }
+  if (normalizeText(previousEvent.trailId) !== normalizeText(nextEvent.trailId)) {
+    labels.push("Trail");
+  }
+
+  const routeChanged =
+    normalizeNumber(previousEvent.distanceKm) !== normalizeNumber(nextEvent.distanceKm) ||
+    normalizeNumber(previousEvent.durationHrs) !== normalizeNumber(nextEvent.durationHrs) ||
+    normalizeNumber(previousEvent.steps) !== normalizeNumber(nextEvent.steps) ||
+    normalizeNumber(previousEvent.elevationM) !== normalizeNumber(nextEvent.elevationM);
+  if (routeChanged) {
+    labels.push("Route details");
+  }
+
+  return labels;
+}
+
+function buildEventUpdateNotification(previousBooking, nextBooking) {
+  const previousEvent = previousBooking?.event ?? null;
+  const nextEvent = nextBooking?.event ?? null;
+  if (!previousEvent || !nextEvent || !nextEvent.id) {
+    return null;
+  }
+
+  const previousStatus = normalizeStatus(previousEvent.status);
+  const nextStatus = normalizeStatus(nextEvent.status);
+  const eventTitle = normalizeText(nextEvent.title) || "An event you joined";
+
+  if (previousStatus !== nextStatus && nextStatus === "CANCELLED") {
+    const refundNote = buildRefundNoteForNotification(nextBooking);
+    return {
+      title: "Event cancelled",
+      body: `${eventTitle} has been cancelled. ${refundNote}`,
+      eventId: nextEvent.id,
+    };
+  }
+
+  const scheduleChanged =
+    toTimestamp(previousEvent.startsAt) !== toTimestamp(nextEvent.startsAt) ||
+    toTimestamp(previousEvent.endsAt) !== toTimestamp(nextEvent.endsAt);
+  const locationChanged =
+    buildLocationSignature(previousEvent) !== buildLocationSignature(nextEvent);
+  const otherChanges = collectEventChangeLabels(previousEvent, nextEvent);
+
+  if (!scheduleChanged && !locationChanged && otherChanges.length === 0) {
+    return null;
+  }
+
+  const summaryParts = [];
+  if (scheduleChanged) {
+    summaryParts.push(`New time: ${formatEventDateTimeLabel(nextEvent.startsAt)}`);
+  }
+  if (locationChanged) {
+    summaryParts.push(`New meeting point: ${getLocationLabelForNotification(nextEvent)}`);
+  }
+  if (otherChanges.length) {
+    const listed = otherChanges.slice(0, 3).join(", ");
+    const moreCount = otherChanges.length - 3;
+    summaryParts.push(
+      moreCount > 0 ? `Updated: ${listed} +${moreCount} more` : `Updated: ${listed}`,
+    );
+  }
+
+  const title = scheduleChanged || locationChanged ? "Event moved" : "Event updated";
+  const body = summaryParts.join(". ") + ".";
+
+  return {
+    title,
+    body,
+    eventId: nextEvent.id,
+  };
+}
+
+function buildBookingStatusNotification(previousBooking, nextBooking) {
+  const previousStatus = normalizeStatus(previousBooking?.status);
+  const nextStatus = normalizeStatus(nextBooking?.status);
+  if (!nextStatus || previousStatus === nextStatus) {
+    return null;
+  }
+
+  if (nextStatus === "CANCELLED") {
+    const eventTitle = normalizeText(nextBooking?.event?.title) || "Your booking";
+    const refundNote = buildRefundNoteForNotification(nextBooking);
+    return {
+      title: "Booking cancelled",
+      body: `${eventTitle} has been cancelled. ${refundNote}`,
+      eventId: nextBooking?.event?.id ?? null,
+    };
+  }
+
+  return null;
+}
+
+function buildBookingSnapshot(booking) {
+  const event = booking?.event ?? null;
+  if (!event || !event.id || !booking?.id) {
+    return null;
+  }
+
+  return {
+    id: booking.id,
+    status: normalizeStatus(booking.status),
+    refundPercentage: normalizeNumber(booking.refundPercentage),
+    refundAmount: normalizeNumber(booking.refundAmount),
+    refundPolicyLabel: normalizeText(booking.refundPolicyLabel),
+    totalAmount: normalizeNumber(booking.totalAmount),
+    event: {
+      id: event.id,
+      title: normalizeText(event.title),
+      overview: normalizeText(event.overview),
+      itinerary: normalizeText(event.itinerary),
+      directions: normalizeText(event.directions),
+      startsAt: event.startsAt ?? null,
+      endsAt: event.endsAt ?? null,
+      status: normalizeStatus(event.status),
+      locationName: event.locationName ?? null,
+      locationLatitude: event.locationLatitude ?? null,
+      locationLongitude: event.locationLongitude ?? null,
+      price: normalizeNumber(event.price),
+      difficulty: normalizeText(event.difficulty),
+      maxParticipants: normalizeNumber(event.maxParticipants),
+      minAge: normalizeNumber(event.minAge),
+      distanceKm: normalizeNumber(event.distanceKm),
+      durationHrs: normalizeNumber(event.durationHrs),
+      steps: normalizeNumber(event.steps),
+      elevationM: normalizeNumber(event.elevationM),
+      trailId: normalizeText(event.trailId),
+    },
+  };
+}
+
 function truncate(text, limit = 160) {
   if (typeof text !== "string") {
     return null;
@@ -814,6 +1076,8 @@ export default function EventsPage({ navigation }) {
   const hasLoadedRef = useRef(false);
   const notifiedCompletionIdsRef = useRef(new Set());
   const suggestionNotificationInFlightRef = useRef(false);
+  const bookingSnapshotRef = useRef(new Map());
+  const bookingSnapshotReadyRef = useRef(false);
   const insets = useSafeAreaInsets();
   const contentInsets = useMemo(
     () => ({
@@ -914,6 +1178,71 @@ export default function EventsPage({ navigation }) {
     [get, scheduleNotification],
   );
 
+  const maybeNotifyBookingUpdates = useCallback(
+    async (bookings) => {
+      if (!Array.isArray(bookings)) {
+        return;
+      }
+
+      const nextSnapshots = new Map();
+      const notifications = [];
+
+      bookings.forEach((booking) => {
+        const snapshot = buildBookingSnapshot(booking);
+        if (!snapshot) {
+          return;
+        }
+        nextSnapshots.set(snapshot.id, snapshot);
+
+        if (!bookingSnapshotReadyRef.current) {
+          return;
+        }
+
+        const previousSnapshot = bookingSnapshotRef.current.get(snapshot.id);
+        if (!previousSnapshot) {
+          return;
+        }
+
+        const eventNotification = buildEventUpdateNotification(previousSnapshot, snapshot);
+        if (eventNotification) {
+          notifications.push(eventNotification);
+        }
+
+        if (!eventNotification || eventNotification.title !== "Event cancelled") {
+          const bookingNotification = buildBookingStatusNotification(previousSnapshot, snapshot);
+          if (bookingNotification) {
+            notifications.push(bookingNotification);
+          }
+        }
+      });
+
+      bookingSnapshotRef.current = nextSnapshots;
+
+      if (!bookingSnapshotReadyRef.current) {
+        bookingSnapshotReadyRef.current = true;
+        return;
+      }
+
+      if (!notifications.length) {
+        return;
+      }
+
+      await Promise.all(
+        notifications.map((notice) =>
+          scheduleNotification({
+            title: notice.title,
+            body: notice.body,
+            data: {
+              type: "event-update",
+              eventId: notice.eventId ?? null,
+            },
+          }),
+        ),
+      );
+    },
+    [scheduleNotification],
+  );
+
   const sortedBookings = useMemo(() => {
     return [...bookedEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
   }, [bookedEvents]);
@@ -996,6 +1325,7 @@ export default function EventsPage({ navigation }) {
 
         const [bookingsData, eventsData] = await Promise.all([bookingsPromise, eventsPromise]);
 
+        await maybeNotifyBookingUpdates(bookingsData);
         setBookedEvents(Array.isArray(bookingsData) ? bookingsData : []);
 
         if (currentUser?.role === "ORGANIZER") {
@@ -1036,7 +1366,7 @@ export default function EventsPage({ navigation }) {
         setRefreshing(false);
       }
     },
-    []
+    [maybeNotifyBookingUpdates]
   );
 
   const handleRefresh = useCallback(() => {
@@ -1070,6 +1400,11 @@ export default function EventsPage({ navigation }) {
             ? prev.map((item) => (item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item))
             : prev,
         );
+        const updatedSnapshot = buildBookingSnapshot(updatedBooking);
+        if (updatedSnapshot) {
+          bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
+          bookingSnapshotReadyRef.current = true;
+        }
         const refundMessage = buildRefundMessage(updatedBooking);
         const baseMessage = "Your booking has been cancelled successfully.";
         const fullMessage = refundMessage ? `${baseMessage} ${refundMessage}` : baseMessage;
