@@ -42,6 +42,8 @@ const BASE_TABS = [
 const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#FFE4E6'];
 const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
 const INACTIVE_BOOKING_STATUSES = new Set(['CANCELLED', 'DECLINED', 'REJECTED']);
+const CANCELLATION_POLICY_SUMMARY =
+  'Free cancellation 24+ hours before start. 50% refund 2-24 hours. No refund under 2 hours.';
 const STRONG_MATCH_THRESHOLD = 0.75;
 const MIN_MATCH_DISPLAY_THRESHOLD = 0.15;
 const MATCH_THEMES = {
@@ -284,6 +286,8 @@ function getDetailRows(event, locationLabel) {
   if (Number.isFinite(minAge) && minAge > 0) {
     rows.push({ label: 'Minimum age', value: `${Math.round(minAge)}+` });
   }
+
+  rows.push({ label: 'Cancellation policy', value: CANCELLATION_POLICY_SUMMARY });
 
   rows.push({ label: 'Organizer', value: sanitizeText(event.organizer?.name) ?? 'Unknown organizer' });
 

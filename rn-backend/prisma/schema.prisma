@@ -147,6 +147,11 @@ model Booking {
   medicalCertificateUrl String?
   trailPolicyUrl String?
   experienceProofUrls String[] @default([])
+  cancelledAt DateTime?
+  refundAmount Float?
+  refundPercentage Int?
+  refundPolicyCode String?
+  refundPolicyLabel String?
   createdAt   DateTime @default(now())
   requestLogs BookingRequestLog[]
 }

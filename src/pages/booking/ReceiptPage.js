@@ -54,6 +54,26 @@ function getStatusMeta(status) {
   }
 }
 
+function buildRefundMessage(booking) {
+  const refundPercentage = Number(booking?.refundPercentage);
+  if (!Number.isFinite(refundPercentage)) {
+    return null;
+  }
+  if (refundPercentage <= 0) {
+    return "No refund is available for this cancellation.";
+  }
+  const refundAmount = Number(booking?.refundAmount);
+  if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+    return "This booking was free, so there is no payment to refund.";
+  }
+  const policyLabel =
+    typeof booking?.refundPolicyLabel === "string" && booking.refundPolicyLabel.trim().length
+      ? booking.refundPolicyLabel.trim()
+      : null;
+  const policySuffix = policyLabel ? ` ${policyLabel}.` : "";
+  return `Refund: ${formatAmount(refundAmount)} (${Math.round(refundPercentage)}%).${policySuffix}`;
+}
+
 export default function ReceiptPage({ route, navigation }) {
   const event = route?.params?.event ?? null;
   const booking = route?.params?.booking ?? null;
@@ -65,6 +85,10 @@ export default function ReceiptPage({ route, navigation }) {
   const isConfirmed = statusMeta.normalized === "CONFIRMED" || statusMeta.normalized === "APPROVED";
   const isRejected = statusMeta.normalized === "REJECTED" || statusMeta.normalized === "DECLINED";
   const isCancelled = statusMeta.normalized === "CANCELLED";
+  const refundMessage = useMemo(
+    () => (isCancelled ? buildRefundMessage(booking) : null),
+    [booking, isCancelled],
+  );
   const statusMessage = useMemo(() => {
     if (isConfirmed) {
       return "Attendance confirmed. See you on the trail!";
@@ -202,6 +226,12 @@ export default function ReceiptPage({ route, navigation }) {
         <Text style={[styles.statusBannerText, { color: statusMeta.color }]}>{statusMessage}</Text>
       </View>
 
+      {refundMessage ? (
+        <View style={styles.refundBanner}>
+          <Text style={styles.refundText}>{refundMessage}</Text>
+        </View>
+      ) : null}
+
       <TouchableOpacity
         style={styles.okBtn}
         onPress={() => navigation.navigate("MainTabs")}
@@ -302,6 +332,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   statusBannerText: { fontSize: 13, fontWeight: "600", textAlign: "center" },
+  refundBanner: {
+    width: "100%",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: "#fff7ed",
+    borderColor: "#fed7aa",
+    marginBottom: 18,
+  },
+  refundText: { fontSize: 13, fontWeight: "600", textAlign: "center", color: "#9a3412" },
   okBtn: {
     backgroundColor: "#047857",
     paddingVertical: 16,

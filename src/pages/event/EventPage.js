@@ -66,6 +66,35 @@ function formatPrice(value) {
   return `PHP ${amount.toLocaleString()}`;
 }
 
+function formatCurrency(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return "PHP 0";
+  }
+  return `PHP ${Math.max(0, amount).toLocaleString()}`;
+}
+
+function buildRefundMessage(booking) {
+  const refundPercentage = Number(booking?.refundPercentage);
+  if (!Number.isFinite(refundPercentage)) {
+    return "";
+  }
+  if (refundPercentage <= 0) {
+    return "No refund is available for this cancellation.";
+  }
+  const refundAmount = Number(booking?.refundAmount);
+  if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+    return "This booking was free, so there is no payment to refund.";
+  }
+  const amountLabel = formatCurrency(refundAmount);
+  const policyLabel =
+    typeof booking?.refundPolicyLabel === "string" && booking.refundPolicyLabel.trim().length
+      ? booking.refundPolicyLabel.trim()
+      : null;
+  const policySuffix = policyLabel ? ` ${policyLabel}.` : "";
+  return `Refund: ${amountLabel} (${Math.round(refundPercentage)}%).${policySuffix}`;
+}
+
 function formatDateTime(value) {
   if (!value) {
     return "Booked date pending";
@@ -1041,7 +1070,10 @@ export default function EventsPage({ navigation }) {
             ? prev.map((item) => (item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item))
             : prev,
         );
-        Alert.alert("Booking cancelled", "Your booking has been cancelled successfully.");
+        const refundMessage = buildRefundMessage(updatedBooking);
+        const baseMessage = "Your booking has been cancelled successfully.";
+        const fullMessage = refundMessage ? `${baseMessage} ${refundMessage}` : baseMessage;
+        Alert.alert("Booking cancelled", fullMessage);
       } catch (error) {
         const message =
           error?.body?.error ||

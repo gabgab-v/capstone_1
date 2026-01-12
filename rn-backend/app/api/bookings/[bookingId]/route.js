@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 import { isChatEligibleStatus, syncEventGroupConversation } from "@/lib/conversations";
+import { buildCancellationOutcome } from "@/lib/cancellationPolicy";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED"]);
@@ -69,21 +70,33 @@ export async function PUT(req, { params }) {
       );
     }
 
-    if (
-      isBookingOwner &&
-      normalizedStatus === "CANCELLED" &&
-      (currentStatus === "APPROVED" || currentStatus === "CONFIRMED")
-    ) {
+    if (isBookingOwner && normalizedStatus === "CANCELLED" && currentStatus === "CANCELLED") {
       return NextResponse.json(
-        { error: "Approved bookings can no longer be cancelled." },
+        { error: "This booking has already been cancelled." },
         { status: 409 },
       );
+    }
+
+    const cancellationData = {};
+    if (isBookingOwner && normalizedStatus === "CANCELLED") {
+      const cancelledAt = new Date();
+      const cancellationOutcome = buildCancellationOutcome({
+        startsAt: bookingToUpdate.event?.startsAt,
+        cancelledAt,
+        totalAmount: bookingToUpdate.totalAmount,
+      });
+
+      cancellationData.cancelledAt = cancelledAt;
+      cancellationData.refundAmount = cancellationOutcome.refundAmount;
+      cancellationData.refundPercentage = cancellationOutcome.refundPercentage;
+      cancellationData.refundPolicyCode = cancellationOutcome.policyCode;
+      cancellationData.refundPolicyLabel = cancellationOutcome.policyLabel;
     }
 
     // 5. Update the booking's status in the database
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: normalizedStatus },
+      data: { status: normalizedStatus, ...cancellationData },
       include: {
         user: { select: { id: true, name: true, email: true } },
         event: { select: { id: true, title: true, organizerId: true } },
