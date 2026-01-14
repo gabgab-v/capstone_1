@@ -49,6 +49,8 @@ function getStatusMeta(status) {
       return { label: "Rejected", color: "#b91c1c", normalized };
     case "CANCELLED":
       return { label: "Cancelled", color: "#b45309", normalized };
+    case "RESCHEDULE_REQUESTED":
+      return { label: "Reschedule requested", color: "#d97706", normalized };
     default:
       return { label: "Pending", color: "#1d4ed8", normalized: normalized || "PENDING" };
   }

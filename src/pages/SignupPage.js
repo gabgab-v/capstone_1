@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
@@ -38,6 +39,7 @@ export default function SignupPage({ navigation }) {
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasAcceptedPolicies, setHasAcceptedPolicies] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(true);
   const [visitedTrail, setVisitedTrail] = useState(null);
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
 
@@ -77,6 +79,16 @@ export default function SignupPage({ navigation }) {
     navigation.navigate('LegalDocument', { documentKey });
   };
 
+  const handleAcceptTerms = () => {
+    setHasAcceptedPolicies(true);
+    setShowTermsModal(false);
+  };
+
+  const handleDeclineTerms = () => {
+    setShowTermsModal(false);
+    navigation.goBack();
+  };
+
   const handleToggleBirthdayPicker = () => {
     setShowBirthdayPicker(true);
   };
@@ -110,6 +122,7 @@ export default function SignupPage({ navigation }) {
       return;
     }
     if (!hasAcceptedPolicies) {
+      setShowTermsModal(true);
       Alert.alert('Hold on', 'Please review and accept the terms before creating an account.');
       return;
     }
@@ -202,6 +215,55 @@ export default function SignupPage({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
     >
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showTermsModal}
+        onRequestClose={() => {}}
+      >
+        <View className="flex-1 items-center justify-center bg-black/60 px-6">
+          <View className="w-full rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <Text className="text-lg font-semibold text-gray-900 dark:text-white">Before you sign up</Text>
+            <Text className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Please review and accept our terms so we can collect your registration details.
+            </Text>
+            <View className="mt-4 space-y-2">
+              <Text className="text-sm text-slate-600 dark:text-slate-300">
+                Read our{' '}
+                <Text
+                  className="font-semibold text-green-700 dark:text-green-300"
+                  onPress={() => handleOpenLegal('terms')}
+                >
+                  Terms of Use
+                </Text>
+                ,{' '}
+                <Text
+                  className="font-semibold text-green-700 dark:text-green-300"
+                  onPress={() => handleOpenLegal('privacy')}
+                >
+                  Privacy Notice
+                </Text>
+                , and{' '}
+                <Text
+                  className="font-semibold text-green-700 dark:text-green-300"
+                  onPress={() => handleOpenLegal('eula')}
+                >
+                  End User License Agreement
+                </Text>
+                .
+              </Text>
+            </View>
+            <View className="mt-6 flex-row items-center justify-end">
+              <TouchableOpacity className="mr-3 px-4 py-2" onPress={handleDeclineTerms}>
+                <Text className="text-sm font-semibold text-slate-500 dark:text-slate-300">Not now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity className="rounded-xl bg-green-700 px-4 py-2" onPress={handleAcceptTerms}>
+                <Text className="text-sm font-semibold text-white">I agree</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}

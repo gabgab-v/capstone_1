@@ -52,7 +52,7 @@ const supabaseStorageClient =
     ? createClient(supabaseUrl, supabaseServiceKey)
     : null;
 
-const ACTIVE_BOOKING_STATUSES = new Set(["PENDING", "APPROVED", "CONFIRMED"]);
+const ACTIVE_BOOKING_STATUSES = new Set(["PENDING", "APPROVED", "CONFIRMED", "RESCHEDULE_REQUESTED"]);
 const RATE_LIMIT_MAX_REQUESTS = 5;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const IDEMPOTENCY_KEY_HEADER = "idempotency-key";

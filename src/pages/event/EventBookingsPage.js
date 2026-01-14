@@ -42,6 +42,8 @@ function getBookingStatusMeta(status) {
       return { label: "Rejected", color: "#B91C1C", normalized };
     case "CANCELLED":
       return { label: "Cancelled", color: "#B45309", normalized };
+    case "RESCHEDULE_REQUESTED":
+      return { label: "Reschedule requested", color: "#D97706", normalized };
     default:
       return { label: "Pending", color: "#1D4ED8", normalized: normalized || "PENDING" };
   }
@@ -66,6 +68,7 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
     REJECTED: "#FEE2E2",
     DECLINED: "#FEE2E2",
     CANCELLED: "#FEF3C7",
+    RESCHEDULE_REQUESTED: "#FEF3C7",
     DEFAULT: "#DBEAFE",
   };
   const statusBackground = statusBackgroundMap[normalizedStatus] ?? statusBackgroundMap.DEFAULT;
@@ -119,6 +122,14 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
 
   const bookingUserId = booking?.user?.id ?? booking?.userId ?? null;
   const canViewProfile = typeof onViewProfile === "function" && Boolean(bookingUserId);
+  const cancellationReason =
+    typeof booking?.cancellationReason === "string" && booking.cancellationReason.trim().length
+      ? booking.cancellationReason.trim()
+      : null;
+  const rescheduleReason =
+    typeof booking?.rescheduleReason === "string" && booking.rescheduleReason.trim().length
+      ? booking.rescheduleReason.trim()
+      : null;
 
   const actionButtons = [];
   if (!isApproved) {
@@ -155,6 +166,12 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
       ) : null}
       <Text style={styles.amountLabel}>Paid: {formatAmount(booking?.totalAmount)}</Text>
       <Text style={styles.referenceLabel}>Reference: {booking?.id}</Text>
+      {rescheduleReason ? (
+        <Text style={styles.reasonText}>Reschedule reason: {rescheduleReason}</Text>
+      ) : null}
+      {cancellationReason ? (
+        <Text style={styles.reasonText}>Cancellation reason: {cancellationReason}</Text>
+      ) : null}
       <View style={styles.statusRow}>
         <Text style={styles.statusLabel}>Status</Text>
         <View
@@ -310,6 +327,7 @@ const styles = StyleSheet.create({
   profileLinkText: { fontSize: 12, fontWeight: "600", color: "#1d4ed8" },
   amountLabel: { fontSize: 14, fontWeight: "600", color: "#047857" },
   referenceLabel: { fontSize: 12, color: "#6b7280", marginTop: 4 },
+  reasonText: { fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 18 },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",

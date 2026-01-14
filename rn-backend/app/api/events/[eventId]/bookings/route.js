@@ -132,7 +132,15 @@ export async function GET(request, { params }) {
         const canViewReceipt = isOrganizer || booking.userId === currentUserId;
         const canViewPersonalData =
           canViewReceipt || PUBLIC_BOOKING_STATUSES.has(normalizedStatus);
-        const { paymentUrl, totalAmount, userId, user: bookingUser } = booking;
+        const {
+          paymentUrl,
+          totalAmount,
+          userId,
+          user: bookingUser,
+          cancellationReason,
+          rescheduleReason,
+          rescheduleRequestedAt,
+        } = booking;
 
         const safeUser = canViewPersonalData
           ? bookingUser
@@ -151,6 +159,9 @@ export async function GET(request, { params }) {
           userId: canViewPersonalData ? userId : null,
           totalAmount: canViewReceipt ? totalAmount : null,
           paymentUrl: canViewReceipt ? paymentUrl : null,
+          cancellationReason: canViewReceipt ? cancellationReason : null,
+          rescheduleReason: canViewReceipt ? rescheduleReason : null,
+          rescheduleRequestedAt: canViewReceipt ? rescheduleRequestedAt : null,
           user: safeUser,
         };
       });

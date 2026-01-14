@@ -148,10 +148,13 @@ model Booking {
   trailPolicyUrl String?
   experienceProofUrls String[] @default([])
   cancelledAt DateTime?
+  cancellationReason String?
   refundAmount Float?
   refundPercentage Int?
   refundPolicyCode String?
   refundPolicyLabel String?
+  rescheduleRequestedAt DateTime?
+  rescheduleReason String?
   createdAt   DateTime @default(now())
   requestLogs BookingRequestLog[]
 }

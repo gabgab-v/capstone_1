@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -39,6 +40,7 @@ const BOOKING_STATUS_FILTER_OPTIONS = [
   { value: "COMPLETED", label: "Completed" },
   { value: "DECLINED", label: "Declined" },
   { value: "CANCELLED", label: "Cancelled" },
+  { value: "RESCHEDULE_REQUESTED", label: "Reschedule requested" },
 ];
 
 function useEventStyles() {
@@ -653,6 +655,8 @@ function getStatusStyles(status) {
     case "CONFIRMED":
     case "APPROVED":
       return { backgroundColor: "#DCFCE7", color: "#166534", label: normalized };
+    case "RESCHEDULE_REQUESTED":
+      return { backgroundColor: "#FEF3C7", color: "#B45309", label: "RESCHEDULE REQUESTED" };
     case "DECLINED":
     case "CANCELLED":
       return { backgroundColor: "#FEE2E2", color: "#991B1B", label: normalized };
@@ -716,7 +720,14 @@ function AttendeeRow({ attendee, index }) {
   );
 }
 
-function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
+function BookingCard({
+  booking,
+  onOpenEvent,
+  onCancelBooking,
+  onRescheduleBooking,
+  isCancelling,
+  isRescheduling,
+}) {
   const { styles } = useEventStyles();
   const event = booking?.event ?? null;
   const bannerSource = event?.imageUrl ? { uri: event.imageUrl } : { uri: EVENT_IMAGE_PLACEHOLDER };
@@ -729,7 +740,12 @@ function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
   const bookedAtLabel = formatDateTime(booking?.createdAt);
   const normalizedStatus =
     typeof booking?.status === "string" ? booking.status.toUpperCase() : "PENDING";
-  const canCancel = normalizedStatus === "PENDING" && typeof onCancelBooking === "function";
+  const canCancel =
+    !["CANCELLED", "DECLINED", "REJECTED", "COMPLETED"].includes(normalizedStatus) &&
+    typeof onCancelBooking === "function";
+  const canReschedule =
+    ["PENDING", "APPROVED", "CONFIRMED"].includes(normalizedStatus) &&
+    typeof onRescheduleBooking === "function";
 
   return (
     <View style={styles.card}>
@@ -777,6 +793,20 @@ function BookingCard({ booking, onOpenEvent, onCancelBooking, isCancelling }) {
         >
           <Text style={styles.primaryButtonText}>View Event Details</Text>
         </TouchableOpacity>
+        {canReschedule ? (
+          <TouchableOpacity
+            style={[styles.rescheduleButton, isRescheduling ? styles.cancelButtonDisabled : null]}
+            activeOpacity={0.85}
+            onPress={() => onRescheduleBooking(booking)}
+            disabled={isRescheduling}
+          >
+            {isRescheduling ? (
+              <ActivityIndicator size="small" color="#B45309" />
+            ) : (
+              <Text style={styles.rescheduleButtonText}>Request Reschedule</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
         {canCancel ? (
           <TouchableOpacity
             style={[styles.cancelButton, isCancelling ? styles.cancelButtonDisabled : null]}
@@ -1066,12 +1096,17 @@ export default function EventsPage({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
+  const [reschedulingBookingId, setReschedulingBookingId] = useState(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [activeTab, setActiveTab] = useState(TAB_BOOKINGS);
   const [searchQuery, setSearchQuery] = useState("");
   const [bookingStatusFilter, setBookingStatusFilter] = useState("ALL");
   const [hostStatusFilter, setHostStatusFilter] = useState("ALL");
   const [deletingEventId, setDeletingEventId] = useState(null);
+  const [reasonModalVisible, setReasonModalVisible] = useState(false);
+  const [reasonAction, setReasonAction] = useState(null);
+  const [reasonBooking, setReasonBooking] = useState(null);
+  const [reasonText, setReasonText] = useState("");
 
   const hasLoadedRef = useRef(false);
   const notifiedCompletionIdsRef = useRef(new Set());
@@ -1386,63 +1421,95 @@ export default function EventsPage({ navigation }) {
     [navigation]
   );
 
-  const cancelBooking = useCallback(
-    async (bookingId) => {
-      if (!bookingId) {
-        return;
-      }
+  const openReasonModal = useCallback((action, booking) => {
+    if (!booking?.id) {
+      return;
+    }
+    setReasonAction(action);
+    setReasonBooking(booking);
+    setReasonText("");
+    setReasonModalVisible(true);
+  }, []);
 
-      setCancellingBookingId(bookingId);
-      try {
-        const updatedBooking = await put(`/api/bookings/${bookingId}`, { status: "CANCELLED" });
-        setBookedEvents((prev) =>
-          Array.isArray(prev)
-            ? prev.map((item) => (item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item))
-            : prev,
-        );
-        const updatedSnapshot = buildBookingSnapshot(updatedBooking);
-        if (updatedSnapshot) {
-          bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
-          bookingSnapshotReadyRef.current = true;
-        }
+  const closeReasonModal = useCallback(() => {
+    setReasonModalVisible(false);
+    setReasonAction(null);
+    setReasonBooking(null);
+    setReasonText("");
+  }, []);
+
+  const submitBookingUpdate = useCallback(async () => {
+    if (!reasonBooking?.id || !reasonAction) {
+      return;
+    }
+
+    const trimmedReason = reasonText.trim();
+    if (!trimmedReason.length) {
+      Alert.alert("Reason required", "Please share a short reason for this request.");
+      return;
+    }
+
+    const targetStatus =
+      reasonAction === "reschedule" ? "RESCHEDULE_REQUESTED" : "CANCELLED";
+    const setLoading =
+      targetStatus === "CANCELLED" ? setCancellingBookingId : setReschedulingBookingId;
+    const errorTitle =
+      targetStatus === "CANCELLED" ? "Cancellation failed" : "Reschedule failed";
+
+    setLoading(reasonBooking.id);
+    try {
+      const updatedBooking = await put(`/api/bookings/${reasonBooking.id}`, {
+        status: targetStatus,
+        reason: trimmedReason,
+      });
+      setBookedEvents((prev) =>
+        Array.isArray(prev)
+          ? prev.map((item) =>
+              item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item,
+            )
+          : prev,
+      );
+      const updatedSnapshot = buildBookingSnapshot(updatedBooking);
+      if (updatedSnapshot) {
+        bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
+        bookingSnapshotReadyRef.current = true;
+      }
+      closeReasonModal();
+
+      if (targetStatus === "CANCELLED") {
         const refundMessage = buildRefundMessage(updatedBooking);
         const baseMessage = "Your booking has been cancelled successfully.";
         const fullMessage = refundMessage ? `${baseMessage} ${refundMessage}` : baseMessage;
         Alert.alert("Booking cancelled", fullMessage);
-      } catch (error) {
-        const message =
-          error?.body?.error ||
-          error?.message ||
-          "We couldn't cancel your booking right now. Please try again.";
-        Alert.alert("Cancellation failed", message);
-      } finally {
-        setCancellingBookingId(null);
+      } else {
+        Alert.alert(
+          "Reschedule requested",
+          "We've sent your reschedule request to the organizer. They'll follow up with next steps.",
+        );
       }
-    },
-    [],
-  );
+    } catch (error) {
+      const message =
+        error?.body?.error ||
+        error?.message ||
+        "We couldn't update your booking right now. Please try again.";
+      Alert.alert(errorTitle, message);
+    } finally {
+      setLoading(null);
+    }
+  }, [reasonAction, reasonBooking, reasonText, closeReasonModal, put]);
 
   const handleCancelBooking = useCallback(
     (booking) => {
-      if (!booking?.id) {
-        return;
-      }
-
-      Alert.alert(
-        "Cancel booking?",
-        "This will release your spot for other hikers. You can book again if slots remain open.",
-        [
-          { text: "Keep Booking", style: "cancel" },
-          {
-            text: "Cancel Booking",
-            style: "destructive",
-            onPress: () => cancelBooking(booking.id),
-          },
-        ],
-        { cancelable: true },
-      );
+      openReasonModal("cancel", booking);
     },
-    [cancelBooking],
+    [openReasonModal],
+  );
+
+  const handleRescheduleBooking = useCallback(
+    (booking) => {
+      openReasonModal("reschedule", booking);
+    },
+    [openReasonModal],
   );
 
   const handleChangeStatus = useCallback(
@@ -1601,6 +1668,17 @@ export default function EventsPage({ navigation }) {
     sortedBookings.length > 0 && filteredBookings.length === 0;
   const showFilteredHostedEmptyState =
     sortedCreatedEvents.length > 0 && filteredHostedEvents.length === 0;
+  const isReasonSubmitting =
+    (reasonAction === "cancel" && cancellingBookingId === (reasonBooking?.id ?? null)) ||
+    (reasonAction === "reschedule" && reschedulingBookingId === (reasonBooking?.id ?? null));
+  const reasonModalTitle =
+    reasonAction === "reschedule" ? "Request reschedule" : "Cancel booking";
+  const reasonModalCopy =
+    reasonAction === "reschedule"
+      ? "Tell the organizer why you need to move your booking."
+      : "Let the organizer know why you're cancelling.";
+  const reasonActionLabel =
+    reasonAction === "reschedule" ? "Send request" : "Cancel booking";
 
   useFocusEffect(
     useCallback(() => {
@@ -1747,7 +1825,9 @@ export default function EventsPage({ navigation }) {
                 booking={booking}
                 onOpenEvent={handleOpenEvent}
                 onCancelBooking={handleCancelBooking}
+                onRescheduleBooking={handleRescheduleBooking}
                 isCancelling={cancellingBookingId === (booking?.id || null)}
+                isRescheduling={reschedulingBookingId === (booking?.id || null)}
               />
             ))
           ) : showFilteredBookingsEmptyState ? (
@@ -1808,6 +1888,50 @@ export default function EventsPage({ navigation }) {
         </View>
       ) : null}
       </ScrollView>
+      <Modal
+        visible={reasonModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeReasonModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{reasonModalTitle}</Text>
+            <Text style={styles.modalSubtitle}>{reasonModalCopy}</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={reasonText}
+              onChangeText={setReasonText}
+              placeholder="Share a short reason"
+              placeholderTextColor={placeholderColor}
+              autoCorrect={false}
+              multiline
+              maxLength={500}
+              editable={!isReasonSubmitting}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalButtonSecondary}
+                onPress={closeReasonModal}
+                disabled={isReasonSubmitting}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButtonPrimary, isReasonSubmitting ? styles.modalButtonDisabled : null]}
+                onPress={submitBookingUpdate}
+                disabled={isReasonSubmitting}
+              >
+                {isReasonSubmitting ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>{reasonActionLabel}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2102,6 +2226,16 @@ function createStyles(theme) {
       alignItems: "center",
     },
     primaryButtonText: { color: theme.textInverse, fontSize: 14, fontWeight: "700" },
+    rescheduleButton: {
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: "#F59E0B",
+      backgroundColor: "#FFFBEB",
+      paddingVertical: 12,
+      borderRadius: 10,
+      alignItems: "center",
+    },
+    rescheduleButtonText: { color: "#B45309", fontSize: 14, fontWeight: "700" },
     cancelButton: {
       marginTop: 10,
       borderWidth: 1,
@@ -2169,6 +2303,56 @@ function createStyles(theme) {
     secondaryButtonDisabled: { opacity: 0.6 },
     secondaryButtonText: { marginLeft: 8, color: theme.accent, fontSize: 13, fontWeight: "600" },
     secondaryButtonTextAlt: { color: theme.textInverse },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(15, 23, 42, 0.5)",
+      justifyContent: "center",
+      padding: 20,
+    },
+    modalCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 16,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    modalTitle: { fontSize: 18, fontWeight: "700", color: theme.textPrimary, marginBottom: 6 },
+    modalSubtitle: { fontSize: 13, color: theme.textSecondary, marginBottom: 14 },
+    modalInput: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      minHeight: 90,
+      color: theme.textPrimary,
+      textAlignVertical: "top",
+      backgroundColor: theme.surfaceMuted,
+    },
+    modalActions: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 16,
+    },
+    modalButtonSecondary: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: "center",
+      marginRight: 10,
+    },
+    modalButtonSecondaryText: { fontSize: 14, fontWeight: "600", color: theme.textPrimary },
+    modalButtonPrimary: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 10,
+      backgroundColor: theme.accent,
+      alignItems: "center",
+    },
+    modalButtonPrimaryText: { fontSize: 14, fontWeight: "700", color: theme.textInverse },
+    modalButtonDisabled: { opacity: 0.7 },
   });
 }
 

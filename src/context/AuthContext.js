@@ -1,20 +1,40 @@
-import React, { createContext, useCallback, useEffect, useState, useContext } from 'react';
+import React, { createContext, useCallback, useEffect, useState, useContext, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { get } from '../lib/api';
+import { ApiError, get } from '../lib/api';
 
 const AuthContext = createContext(null);
+
+const emailNotConfirmedFallback = 'Please confirm your email before logging in.';
+
+function resolveEmailNotConfirmedMessage(error) {
+  if (!error || typeof error !== 'object') return null;
+  const status = error.status;
+  const code = error?.body?.code;
+  if (status === 403 && code === 'EMAIL_NOT_CONFIRMED') {
+    const message = typeof error.message === 'string' ? error.message.trim() : '';
+    return message || emailNotConfirmedFallback;
+  }
+  return null;
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingMfa, setPendingMfa] = useState(null); // { factorId, challengeId, factors }
+  const profileErrorRef = useRef(null);
 
   const fetchUserProfile = useCallback(async () => {
     try {
       const profile = await get('/api/users/me');
+      profileErrorRef.current = null;
       setUser(profile);
       return profile;
     } catch (error) {
+      if (error instanceof ApiError) {
+        profileErrorRef.current = error;
+      } else {
+        profileErrorRef.current = null;
+      }
       console.error('Error fetching user profile:', error);
       setUser(null);
       return null;
@@ -88,6 +108,12 @@ export const AuthProvider = ({ children }) => {
 
       const profile = await fetchUserProfile();
       if (!profile) {
+        const emailMessage = resolveEmailNotConfirmedMessage(profileErrorRef.current);
+        if (emailMessage) {
+          await supabase.auth.signOut();
+          setPendingMfa(null);
+          return 'email_unverified';
+        }
         return 'profile_error';
       }
       setPendingMfa(null);
@@ -116,7 +142,10 @@ export const AuthProvider = ({ children }) => {
       const profile = await fetchUserProfile();
       if (!profile) {
         await supabase.auth.signOut();
-        throw new Error('Verification succeeded, but we could not load your profile. Please try again.');
+        const emailMessage = resolveEmailNotConfirmedMessage(profileErrorRef.current);
+        throw new Error(
+          emailMessage || 'Verification succeeded, but we could not load your profile. Please try again.',
+        );
       }
       return true;
     },
@@ -166,9 +195,18 @@ export const AuthProvider = ({ children }) => {
       const session = data?.session ?? (await supabase.auth.getSession())?.data?.session ?? null;
       const status = await handleSessionChange(session);
 
+      if (status === 'email_unverified') {
+        const emailMessage = resolveEmailNotConfirmedMessage(profileErrorRef.current);
+        return { error: new Error(emailMessage || emailNotConfirmedFallback) };
+      }
+
       if (status === 'profile_error') {
         await supabase.auth.signOut();
-        return { error: new Error('Signed in, but failed to load your profile. Please try again.') };
+        const message =
+          typeof profileErrorRef.current?.message === 'string' && profileErrorRef.current.message.trim()
+            ? profileErrorRef.current.message.trim()
+            : 'Signed in, but failed to load your profile. Please try again.';
+        return { error: new Error(message) };
       }
 
       if (status === 'signed_out') {

@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const emailRedirectTo = process.env.SUPABASE_EMAIL_CONFIRM_REDIRECT_TO || null;
+const supabaseAdmin =
+  supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+    : null;
 
 const userSelect = {
   id: true,
@@ -118,11 +129,79 @@ const userSelect = {
   organizerTrustTier: true,
 };
 
+async function ensureEmailVerified(authUser) {
+  if (!authUser || authUser.emailVerifiedAt) {
+    return null;
+  }
+
+  if (!supabaseAdmin) {
+    console.error('Supabase admin client is not configured for email verification checks.');
+    return NextResponse.json({ message: 'Auth service unavailable.' }, { status: 503 });
+  }
+
+  if (!authUser.supabaseUserId) {
+    console.error('Missing Supabase user id for email verification checks.');
+    return NextResponse.json({ message: 'Auth lookup failed. Please try again shortly.' }, { status: 503 });
+  }
+
+  const { data: supaUserResult, error: supaUserError } = await supabaseAdmin.auth.admin.getUserById(
+    authUser.supabaseUserId,
+  );
+
+  if (supaUserError) {
+    console.error('Failed to fetch Supabase user for email verification:', supaUserError);
+    return NextResponse.json({ message: 'Auth lookup failed. Please try again shortly.' }, { status: 503 });
+  }
+
+  const supabaseUser = supaUserResult?.user || null;
+  const emailConfirmedAt = supabaseUser?.email_confirmed_at
+    ? new Date(supabaseUser.email_confirmed_at)
+    : null;
+
+  if (!emailConfirmedAt) {
+    if (authUser.email) {
+      const { error: resendError } = await supabaseAdmin.auth.resend({
+        type: 'signup',
+        email: authUser.email,
+        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      });
+
+      if (resendError) {
+        console.error('Failed to resend confirmation email:', resendError);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        message: 'Please confirm your email before logging in. We just sent you a new confirmation link.',
+        code: 'EMAIL_NOT_CONFIRMED',
+      },
+      { status: 403 },
+    );
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: authUser.id },
+      data: { emailVerifiedAt: emailConfirmedAt },
+    });
+  } catch (error) {
+    console.error('Failed to backfill email verification timestamp:', error);
+  }
+
+  return null;
+}
+
 export async function GET(request) {
   try {
     const authUser = await getUserFromToken(request);
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const verificationResponse = await ensureEmailVerified(authUser);
+    if (verificationResponse) {
+      return verificationResponse;
     }
 
     let dbUser =

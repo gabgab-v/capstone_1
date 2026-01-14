@@ -5,7 +5,8 @@ import { isChatEligibleStatus, syncEventGroupConversation } from "@/lib/conversa
 import { buildCancellationOutcome } from "@/lib/cancellationPolicy";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
-const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED"]);
+const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED", "RESCHEDULE_REQUESTED"]);
+const MAX_REASON_LENGTH = 500;
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -18,8 +19,12 @@ export async function PUT(req, { params }) {
 
     // 2. Get the bookingId from the URL and the new status from the request body
     const { bookingId } = params;
-    const { status } = await req.json();
+    const { status, reason } = await req.json();
     const normalizedStatus = typeof status === "string" ? status.toUpperCase() : "";
+    const normalizedReason =
+      typeof reason === "string" && reason.trim().length
+        ? reason.trim().slice(0, MAX_REASON_LENGTH)
+        : null;
 
     if (!normalizedStatus) {
       return NextResponse.json({ error: "Booking status is required." }, { status: 400 });
@@ -77,7 +82,23 @@ export async function PUT(req, { params }) {
       );
     }
 
+    if (isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
+      if (currentStatus === "CANCELLED") {
+        return NextResponse.json(
+          { error: "Cancelled bookings cannot be rescheduled." },
+          { status: 409 },
+        );
+      }
+      if (currentStatus === "RESCHEDULE_REQUESTED") {
+        return NextResponse.json(
+          { error: "Reschedule has already been requested for this booking." },
+          { status: 409 },
+        );
+      }
+    }
+
     const cancellationData = {};
+    const rescheduleData = {};
     if (isBookingOwner && normalizedStatus === "CANCELLED") {
       const cancelledAt = new Date();
       const cancellationOutcome = buildCancellationOutcome({
@@ -87,16 +108,24 @@ export async function PUT(req, { params }) {
       });
 
       cancellationData.cancelledAt = cancelledAt;
+      cancellationData.cancellationReason = normalizedReason;
       cancellationData.refundAmount = cancellationOutcome.refundAmount;
       cancellationData.refundPercentage = cancellationOutcome.refundPercentage;
       cancellationData.refundPolicyCode = cancellationOutcome.policyCode;
       cancellationData.refundPolicyLabel = cancellationOutcome.policyLabel;
+      cancellationData.rescheduleRequestedAt = null;
+      cancellationData.rescheduleReason = null;
+    }
+
+    if (isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
+      rescheduleData.rescheduleRequestedAt = new Date();
+      rescheduleData.rescheduleReason = normalizedReason;
     }
 
     // 5. Update the booking's status in the database
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: normalizedStatus, ...cancellationData },
+      data: { status: normalizedStatus, ...cancellationData, ...rescheduleData },
       include: {
         user: { select: { id: true, name: true, email: true } },
         event: { select: { id: true, title: true, organizerId: true } },
