@@ -1,23 +1,8 @@
-const CANCELLATION_POLICY = [
-  {
-    minHoursBeforeStart: 24,
-    refundPercentage: 100,
-    policyCode: "FULL_24_HOURS",
-    label: "Full refund (24+ hours before start)",
-  },
-  {
-    minHoursBeforeStart: 2,
-    refundPercentage: 50,
-    policyCode: "PARTIAL_2_HOURS",
-    label: "50% refund (2-24 hours before start)",
-  },
-  {
-    minHoursBeforeStart: 0,
-    refundPercentage: 0,
-    policyCode: "NO_REFUND",
-    label: "No refund (under 2 hours before start)",
-  },
-];
+const NON_REFUNDABLE_POLICY = {
+  refundPercentage: 0,
+  policyCode: "NON_REFUNDABLE",
+  label: "Non-refundable booking",
+};
 
 function normalizeDate(value) {
   if (!value) {
@@ -46,10 +31,10 @@ export function buildCancellationOutcome({ startsAt, cancelledAt, totalAmount })
 
   if (!normalizedStart) {
     return {
-      refundPercentage: 100,
-      refundAmount: roundCurrency(validAmount),
-      policyCode: "FULL_UNSCHEDULED",
-      policyLabel: "Full refund (event time pending)",
+      refundPercentage: NON_REFUNDABLE_POLICY.refundPercentage,
+      refundAmount: 0,
+      policyCode: NON_REFUNDABLE_POLICY.policyCode,
+      policyLabel: NON_REFUNDABLE_POLICY.label,
       hoursBeforeStart: null,
     };
   }
@@ -58,17 +43,14 @@ export function buildCancellationOutcome({ startsAt, cancelledAt, totalAmount })
     0,
     (normalizedStart.getTime() - normalizedCancel.getTime()) / (1000 * 60 * 60),
   );
-  const tier =
-    CANCELLATION_POLICY.find((rule) => hoursBeforeStart >= rule.minHoursBeforeStart) ??
-    CANCELLATION_POLICY[CANCELLATION_POLICY.length - 1];
-  const refundPercentage = tier.refundPercentage;
+  const refundPercentage = NON_REFUNDABLE_POLICY.refundPercentage;
   const refundAmount = roundCurrency(validAmount * (refundPercentage / 100));
 
   return {
     refundPercentage,
     refundAmount,
-    policyCode: tier.policyCode,
-    policyLabel: tier.label,
+    policyCode: NON_REFUNDABLE_POLICY.policyCode,
+    policyLabel: NON_REFUNDABLE_POLICY.label,
     hoursBeforeStart: Number.isFinite(hoursBeforeStart)
       ? Math.round(hoursBeforeStart * 10) / 10
       : null,
@@ -76,4 +58,4 @@ export function buildCancellationOutcome({ startsAt, cancelledAt, totalAmount })
 }
 
 export const CANCELLATION_POLICY_SUMMARY =
-  "Free cancellation 24+ hours before start. 50% refund 2-24 hours. No refund under 2 hours.";
+  "Bookings are non-refundable. Schedule transfers are allowed via reschedule requests.";

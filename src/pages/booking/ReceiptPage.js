@@ -62,7 +62,7 @@ function buildRefundMessage(booking) {
     return null;
   }
   if (refundPercentage <= 0) {
-    return "No refund is available for this cancellation.";
+    return "This booking is non-refundable. You can request a schedule transfer.";
   }
   const refundAmount = Number(booking?.refundAmount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) {

@@ -82,7 +82,7 @@ function buildRefundMessage(booking) {
     return "";
   }
   if (refundPercentage <= 0) {
-    return "No refund is available for this cancellation.";
+    return "This booking is non-refundable. You can request a schedule transfer instead.";
   }
   const refundAmount = Number(booking?.refundAmount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
@@ -192,7 +192,7 @@ function buildRefundNoteForNotification(booking) {
 
   if (refundPercentage !== null) {
     if (refundPercentage <= 0) {
-      return "No refund is available for this cancellation.";
+      return "This booking is non-refundable. You can request a schedule transfer.";
     }
     if (refundAmount === null || refundAmount <= 0) {
       return "This booking was free, so there is no payment to refund.";
@@ -201,11 +201,11 @@ function buildRefundNoteForNotification(booking) {
   }
 
   if (eventStatus === "CANCELLED" && totalAmount && totalAmount > 0) {
-    return `Refund: ${formatCurrency(totalAmount)} (100%).`;
+    return "This booking is non-refundable. You can request a schedule transfer.";
   }
 
   if (totalAmount && totalAmount > 0) {
-    return "Refunds follow the cancellation policy for this booking.";
+    return "This booking is non-refundable. You can request a schedule transfer.";
   }
 
   return "This event was free, so no payment is due.";
@@ -1484,7 +1484,7 @@ export default function EventsPage({ navigation }) {
       } else {
         Alert.alert(
           "Reschedule requested",
-          "We've sent your reschedule request to the organizer. They'll follow up with next steps.",
+          "We've sent your reschedule request to the organizer. Your payment will transfer to the new schedule once confirmed.",
         );
       }
     } catch (error) {
@@ -1675,8 +1675,8 @@ export default function EventsPage({ navigation }) {
     reasonAction === "reschedule" ? "Request reschedule" : "Cancel booking";
   const reasonModalCopy =
     reasonAction === "reschedule"
-      ? "Tell the organizer why you need to move your booking."
-      : "Let the organizer know why you're cancelling.";
+      ? "Tell the organizer why you need to move your booking. Your payment transfers to the new schedule."
+      : "Let the organizer know why you're cancelling. Cancellations are non-refundable.";
   const reasonActionLabel =
     reasonAction === "reschedule" ? "Send request" : "Cancel booking";
 
