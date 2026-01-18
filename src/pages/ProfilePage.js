@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { decode } from 'base64-arraybuffer';
 
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import PostCard from '../components/PostCard';
 import RecordedTrailSummary from '../components/RecordedTrailSummary';
 import TrailRecordingCard from '../components/TrailRecordingCard';
@@ -412,6 +413,7 @@ function CompletedTrailCard({ completion, onPress, variant = 'default' }) {
 
 function ProfilePageContent({ navigation, route }) {
   const { user: authUser, isLoading: authLoading, refreshUser } = useAuth();
+  const { scheduleNotification } = useNotifications();
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -441,6 +443,8 @@ function ProfilePageContent({ navigation, route }) {
   const [preferenceView, setPreferenceView] = useState('current');
   const profileRef = useRef(null);
   const profileOwnerIdRef = useRef(null);
+  const followerSnapshotRef = useRef(null);
+  const followerSnapshotReadyRef = useRef(false);
   const insets = useSafeAreaInsets();
   const headerTopPadding = useMemo(() => Math.max(insets.top, 16), [insets.top]);
   const listContentInset = useMemo(
@@ -891,6 +895,46 @@ function ProfilePageContent({ navigation, route }) {
     () => getProfileDisplayName(profile),
     [profile?.email, profile?.name],
   );
+
+  const maybeNotifyFollowerUpdates = useCallback(
+    async (nextProfile) => {
+      if (!nextProfile || !isOwnProfile || nextProfile.role !== 'ORGANIZER') {
+        followerSnapshotRef.current = null;
+        followerSnapshotReadyRef.current = false;
+        return;
+      }
+
+      const nextCount = Number(nextProfile.followersCount ?? 0);
+      if (!Number.isFinite(nextCount)) {
+        return;
+      }
+
+      const previousCount = followerSnapshotRef.current;
+      followerSnapshotRef.current = nextCount;
+
+      if (!followerSnapshotReadyRef.current) {
+        followerSnapshotReadyRef.current = true;
+        return;
+      }
+
+      if (typeof previousCount === 'number' && nextCount > previousCount) {
+        const delta = nextCount - previousCount;
+        const body =
+          delta === 1
+            ? 'You have a new follower.'
+            : `You have ${delta} new followers.`;
+        await scheduleNotification({
+          title: 'New follower',
+          body,
+          data: {
+            type: 'follower',
+            userId: nextProfile.id ?? null,
+          },
+        });
+      }
+    },
+    [isOwnProfile, scheduleNotification],
+  );
   const previousPreferences = useMemo(() => {
     const snapshot = profile?.previousPreferences;
     if (!snapshot || typeof snapshot !== 'object') {
@@ -1013,6 +1057,7 @@ function ProfilePageContent({ navigation, route }) {
         profileOwnerIdRef.current = formattedProfile.id;
         profileRef.current = formattedProfile;
 
+        await maybeNotifyFollowerUpdates(formattedProfile);
         setProfile(formattedProfile);
         setPosts(Array.isArray(data.posts) ? data.posts : []);
       } catch (error) {
@@ -1027,7 +1072,7 @@ function ProfilePageContent({ navigation, route }) {
         }
       }
     },
-    [viewedUserId],
+    [viewedUserId, maybeNotifyFollowerUpdates, get],
   );
 
   useFocusEffect(

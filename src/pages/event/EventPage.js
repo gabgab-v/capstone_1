@@ -184,6 +184,112 @@ function getLocationLabelForNotification(event) {
   return `Lat ${lat.toFixed(3)}, Lon ${lng.toFixed(3)}`;
 }
 
+function getAttendeeDisplayName(attendee) {
+  const name = normalizeText(attendee?.user?.name);
+  if (name) {
+    return name;
+  }
+  const email = normalizeText(attendee?.user?.email);
+  if (email) {
+    return email.split("@")[0] || email;
+  }
+  return "A hiker";
+}
+
+function buildAttendeeSnapshot(attendees) {
+  if (!Array.isArray(attendees)) {
+    return new Map();
+  }
+  const snapshot = new Map();
+  attendees.forEach((booking) => {
+    if (!booking?.id) {
+      return;
+    }
+    snapshot.set(booking.id, {
+      status: normalizeStatus(booking.status),
+      name: getAttendeeDisplayName(booking),
+    });
+  });
+  return snapshot;
+}
+
+function buildOrganizerBookingNotifications(event, previousSnapshot, nextSnapshot) {
+  if (!event?.id) {
+    return [];
+  }
+  const eventTitle = normalizeText(event.title) || "Your event";
+  const notifications = [];
+  const newBookings = [];
+  const rescheduleRequests = [];
+  const cancellations = [];
+
+  nextSnapshot.forEach((nextEntry, bookingId) => {
+    const previousEntry = previousSnapshot.get(bookingId);
+    if (!previousEntry) {
+      newBookings.push(nextEntry);
+      return;
+    }
+    if (previousEntry.status !== nextEntry.status) {
+      if (nextEntry.status === "RESCHEDULE_REQUESTED") {
+        rescheduleRequests.push(nextEntry);
+      }
+      if (nextEntry.status === "CANCELLED") {
+        cancellations.push(nextEntry);
+      }
+    }
+  });
+
+  if (newBookings.length) {
+    if (newBookings.length === 1) {
+      notifications.push({
+        title: "New booking",
+        body: `${newBookings[0].name} booked "${eventTitle}".`,
+        eventId: event.id,
+      });
+    } else {
+      notifications.push({
+        title: "New bookings",
+        body: `${newBookings.length} new bookings for "${eventTitle}".`,
+        eventId: event.id,
+      });
+    }
+  }
+
+  if (rescheduleRequests.length) {
+    if (rescheduleRequests.length === 1) {
+      notifications.push({
+        title: "Reschedule requested",
+        body: `${rescheduleRequests[0].name} requested a schedule transfer for "${eventTitle}".`,
+        eventId: event.id,
+      });
+    } else {
+      notifications.push({
+        title: "Reschedule requests",
+        body: `${rescheduleRequests.length} reschedule requests for "${eventTitle}".`,
+        eventId: event.id,
+      });
+    }
+  }
+
+  if (cancellations.length) {
+    if (cancellations.length === 1) {
+      notifications.push({
+        title: "Booking cancelled",
+        body: `${cancellations[0].name} cancelled their booking for "${eventTitle}".`,
+        eventId: event.id,
+      });
+    } else {
+      notifications.push({
+        title: "Booking cancellations",
+        body: `${cancellations.length} cancellations for "${eventTitle}".`,
+        eventId: event.id,
+      });
+    }
+  }
+
+  return notifications;
+}
+
 function buildRefundNoteForNotification(booking) {
   const refundPercentage = normalizeNumber(booking?.refundPercentage);
   const refundAmount = normalizeNumber(booking?.refundAmount);
@@ -1113,6 +1219,8 @@ export default function EventsPage({ navigation }) {
   const suggestionNotificationInFlightRef = useRef(false);
   const bookingSnapshotRef = useRef(new Map());
   const bookingSnapshotReadyRef = useRef(false);
+  const organizerAttendeeSnapshotRef = useRef(new Map());
+  const organizerAttendeeSnapshotReadyRef = useRef(false);
   const insets = useSafeAreaInsets();
   const contentInsets = useMemo(
     () => ({
@@ -1278,6 +1386,68 @@ export default function EventsPage({ navigation }) {
     [scheduleNotification],
   );
 
+  const maybeNotifyOrganizerBookingUpdates = useCallback(
+    async (events, attendeeEntries) => {
+      if (!Array.isArray(events) || events.length === 0) {
+        organizerAttendeeSnapshotRef.current = new Map();
+        organizerAttendeeSnapshotReadyRef.current = true;
+        return;
+      }
+
+      const eventMap = new Map(events.map((event) => [event.id, event]));
+      const nextSnapshots = new Map();
+
+      if (Array.isArray(attendeeEntries)) {
+        attendeeEntries.forEach(([eventId, attendees]) => {
+          nextSnapshots.set(eventId, buildAttendeeSnapshot(attendees));
+        });
+      }
+
+      if (!organizerAttendeeSnapshotReadyRef.current) {
+        organizerAttendeeSnapshotRef.current = nextSnapshots;
+        organizerAttendeeSnapshotReadyRef.current = true;
+        return;
+      }
+
+      const notifications = [];
+
+      nextSnapshots.forEach((snapshot, eventId) => {
+        const event = eventMap.get(eventId);
+        if (!event) {
+          return;
+        }
+        const previousSnapshot =
+          organizerAttendeeSnapshotRef.current.get(eventId) ?? new Map();
+        const eventNotifications = buildOrganizerBookingNotifications(
+          event,
+          previousSnapshot,
+          snapshot,
+        );
+        notifications.push(...eventNotifications);
+      });
+
+      organizerAttendeeSnapshotRef.current = nextSnapshots;
+
+      if (!notifications.length) {
+        return;
+      }
+
+      await Promise.all(
+        notifications.map((notice) =>
+          scheduleNotification({
+            title: notice.title,
+            body: notice.body,
+            data: {
+              type: "organizer-event",
+              eventId: notice.eventId ?? null,
+            },
+          }),
+        ),
+      );
+    },
+    [scheduleNotification],
+  );
+
   const sortedBookings = useMemo(() => {
     return [...bookedEvents].sort((a, b) => getTimeValue(b?.createdAt) - getTimeValue(a?.createdAt));
   }, [bookedEvents]);
@@ -1382,6 +1552,7 @@ export default function EventsPage({ navigation }) {
                 }
               })
             );
+            await maybeNotifyOrganizerBookingUpdates(myEvents, attendeeEntries);
             setEventAttendees(Object.fromEntries(attendeeEntries));
           } else {
             setEventAttendees({});
@@ -1389,6 +1560,8 @@ export default function EventsPage({ navigation }) {
         } else {
           setCreatedEvents([]);
           setEventAttendees({});
+          organizerAttendeeSnapshotRef.current = new Map();
+          organizerAttendeeSnapshotReadyRef.current = false;
         }
       } catch (error) {
         console.error("Failed to fetch events page data:", error);
@@ -1401,7 +1574,7 @@ export default function EventsPage({ navigation }) {
         setRefreshing(false);
       }
     },
-    [maybeNotifyBookingUpdates]
+    [maybeNotifyBookingUpdates, maybeNotifyOrganizerBookingUpdates]
   );
 
   const handleRefresh = useCallback(() => {
