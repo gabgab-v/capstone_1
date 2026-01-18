@@ -604,10 +604,6 @@ function formatRelativeToNow(value) {
   return `in ${diffDays} days`;
 }
 
-function normalizeStatus(value) {
-  return typeof value === "string" ? value.trim().toUpperCase() : "";
-}
-
 function isEventCompleted(event) {
   if (!event) {
     return false;
