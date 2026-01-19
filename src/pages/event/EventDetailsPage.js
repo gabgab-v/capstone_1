@@ -623,7 +623,7 @@ export default function EventDetailsPage({ route, navigation }) {
       if (age === null) {
         return {
           tone: 'info',
-          message: `This hike recommends ${eventMinAge}+ hikers. Add your birthdate so we can confirm eligibility and fine-tune your match score.`,
+          message: `This hike recommends ${eventMinAge}+ hikers. Add your birthdate so we can confirm eligibility and tailor safety reminders.`,
         };
       }
       if (age < eventMinAge) {
@@ -649,7 +649,7 @@ export default function EventDetailsPage({ route, navigation }) {
     if (age === null) {
       return {
         tone: 'info',
-        message: 'Add your birthdate so we can include age in your match score and safety reminders.',
+        message: 'Add your birthdate so we can confirm eligibility and tailor safety reminders.',
       };
     }
 
