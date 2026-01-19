@@ -17,6 +17,30 @@ function resolveEmailNotConfirmedMessage(error) {
   return null;
 }
 
+function isNetworkProfileError(error) {
+  return error instanceof ApiError && error.status === 0;
+}
+
+function buildFallbackProfile(session) {
+  const authUser = session?.user;
+  if (!authUser) return null;
+  const metadata = authUser.user_metadata ?? {};
+  const email = typeof authUser.email === 'string' ? authUser.email.trim() : null;
+  const name =
+    (typeof metadata.full_name === 'string' && metadata.full_name.trim()) ||
+    (typeof metadata.name === 'string' && metadata.name.trim()) ||
+    null;
+  const avatarUrl =
+    typeof metadata.avatar_url === 'string' && metadata.avatar_url.trim() ? metadata.avatar_url.trim() : null;
+
+  return {
+    id: authUser.id,
+    email,
+    name,
+    avatarUrl,
+  };
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -114,6 +138,14 @@ export const AuthProvider = ({ children }) => {
           setPendingMfa(null);
           return 'email_unverified';
         }
+        if (isNetworkProfileError(profileErrorRef.current)) {
+          const fallbackProfile = buildFallbackProfile(session);
+          if (fallbackProfile) {
+            setUser(fallbackProfile);
+            setPendingMfa(null);
+            return 'authenticated';
+          }
+        }
         return 'profile_error';
       }
       setPendingMfa(null);
@@ -141,6 +173,14 @@ export const AuthProvider = ({ children }) => {
       setPendingMfa(null);
       const profile = await fetchUserProfile();
       if (!profile) {
+        if (isNetworkProfileError(profileErrorRef.current)) {
+          const { data } = await supabase.auth.getSession();
+          const fallbackProfile = buildFallbackProfile(data?.session ?? null);
+          if (fallbackProfile) {
+            setUser(fallbackProfile);
+            return true;
+          }
+        }
         await supabase.auth.signOut();
         const emailMessage = resolveEmailNotConfirmedMessage(profileErrorRef.current);
         throw new Error(
