@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,12 +15,14 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
+import { WebView } from 'react-native-webview';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
 const MAX_DOCUMENTS = 3;
 const TIN_PATTERN = /^\d{3}-\d{3}-\d{3}-\d{3}$/;
+const BNRS_URL = 'https://bnrs.dti.gov.ph/search';
 
 function mapExistingDocuments(urls) {
   if (!Array.isArray(urls) || urls.length === 0) {
@@ -110,6 +113,8 @@ export default function BusinessVerificationPage({ navigation }) {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [bnrsError, setBnrsError] = useState(false);
+  const [bnrsReloadKey, setBnrsReloadKey] = useState(0);
 
   useEffect(() => {
     if (!existingVerification) return;
@@ -183,6 +188,25 @@ export default function BusinessVerificationPage({ navigation }) {
 
   const removeDocument = useCallback((id) => {
     setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+  }, []);
+
+  const handleOpenBnrs = useCallback(async () => {
+    try {
+      const supported = await Linking.canOpenURL(BNRS_URL);
+      if (supported) {
+        await Linking.openURL(BNRS_URL);
+      } else {
+        Alert.alert('Unable to open link', 'Please open the BNRS site in your browser.');
+      }
+    } catch (err) {
+      console.error('Failed to open BNRS link:', err);
+      Alert.alert('Unable to open link', 'Please try again later.');
+    }
+  }, []);
+
+  const handleRetryBnrs = useCallback(() => {
+    setBnrsError(false);
+    setBnrsReloadKey((prev) => prev + 1);
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -339,6 +363,52 @@ export default function BusinessVerificationPage({ navigation }) {
             <Text style={styles.errorText}>{submitError}</Text>
           </View>
         ) : null}
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.label}>DTI BNRS search</Text>
+            <TouchableOpacity style={styles.inlineLinkButton} onPress={handleOpenBnrs}>
+              <Text style={styles.inlineLinkText}>Open in browser</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.helperText}>Check business name availability without leaving the app.</Text>
+          {bnrsError ? (
+            <View style={styles.webErrorCard}>
+              <Text style={styles.webErrorTitle}>Unable to load BNRS search.</Text>
+              <Text style={styles.webErrorText}>Check your connection or open the site in your browser.</Text>
+              <View style={styles.webErrorActions}>
+                <TouchableOpacity style={styles.webRetryButton} onPress={handleRetryBnrs}>
+                  <Text style={styles.webRetryButtonText}>Retry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.webOpenButton} onPress={handleOpenBnrs}>
+                  <Text style={styles.webOpenButtonText}>Open in browser</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.webViewContainer}>
+              <WebView
+                key={`bnrs-${bnrsReloadKey}`}
+                source={{ uri: BNRS_URL }}
+                style={styles.webView}
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.webLoader}>
+                    <ActivityIndicator color="#1d4ed8" />
+                    <Text style={styles.webLoaderText}>Loading BNRS search...</Text>
+                  </View>
+                )}
+                onError={() => setBnrsError(true)}
+                onHttpError={() => setBnrsError(true)}
+                setSupportMultipleWindows={false}
+                javaScriptEnabled
+                domStorageEnabled
+                nestedScrollEnabled
+                originWhitelist={['*']}
+              />
+            </View>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.label}>Business name *</Text>
@@ -605,6 +675,83 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 12,
     color: '#64748b',
+  },
+  inlineLinkButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  inlineLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  webViewContainer: {
+    marginTop: 10,
+    height: 420,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  webView: {
+    flex: 1,
+  },
+  webLoader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  webLoaderText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  webErrorCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecdd3',
+    borderWidth: 1,
+  },
+  webErrorTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  webErrorText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#991b1b',
+  },
+  webErrorActions: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  webRetryButton: {
+    backgroundColor: '#1d4ed8',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  webRetryButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  webOpenButton: {
+    marginLeft: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  webOpenButtonText: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '600',
   },
   input: {
     backgroundColor: '#f1f5f9',
