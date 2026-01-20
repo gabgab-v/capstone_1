@@ -20,6 +20,33 @@ function clamp(value, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
+function averageMatchPercent(values) {
+  if (!Array.isArray(values)) {
+    return 0;
+  }
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (!valid.length) {
+    return 0;
+  }
+  const total = valid.reduce((sum, value) => sum + clamp(value, 0, 1), 0);
+  return clamp(total / valid.length, 0, 1);
+}
+
+function computeNumericMatchPercent(preferred, actual) {
+  if (!Number.isFinite(preferred) || preferred <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(actual) || actual <= 0) {
+    return 0;
+  }
+  const diff = Math.abs(actual - preferred);
+  const scale = Math.max(preferred, actual);
+  if (scale <= 0) {
+    return 0;
+  }
+  return clamp(1 - diff / scale, 0, 1);
+}
+
 function deriveUserAgeYears(user) {
   const birthdateValue = user?.birthdate ?? user?.birthDate ?? null;
   if (!birthdateValue) {
@@ -84,6 +111,20 @@ function getDifficultyIndex(label) {
     return -1;
   }
   return DIFFICULTY_ORDER.findIndex((item) => item.toLowerCase() === normalized.toLowerCase());
+}
+
+function computeDifficultyMatchPercent(preferredLabel, eventLabel) {
+  const preferredIndex = getDifficultyIndex(preferredLabel);
+  if (preferredIndex < 0) {
+    return null;
+  }
+  const eventIndex = getDifficultyIndex(eventLabel);
+  if (eventIndex < 0) {
+    return 0;
+  }
+  const maxGap = Math.max(DIFFICULTY_ORDER.length - 1, 1);
+  const gap = Math.abs(preferredIndex - eventIndex);
+  return clamp(1 - gap / maxGap, 0, 1);
 }
 
 function inferDifficultyFromMetrics(event) {
@@ -175,6 +216,54 @@ function parseBudgetRange(value) {
   const min = Math.min(...amounts);
   const max = Math.max(...amounts);
   return { min, max, midpoint: (min + max) / 2 };
+}
+
+function computeBudgetMatchPercent(range, price) {
+  const hasPreference =
+    Number.isFinite(range?.min) || Number.isFinite(range?.max) || Number.isFinite(range?.midpoint);
+  if (!hasPreference) {
+    return null;
+  }
+  if (!Number.isFinite(price) || price <= 0) {
+    return 0;
+  }
+
+  const min = Number.isFinite(range?.min) ? range.min : null;
+  const max = Number.isFinite(range?.max) ? range.max : null;
+  if (min !== null && max !== null) {
+    if (price >= min && price <= max) {
+      return 1;
+    }
+    if (price < min) {
+      return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
+    }
+    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
+  }
+
+  if (min !== null) {
+    if (price >= min) {
+      return 1;
+    }
+    return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
+  }
+
+  if (max !== null) {
+    if (price <= max) {
+      return 1;
+    }
+    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
+  }
+
+  const midpoint = Number.isFinite(range?.midpoint) ? range.midpoint : null;
+  if (!Number.isFinite(midpoint) || midpoint <= 0) {
+    return 0;
+  }
+  const diff = Math.abs(price - midpoint);
+  const scale = Math.max(price, midpoint);
+  if (scale <= 0) {
+    return 0;
+  }
+  return clamp(1 - diff / scale, 0, 1);
 }
 
 function normalizeDuration(hours) {
@@ -286,6 +375,66 @@ function computeEventVector(event, user) {
   ];
 }
 
+function collectPreferenceMatchPercents(user, event) {
+  const eventDifficultyLabel = getEventDifficultyLabel(event);
+  const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
+  const userExperienceLevel = normalizeDifficultyValue(user?.experienceLevel);
+  const preferredDuration = Number(user?.preferredDurationHrs);
+  const eventDuration = Number(event?.durationHrs);
+  const budgetRange = parseBudgetRange(user?.budgetRange);
+  const priceNumber = Number(event?.price);
+  const preferredDistance = Number(user?.preferredDistanceKm);
+  const eventDistance = Number(event?.distanceKm);
+  const preferredElevation = Number(user?.preferredElevationM);
+  const eventElevation = Number(event?.elevationM);
+  const preferredTrailRaw =
+    typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
+  const preferredTrail = preferredTrailRaw || '';
+  const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
+  const eventTrailType = typeof event?.trailType === 'string' ? event.trailType.trim() : '';
+  const hasDirectTrailMatch =
+    preferredTrail &&
+    eventTrailType &&
+    eventTrailType.toLowerCase() === preferredTrail.toLowerCase();
+  const matchesTrail =
+    Boolean(preferredTrail) &&
+    (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
+
+  return {
+    eventDifficultyLabel,
+    userPreferredDifficulty,
+    userExperienceLevel,
+    preferredDuration,
+    eventDuration,
+    budgetRange,
+    priceNumber,
+    preferredDistance,
+    eventDistance,
+    preferredElevation,
+    eventElevation,
+    preferredTrail,
+    eventTrailType,
+    matchesTrail,
+    percents: {
+      experience: computeDifficultyMatchPercent(userExperienceLevel, eventDifficultyLabel),
+      preferredDifficulty: computeDifficultyMatchPercent(userPreferredDifficulty, eventDifficultyLabel),
+      duration: computeNumericMatchPercent(preferredDuration, eventDuration),
+      budget: computeBudgetMatchPercent(budgetRange, priceNumber),
+      trailType: preferredTrail ? (matchesTrail ? 1 : 0) : null,
+      distance: computeNumericMatchPercent(preferredDistance, eventDistance),
+      elevation: computeNumericMatchPercent(preferredElevation, eventElevation),
+    },
+  };
+}
+
+function computeMatchScore(user, event) {
+  if (!user || !event) {
+    return 0;
+  }
+  const { percents } = collectPreferenceMatchPercents(user, event);
+  return averageMatchPercent(Object.values(percents));
+}
+
 function dotProduct(vectorA, vectorB) {
   if (!Array.isArray(vectorA) || !Array.isArray(vectorB)) {
     return 0;
@@ -325,44 +474,34 @@ function formatPhp(amount) {
 function buildMatchBreakdown({
   user,
   event,
-  preferenceVector,
-  eventVector,
   minShare = MIN_BREAKDOWN_SHARE,
 }) {
-  if (!Array.isArray(preferenceVector) || !Array.isArray(eventVector)) {
+  if (!user || !event) {
     return [];
   }
 
-  const prefMagnitude = magnitude(preferenceVector);
-  const eventMagnitude = magnitude(eventVector);
-  const denominator = prefMagnitude * eventMagnitude;
-  if (denominator <= 0) {
-    return [];
-  }
+  const {
+    eventDifficultyLabel,
+    userPreferredDifficulty,
+    userExperienceLevel,
+    preferredDuration,
+    eventDuration,
+    budgetRange,
+    priceNumber,
+    preferredDistance,
+    eventDistance,
+    preferredElevation,
+    eventElevation,
+    preferredTrail,
+    eventTrailType,
+    matchesTrail,
+    percents,
+  } = collectPreferenceMatchPercents(user, event);
 
-  const budgetRange = parseBudgetRange(user?.budgetRange);
-  const eventDifficultyLabel = getEventDifficultyLabel(event);
-  const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
-  const userExperienceLevel = normalizeDifficultyValue(user?.experienceLevel);
-  const preferredDuration = Number(user?.preferredDurationHrs);
-  const eventDuration = Number(event?.durationHrs);
-  const priceNumber = Number(event?.price);
-  const preferredDistance = Number(user?.preferredDistanceKm);
-  const eventDistance = Number(event?.distanceKm);
-  const preferredElevation = Number(user?.preferredElevationM);
-  const eventElevation = Number(event?.elevationM);
-  const preferredTrailRaw =
-    typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
-  const preferredTrail = preferredTrailRaw || '';
-  const descriptor = preferredTrail ? extractTrailDescriptor(event) : null;
-  const eventTrailType = typeof event?.trailType === 'string' ? event.trailType.trim() : '';
-  const hasDirectTrailMatch =
-    preferredTrail &&
-    eventTrailType &&
-    eventTrailType.toLowerCase() === preferredTrail.toLowerCase();
-  const matchesTrail =
-    Boolean(preferredTrail) &&
-    (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
+  const difficultyParts = [percents.preferredDifficulty, percents.experience].filter((value) =>
+    Number.isFinite(value),
+  );
+  const difficultyPercent = difficultyParts.length ? averageMatchPercent(difficultyParts) : null;
 
   const context = {
     eventDifficultyLabel,
@@ -394,7 +533,7 @@ function buildMatchBreakdown({
     {
       key: 'difficulty',
       label: 'Difficulty alignment',
-      indices: [0, 1],
+      percent: difficultyPercent,
       detail: ({
         eventDifficultyLabel: difficulty,
         userPreferredDifficulty: preferred,
@@ -440,7 +579,7 @@ function buildMatchBreakdown({
     {
       key: 'duration',
       label: 'Duration fit',
-      indices: [2],
+      percent: percents.duration,
       detail: ({ preferredDuration: preferred, eventDuration: duration }) => {
         if (!Number.isFinite(duration)) {
           return 'Organizer has not shared the expected duration yet.';
@@ -466,7 +605,7 @@ function buildMatchBreakdown({
     {
       key: 'distance',
       label: 'Distance fit',
-      indices: [5],
+      percent: percents.distance,
       detail: ({ preferredDistance: preferred, eventDistance: distance }) => {
         if (!Number.isFinite(distance)) {
           return 'Organizer has not shared the total distance yet.';
@@ -494,7 +633,7 @@ function buildMatchBreakdown({
     {
       key: 'elevation',
       label: 'Elevation fit',
-      indices: [6],
+      percent: percents.elevation,
       detail: ({ preferredElevation: preferred, eventElevation: elevation }) => {
         if (!Number.isFinite(elevation)) {
           return 'Organizer has not shared the elevation gain yet.';
@@ -522,7 +661,7 @@ function buildMatchBreakdown({
     {
       key: 'budget',
       label: 'Budget fit',
-      indices: [3],
+      percent: percents.budget,
       detail: ({ budgetRange: range, priceNumber: price }) => {
         const priceText = formatPhp(price);
         if (!priceText) {
@@ -564,7 +703,7 @@ function buildMatchBreakdown({
     {
       key: 'trailType',
       label: 'Trail style',
-      indices: [4],
+      percent: percents.trailType,
       detail: ({ preferredTrail, matchesTrail, eventTrailType }) => {
         if (!preferredTrail) {
           return null;
@@ -582,31 +721,22 @@ function buildMatchBreakdown({
 
   return groups
     .map((group) => {
-      const raw = group.indices.reduce((sum, index) => {
-        const pref = preferenceVector[index] ?? 0;
-        const ev = eventVector[index] ?? 0;
-        return sum + pref * ev;
-      }, 0);
-
-      const contribution = raw / denominator;
       const detail = group.detail(context);
       if (!detail) {
         return null;
       }
 
-      if (contribution <= 0 || contribution < minShare) {
+      const percentValue = group.percent;
+      if (!Number.isFinite(percentValue) || percentValue < minShare) {
         return null;
       }
-
-      const effectiveContribution =
-        contribution > 0 && contribution >= minShare ? contribution : minShare;
 
       return {
         key: group.key,
         label: group.label,
         detail,
-        contribution: effectiveContribution,
-        percent: Math.max(1, Math.round(effectiveContribution * 100)),
+        contribution: percentValue,
+        percent: Math.round(percentValue * 100),
       };
     })
     .filter(Boolean)
@@ -733,6 +863,7 @@ export {
   extractTrailDescriptor,
   computeUserVector,
   computeEventVector,
+  computeMatchScore,
   magnitude,
   cosineSimilarity,
   buildMatchBreakdown,

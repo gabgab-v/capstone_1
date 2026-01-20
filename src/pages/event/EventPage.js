@@ -21,12 +21,7 @@ import ScreenHeader from "../../components/ScreenHeader";
 import SafePicker from "../../components/SafePicker";
 import { useTheme } from "../../context/ThemeContext";
 import { useNotifications } from "../../context/NotificationContext";
-import {
-  computeUserVector,
-  computeEventVector,
-  cosineSimilarity,
-  magnitude,
-} from "../../utils/matchScoring";
+import { computeMatchScore } from "../../utils/matchScoring";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -624,15 +619,14 @@ function isEventUpcoming(event) {
   return !start || start > new Date();
 }
 
-function scoreEventForUser(event, user, userVector, referenceEvent) {
-  if (!event || !userVector || magnitude(userVector) === 0) {
+function scoreEventForUser(event, user, referenceEvent) {
+  if (!event || !user) {
     return 0;
   }
-  const eventVector = computeEventVector(event, user);
-  if (!eventVector || magnitude(eventVector) === 0) {
+  const baseScore = computeMatchScore(user, event);
+  if (!Number.isFinite(baseScore) || baseScore <= 0) {
     return 0;
   }
-  const baseScore = cosineSimilarity(userVector, eventVector);
   const trailBoost =
     referenceEvent?.trailType &&
     event.trailType &&
@@ -1265,8 +1259,7 @@ export default function EventsPage({ navigation }) {
 
       try {
         const referenceEvent = newCompletions[0];
-        const userVector = computeUserVector(currentUser);
-        const canScore = userVector && magnitude(userVector) > 0;
+        const canScore = Boolean(currentUser?.preferencesComplete);
 
         const eventsResponse = await get("/api/events");
         const candidateEvents = Array.isArray(eventsResponse)
@@ -1281,9 +1274,7 @@ export default function EventsPage({ navigation }) {
         let bestScore = -Infinity;
 
         candidateEvents.forEach((event) => {
-          const score = canScore
-            ? scoreEventForUser(event, currentUser, userVector, referenceEvent)
-            : 0;
+          const score = canScore ? scoreEventForUser(event, currentUser, referenceEvent) : 0;
           if (score > bestScore) {
             bestScore = score;
             bestEvent = event;

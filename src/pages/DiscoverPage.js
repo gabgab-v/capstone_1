@@ -144,6 +144,7 @@ const LEVEL_SCORE_MAP = {
   technical: 1,
   expert: 1,
 };
+const DIFFICULTY_ORDER = ["Beginner", "Intermediate", "Technical", "Expert"];
 
 const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
@@ -156,6 +157,33 @@ function clamp(value, min = 0, max = 1) {
     return min;
   }
   return Math.min(max, Math.max(min, value));
+}
+
+function averageMatchPercent(values) {
+  if (!Array.isArray(values)) {
+    return 0;
+  }
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (!valid.length) {
+    return 0;
+  }
+  const total = valid.reduce((sum, value) => sum + clamp(value, 0, 1), 0);
+  return clamp(total / valid.length, 0, 1);
+}
+
+function computeNumericMatchPercent(preferred, actual) {
+  if (!Number.isFinite(preferred) || preferred <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(actual) || actual <= 0) {
+    return 0;
+  }
+  const diff = Math.abs(actual - preferred);
+  const scale = Math.max(preferred, actual);
+  if (scale <= 0) {
+    return 0;
+  }
+  return clamp(1 - diff / scale, 0, 1);
 }
 
 function normalizeDifficultyValue(value) {
@@ -192,6 +220,28 @@ function levelToScore(label) {
     return 0;
   }
   return LEVEL_SCORE_MAP[normalized.toLowerCase()] ?? 0;
+}
+
+function getDifficultyIndex(label) {
+  const normalized = normalizeDifficultyValue(label);
+  if (!normalized) {
+    return -1;
+  }
+  return DIFFICULTY_ORDER.findIndex((item) => item.toLowerCase() === normalized.toLowerCase());
+}
+
+function computeDifficultyMatchPercent(preferredLabel, eventLabel) {
+  const preferredIndex = getDifficultyIndex(preferredLabel);
+  if (preferredIndex < 0) {
+    return null;
+  }
+  const eventIndex = getDifficultyIndex(eventLabel);
+  if (eventIndex < 0) {
+    return 0;
+  }
+  const maxGap = Math.max(DIFFICULTY_ORDER.length - 1, 1);
+  const gap = Math.abs(preferredIndex - eventIndex);
+  return clamp(1 - gap / maxGap, 0, 1);
 }
 
 function inferDifficultyFromMetrics(event) {
@@ -287,6 +337,54 @@ function parseBudgetRange(value) {
   const min = Math.min(...amounts);
   const max = Math.max(...amounts);
   return { min, max, midpoint: (min + max) / 2 };
+}
+
+function computeBudgetMatchPercent(range, price) {
+  const hasPreference =
+    Number.isFinite(range?.min) || Number.isFinite(range?.max) || Number.isFinite(range?.midpoint);
+  if (!hasPreference) {
+    return null;
+  }
+  if (!Number.isFinite(price) || price <= 0) {
+    return 0;
+  }
+
+  const min = Number.isFinite(range?.min) ? range.min : null;
+  const max = Number.isFinite(range?.max) ? range.max : null;
+  if (min !== null && max !== null) {
+    if (price >= min && price <= max) {
+      return 1;
+    }
+    if (price < min) {
+      return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
+    }
+    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
+  }
+
+  if (min !== null) {
+    if (price >= min) {
+      return 1;
+    }
+    return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
+  }
+
+  if (max !== null) {
+    if (price <= max) {
+      return 1;
+    }
+    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
+  }
+
+  const midpoint = Number.isFinite(range?.midpoint) ? range.midpoint : null;
+  if (!Number.isFinite(midpoint) || midpoint <= 0) {
+    return 0;
+  }
+  const diff = Math.abs(price - midpoint);
+  const scale = Math.max(price, midpoint);
+  if (scale <= 0) {
+    return 0;
+  }
+  return clamp(1 - diff / scale, 0, 1);
 }
 
 function normalizeDuration(hours) {
@@ -477,40 +575,7 @@ function computeEventVector(event, user) {
   };
 }
 
-function dotProduct(vectorA, vectorB) {
-  return vectorA.reduce((sum, value, index) => sum + value * (vectorB[index] ?? 0), 0);
-}
-
-function magnitude(vector) {
-  return Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-}
-
-function cosineSimilarity(vectorA, vectorB) {
-  if (!vectorA || !vectorB) {
-    return 0;
-  }
-
-  const magA = magnitude(vectorA);
-  const magB = magnitude(vectorB);
-  if (magA === 0 || magB === 0) {
-    return 0;
-  }
-
-  return clamp(dotProduct(vectorA, vectorB) / (magA * magB), 0, 1);
-}
-
-function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mountainMatch, mountainsEnabled }) {
-  if (!Array.isArray(preferenceVector) || !Array.isArray(eventVector)) {
-    return [];
-  }
-
-  const prefMagnitude = magnitude(preferenceVector);
-  const eventMagnitude = magnitude(eventVector);
-  const denominator = prefMagnitude * eventMagnitude;
-  if (denominator <= 0) {
-    return [];
-  }
-
+function collectPreferenceMatchPercents(user, event) {
   const eventDifficultyLabel = getEventDifficultyLabel(event);
   const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
   const userExperienceLevel = normalizeDifficultyValue(user?.experienceLevel);
@@ -535,8 +600,105 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     Boolean(preferredTrail) &&
     (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
   const preferredMountains = Array.isArray(user?.preferredMountains) ? user.preferredMountains : [];
-  const mountainsEnabledFlag =
+  const mountainsEnabled =
     user?.mountainSuggestionsEnabled !== false && preferredMountains.length > 0;
+  const { score: mountainScore, match: mountainMatch } = computeMountainMatchScore(
+    event,
+    preferredMountains,
+    mountainsEnabled
+  );
+
+  return {
+    eventDifficultyLabel,
+    userPreferredDifficulty,
+    userExperienceLevel,
+    preferredDuration,
+    eventDuration,
+    budgetRange,
+    priceNumber,
+    preferredDistance,
+    eventDistance,
+    preferredElevation,
+    eventElevation,
+    preferredTrail,
+    eventTrailType,
+    matchesTrail,
+    preferredMountains,
+    mountainsEnabled,
+    mountainMatch,
+    percents: {
+      experience: computeDifficultyMatchPercent(userExperienceLevel, eventDifficultyLabel),
+      preferredDifficulty: computeDifficultyMatchPercent(userPreferredDifficulty, eventDifficultyLabel),
+      duration: computeNumericMatchPercent(preferredDuration, eventDuration),
+      budget: computeBudgetMatchPercent(budgetRange, priceNumber),
+      trailType: preferredTrail ? (matchesTrail ? 1 : 0) : null,
+      distance: computeNumericMatchPercent(preferredDistance, eventDistance),
+      elevation: computeNumericMatchPercent(preferredElevation, eventElevation),
+      mountain: mountainsEnabled ? mountainScore : null,
+    },
+  };
+}
+
+function computeMatchScore(user, event) {
+  if (!user || !event) {
+    return 0;
+  }
+  const { percents } = collectPreferenceMatchPercents(user, event);
+  return averageMatchPercent(Object.values(percents));
+}
+
+function dotProduct(vectorA, vectorB) {
+  return vectorA.reduce((sum, value, index) => sum + value * (vectorB[index] ?? 0), 0);
+}
+
+function magnitude(vector) {
+  return Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+}
+
+function cosineSimilarity(vectorA, vectorB) {
+  if (!vectorA || !vectorB) {
+    return 0;
+  }
+
+  const magA = magnitude(vectorA);
+  const magB = magnitude(vectorB);
+  if (magA === 0 || magB === 0) {
+    return 0;
+  }
+
+  return clamp(dotProduct(vectorA, vectorB) / (magA * magB), 0, 1);
+}
+
+function buildMatchBreakdown({ user, event }) {
+  if (!user || !event) {
+    return [];
+  }
+
+  const {
+    eventDifficultyLabel,
+    userPreferredDifficulty,
+    userExperienceLevel,
+    preferredDuration,
+    eventDuration,
+    budgetRange,
+    priceNumber,
+    preferredDistance,
+    eventDistance,
+    preferredElevation,
+    eventElevation,
+    preferredTrail,
+    eventTrailType,
+    matchesTrail,
+    preferredMountains,
+    mountainsEnabled,
+    mountainMatch,
+    percents,
+  } = collectPreferenceMatchPercents(user, event);
+
+  const difficultyParts = [percents.preferredDifficulty, percents.experience].filter((value) =>
+    Number.isFinite(value)
+  );
+  const difficultyPercent = difficultyParts.length ? averageMatchPercent(difficultyParts) : null;
 
   const context = {
     eventDifficultyLabel,
@@ -554,7 +716,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     eventTrailType,
     matchesTrail,
     preferredMountains,
-    mountainsEnabled: mountainsEnabledFlag,
+    mountainsEnabled,
     mountainMatch,
   };
 
@@ -571,7 +733,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "difficulty",
       label: "Difficulty alignment",
-      indices: [0, 1],
+      percent: difficultyPercent,
       detail: ({
         eventDifficultyLabel: difficulty,
         userPreferredDifficulty: preferred,
@@ -617,7 +779,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "duration",
       label: "Duration fit",
-      indices: [2],
+      percent: percents.duration,
       detail: ({ preferredDuration: preferred, eventDuration: duration }) => {
         if (!Number.isFinite(duration)) {
           return "Organizer has not shared the expected duration yet.";
@@ -643,7 +805,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "distance",
       label: "Distance fit",
-      indices: [5],
+      percent: percents.distance,
       detail: ({ preferredDistance: preferred, eventDistance: distance }) => {
         if (!Number.isFinite(distance)) {
           return "Organizer has not shared the total distance yet.";
@@ -671,7 +833,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "elevation",
       label: "Elevation fit",
-      indices: [6],
+      percent: percents.elevation,
       detail: ({ preferredElevation: preferred, eventElevation: elevation }) => {
         if (!Number.isFinite(elevation)) {
           return "Organizer has not shared the elevation gain yet.";
@@ -699,7 +861,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "budget",
       label: "Budget fit",
-      indices: [3],
+      percent: percents.budget,
       detail: ({ budgetRange: range, priceNumber: price }) => {
         const priceText = formatPhp(price);
         if (!priceText) {
@@ -741,7 +903,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "trailType",
       label: "Trail style",
-      indices: [4],
+      percent: percents.trailType,
       detail: ({ preferredTrail, matchesTrail, eventTrailType }) => {
         if (!preferredTrail) {
           return null;
@@ -758,7 +920,7 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
     {
       key: "mountain",
       label: "Familiar mountains",
-      indices: [7],
+      percent: percents.mountain,
       detail: ({ preferredMountains: mountains, mountainsEnabled: enabled, mountainMatch: match }) => {
         if (!enabled || !mountains?.length) {
           return null;
@@ -773,34 +935,26 @@ function buildMatchBreakdown({ user, event, preferenceVector, eventVector, mount
 
   return groups
     .map((group) => {
-      const raw = group.indices.reduce((sum, index) => {
-        const pref = preferenceVector[index] ?? 0;
-        const ev = eventVector[index] ?? 0;
-        return sum + pref * ev;
-      }, 0);
-
-      const contribution = raw / denominator;
       const detail = group.detail(context);
       if (!detail) {
         return null;
       }
 
+      const percentValue = group.percent;
       const includeDespiteShare = group.key === "mountain" && detail;
-      if (!includeDespiteShare && (contribution <= 0 || contribution < MIN_BREAKDOWN_SHARE)) {
+      if (
+        !Number.isFinite(percentValue) ||
+        (!includeDespiteShare && percentValue < MIN_BREAKDOWN_SHARE)
+      ) {
         return null;
       }
-
-      const effectiveContribution =
-        contribution > 0 && contribution >= MIN_BREAKDOWN_SHARE
-          ? contribution
-          : MIN_BREAKDOWN_SHARE;
 
       return {
         key: group.key,
         label: group.label,
         detail,
-        contribution: effectiveContribution,
-        percent: Math.max(1, Math.round(effectiveContribution * 100)),
+        contribution: percentValue,
+        percent: Math.round(percentValue * 100),
       };
     })
     .filter(Boolean)
@@ -833,10 +987,7 @@ export default function DiscoverPage() {
     [insets.bottom, insets.top]
   );
 
-  const preferenceVector = useMemo(() => {
-    const vector = computeUserVector(user);
-    return vector && magnitude(vector) > 0 ? vector : null;
-  }, [user]);
+  const hasPreferences = Boolean(user?.preferencesComplete);
 
   const scoredEvents = useMemo(() => {
     if (!Array.isArray(events)) {
@@ -849,26 +1000,15 @@ export default function DiscoverPage() {
       index,
     }));
 
-    if (!preferenceVector) {
+    if (!hasPreferences) {
       return baseline;
     }
 
     return baseline
       .map(({ event, index }) => {
-        const { vector: eventVector, mountainMatch, mountainsEnabled } = computeEventVector(
-          event,
-          user
-        );
-        const score = cosineSimilarity(preferenceVector, eventVector);
-        const breakdown = buildMatchBreakdown({
-          user,
-          event,
-          preferenceVector,
-          eventVector,
-          mountainMatch,
-          mountainsEnabled,
-        });
-        return { event, score, index, breakdown, mountainMatch, mountainsEnabled };
+        const score = computeMatchScore(user, event);
+        const breakdown = buildMatchBreakdown({ user, event });
+        return { event, score, index, breakdown };
       })
       .sort((a, b) => {
         if (a.score === null && b.score === null) {
@@ -885,19 +1025,19 @@ export default function DiscoverPage() {
         }
         return a.index - b.index;
       });
-  }, [events, preferenceVector, user]);
+  }, [events, hasPreferences, user]);
 
   const filteredEvents = useMemo(() => {
-    if (!preferenceVector || showWeakMatches) {
+    if (!hasPreferences || showWeakMatches) {
       return scoredEvents;
     }
     return scoredEvents.filter(
       ({ score }) => typeof score === "number" && score >= STRONG_MATCH_THRESHOLD
     );
-  }, [preferenceVector, scoredEvents, showWeakMatches]);
+  }, [hasPreferences, scoredEvents, showWeakMatches]);
 
   const { strongMatchCount, weakMatchCount } = useMemo(() => {
-    if (!preferenceVector) {
+    if (!hasPreferences) {
       return { strongMatchCount: 0, weakMatchCount: 0 };
     }
     return scoredEvents.reduce(
@@ -911,20 +1051,20 @@ export default function DiscoverPage() {
       },
       { strongMatchCount: 0, weakMatchCount: 0 }
     );
-  }, [preferenceVector, scoredEvents]);
+  }, [hasPreferences, scoredEvents]);
 
   const topSimilarity = useMemo(() => {
-    if (!preferenceVector) {
+    if (!hasPreferences) {
       return 0;
     }
     return scoredEvents.reduce(
       (max, { score }) => (typeof score === "number" ? Math.max(max, score) : max),
       0
     );
-  }, [scoredEvents, preferenceVector]);
+  }, [scoredEvents, hasPreferences]);
 
   const preferenceHeader = useMemo(() => {
-    if (!preferenceVector) {
+    if (!hasPreferences) {
       return null;
     }
 
@@ -972,13 +1112,7 @@ export default function DiscoverPage() {
         ) : null}
       </View>
     );
-  }, [
-    preferenceVector,
-    showWeakMatches,
-    strongMatchCount,
-    weakMatchCount,
-    topSimilarity,
-  ]);
+  }, [hasPreferences, showWeakMatches, strongMatchCount, weakMatchCount, topSimilarity]);
 
   const preferenceHeaderStyle = preferenceHeader ? styles.preferenceBannerWrapper : null;
 
@@ -1092,7 +1226,7 @@ export default function DiscoverPage() {
         ListHeaderComponent={preferenceHeader}
         ListHeaderComponentStyle={preferenceHeaderStyle}
         ListEmptyComponent={
-          preferenceVector && !showWeakMatches ? (
+          hasPreferences && !showWeakMatches ? (
             <View style={styles.emptyStrongMatchContainer}>
               <Text style={styles.emptyStrongMatchTitle}>No strong matches yet</Text>
               <Text style={styles.emptyStrongMatchText}>

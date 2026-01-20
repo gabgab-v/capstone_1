@@ -22,11 +22,8 @@ import { formatMetersToKm } from '../../utils/geo';
 import { useAuth } from '../../context/AuthContext';
 import { get, put, post, del as deleteRequest, BASE_URL } from '../../lib/api';
 import {
-  computeUserVector,
-  computeEventVector,
-  cosineSimilarity,
   buildMatchBreakdown,
-  magnitude,
+  computeMatchScore,
   deriveUserAgeYears,
   getEventDifficultyLabel,
   evaluateEventReadiness,
@@ -556,30 +553,17 @@ export default function EventDetailsPage({ route, navigation }) {
     [attendancePoll?.viewer?.attendanceStatus],
   );
 
-  const preferenceVector = useMemo(() => {
-    if (!user?.preferencesComplete) {
-      return null;
-    }
-    const vector = computeUserVector(user);
-    if (!vector || magnitude(vector) === 0) {
-      return null;
-    }
-    return vector;
-  }, [user]);
+  const hasPreferences = Boolean(user?.preferencesComplete);
 
   const matchInsight = useMemo(() => {
-    if (!preferenceVector || !event) {
+    if (!hasPreferences || !event) {
       return null;
     }
-    const eventVector = computeEventVector(event, user);
-    if (!eventVector || magnitude(eventVector) === 0) {
-      return null;
-    }
-    const score = cosineSimilarity(preferenceVector, eventVector);
+    const score = computeMatchScore(user, event);
     if (!Number.isFinite(score) || score <= 0) {
       return null;
     }
-    const breakdown = buildMatchBreakdown({ user, event, preferenceVector, eventVector });
+    const breakdown = buildMatchBreakdown({ user, event });
     if ((!breakdown || breakdown.length === 0) && score <= MIN_MATCH_DISPLAY_THRESHOLD) {
       return null;
     }
@@ -603,7 +587,7 @@ export default function EventDetailsPage({ route, navigation }) {
       summary,
       breakdown: Array.isArray(breakdown) ? breakdown : [],
     };
-  }, [preferenceVector, event, user]);
+  }, [hasPreferences, event, user]);
 
   const readinessAssessment = useMemo(() => evaluateEventReadiness(user, event), [event, user]);
   const readinessBlockers = readinessAssessment?.blockers ?? [];
