@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
+import ScreenHeader from '../../components/ScreenHeader';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -356,13 +357,12 @@ export default function ApplyOrganizerPage({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 32}
     >
+      <ScreenHeader
+        navigation={navigation}
+        title="Organizer Application"
+        subtitle="Share proof of your credentials and identity so admins can verify you as a legitimate organizer."
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Organizer Application</Text>
-        <Text style={styles.subtitle}>
-          Share proof of your credentials and identity so admins can verify you as a legitimate
-          organizer.
-        </Text>
-
         <View style={[styles.verificationCard, { backgroundColor: identityMeta.accent }]}>
           <View style={styles.verificationHeader}>
             <Text style={[styles.statusLabel, { color: identityMeta.color }]}>{identityMeta.label}</Text>

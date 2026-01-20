@@ -16,6 +16,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { WebView } from 'react-native-webview';
+import ScreenHeader from '../../components/ScreenHeader';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -330,13 +331,12 @@ export default function BusinessVerificationPage({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 32}
     >
+      <ScreenHeader
+        navigation={navigation}
+        title="Business Verification"
+        subtitle="Upload your DTI Business Name Certificate or local permit. We will auto-check format, TIN, and layout, then score you as Verified, Partially Verified, or Rejected (0–40 pts)."
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Business Verification</Text>
-        <Text style={styles.subtitle}>
-          Upload your DTI Business Name Certificate or local permit. We will auto-check format, TIN, and layout,
-          then score you as Verified, Partially Verified, or Rejected (0–40 pts).
-        </Text>
-
         <View style={[styles.statusCard, { backgroundColor: statusStyles.accent }]}>
           <Text style={[styles.statusLabel, { color: statusStyles.color }]}>{statusStyles.label}</Text>
           <Text style={styles.statusScore}>{scoreLabel}</Text>
