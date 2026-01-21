@@ -130,6 +130,11 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
     typeof booking?.rescheduleReason === "string" && booking.rescheduleReason.trim().length
       ? booking.rescheduleReason.trim()
       : null;
+  const rescheduleApprovalStatus =
+    typeof booking?.rescheduleApprovalStatus === "string" &&
+    booking.rescheduleApprovalStatus.trim().length
+      ? booking.rescheduleApprovalStatus.trim().toUpperCase()
+      : null;
 
   const actionButtons = [];
   if (!isApproved) {
@@ -168,6 +173,11 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
       <Text style={styles.referenceLabel}>Reference: {booking?.id}</Text>
       {rescheduleReason ? (
         <Text style={styles.reasonText}>Reschedule reason: {rescheduleReason}</Text>
+      ) : null}
+      {rescheduleApprovalStatus ? (
+        <Text style={styles.reasonText}>
+          Reschedule approval: {rescheduleApprovalStatus === "APPROVED" ? "Approved" : "Pending"}
+        </Text>
       ) : null}
       {cancellationReason ? (
         <Text style={styles.reasonText}>Cancellation reason: {cancellationReason}</Text>

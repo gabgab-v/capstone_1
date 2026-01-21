@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
+import { ensureBookingColumns } from "@/lib/bookingColumns";
 
 const DIFFICULTY_CANONICAL = {
   beginner: "BEGINNER",
@@ -56,6 +57,22 @@ function toDate(value) {
     return parsed;
   }
   return null;
+}
+
+function toTimestamp(value) {
+  const date = toDate(value);
+  return date ? date.getTime() : null;
+}
+
+function normalizeCoordinate(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+  return Math.round(number * 10000) / 10000;
 }
 
 function sanitizeBounds(bounds) {
@@ -135,6 +152,14 @@ async function findOwnedTrail(userId, trailId) {
 const EVENT_STATUSES = new Set(["DRAFT", "PUBLISHED", "CLOSED", "COMPLETED", "CANCELLED"]);
 const ATTENDEE_STATUSES = new Set(["APPROVED", "CONFIRMED"]);
 const VERIFIED_IDENTITY_STATUS = "VERIFIED";
+const MAX_RESCHEDULE_REASON_LENGTH = 240;
+const RESCHEDULE_APPROVAL_PENDING = "PENDING";
+const RESCHEDULE_APPROVAL_ELIGIBLE_STATUSES = new Set([
+  "PENDING",
+  "APPROVED",
+  "CONFIRMED",
+  "RESCHEDULE_REQUESTED",
+]);
 
 const EVENT_COLUMN_QUERIES = [
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "mountainTag" TEXT;',
@@ -147,6 +172,8 @@ const EVENT_COLUMN_QUERIES = [
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "announceSentAt" TIMESTAMP;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "attendanceCheckSentAt" TIMESTAMP;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "gcashNumber" TEXT;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduleReason" TEXT;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduledAt" TIMESTAMP;',
 ];
 
 async function ensureEventColumns() {
@@ -242,6 +269,9 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    await ensureEventColumns();
+    await ensureBookingColumns();
+
     const identityResult = await requireVerifiedIdentity(user);
     if (!identityResult.allowed) {
       const errorMessage =
@@ -277,6 +307,10 @@ export async function PATCH(request, { params }) {
     }
 
     const body = await request.json();
+    const rescheduleReasonRaw = sanitizeString(body?.rescheduleReason);
+    const normalizedRescheduleReason = rescheduleReasonRaw
+      ? rescheduleReasonRaw.slice(0, MAX_RESCHEDULE_REASON_LENGTH)
+      : null;
 
     const title = sanitizeString(body?.title);
     if (!title) {
@@ -324,6 +358,7 @@ export async function PATCH(request, { params }) {
 
     const locationLatitude = toFloat(body?.locationLatitude);
     const locationLongitude = toFloat(body?.locationLongitude);
+    const locationName = sanitizeString(body?.locationName);
 
     let difficultyValue = existingEvent.difficulty ?? "BEGINNER";
     if (Object.prototype.hasOwnProperty.call(body, "difficulty")) {
@@ -439,6 +474,20 @@ export async function PATCH(request, { params }) {
       );
     }
 
+    const scheduleChanged =
+      toTimestamp(existingEvent.startsAt) !== toTimestamp(startsAt) ||
+      toTimestamp(existingEvent.endsAt) !== toTimestamp(endsAt) ||
+      sanitizeString(existingEvent.locationName) !== locationName ||
+      normalizeCoordinate(existingEvent.locationLatitude) !== normalizeCoordinate(locationLatitude) ||
+      normalizeCoordinate(existingEvent.locationLongitude) !== normalizeCoordinate(locationLongitude);
+
+    if (scheduleChanged && !normalizedRescheduleReason) {
+      return NextResponse.json(
+        { error: "Reschedule reason is required when moving the schedule." },
+        { status: 400 },
+      );
+    }
+
     let approvedCount = 0;
     if (maxParticipants !== null || status === "COMPLETED" || status === "CLOSED") {
       approvedCount = await prisma.booking.count({
@@ -475,7 +524,7 @@ export async function PATCH(request, { params }) {
       price: price ?? existingEvent.price ?? 0,
       imageUrl: sanitizeString(body?.imageUrl) ?? existingEvent.imageUrl ?? null,
       gcashNumber: trimmedGcash,
-      locationName: sanitizeString(body?.locationName),
+      locationName,
       locationLatitude: Number.isFinite(locationLatitude) ? locationLatitude : null,
       locationLongitude: Number.isFinite(locationLongitude) ? locationLongitude : null,
       locationZoomLevel: toFloat(body?.locationZoomLevel),
@@ -500,26 +549,48 @@ export async function PATCH(request, { params }) {
         existingEvent.trailDistanceMeters,
     };
 
+    if (scheduleChanged) {
+      updateData.rescheduleReason = normalizedRescheduleReason;
+      updateData.rescheduledAt = new Date();
+    }
+
     if (status === "COMPLETED") {
       updateData.completedAt = existingEvent.completedAt ?? new Date();
     } else {
       updateData.completedAt = null;
     }
 
-    const updatedEvent = await prisma.event.update({
-      where: { id: eventId },
-      data: updateData,
-      include: {
-        organizer: { select: { id: true, email: true, name: true } },
-        trail: {
-          select: {
-            id: true,
-            label: true,
-            totalDistanceMeters: true,
-            geoJson: true,
+    const updatedEvent = await prisma.$transaction(async (tx) => {
+      const savedEvent = await tx.event.update({
+        where: { id: eventId },
+        data: updateData,
+        include: {
+          organizer: { select: { id: true, email: true, name: true } },
+          trail: {
+            select: {
+              id: true,
+              label: true,
+              totalDistanceMeters: true,
+              geoJson: true,
+            },
           },
         },
-      },
+      });
+
+      if (scheduleChanged) {
+        await tx.booking.updateMany({
+          where: {
+            eventId,
+            status: { in: Array.from(RESCHEDULE_APPROVAL_ELIGIBLE_STATUSES) },
+          },
+          data: {
+            rescheduleApprovalStatus: RESCHEDULE_APPROVAL_PENDING,
+            rescheduleApprovalAt: null,
+          },
+        });
+      }
+
+      return savedEvent;
     });
 
     return NextResponse.json(updatedEvent, { status: 200 });

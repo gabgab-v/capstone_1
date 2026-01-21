@@ -3,10 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 import { isChatEligibleStatus, syncEventGroupConversation } from "@/lib/conversations";
 import { buildCancellationOutcome } from "@/lib/cancellationPolicy";
+import { ensureBookingColumns } from "@/lib/bookingColumns";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED", "RESCHEDULE_REQUESTED"]);
 const MAX_REASON_LENGTH = 500;
+const RESCHEDULE_APPROVAL_STATUSES = new Set(["APPROVED"]);
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -17,17 +19,35 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    await ensureBookingColumns();
+
     // 2. Get the bookingId from the URL and the new status from the request body
     const { bookingId } = params;
-    const { status, reason } = await req.json();
+    const { status, reason, rescheduleApprovalStatus } = await req.json();
     const normalizedStatus = typeof status === "string" ? status.toUpperCase() : "";
     const normalizedReason =
       typeof reason === "string" && reason.trim().length
         ? reason.trim().slice(0, MAX_REASON_LENGTH)
         : null;
+    const normalizedApprovalStatus =
+      typeof rescheduleApprovalStatus === "string"
+        ? rescheduleApprovalStatus.trim().toUpperCase()
+        : null;
+    const hasStatusUpdate = Boolean(normalizedStatus);
+    const hasApprovalUpdate = Boolean(normalizedApprovalStatus);
 
-    if (!normalizedStatus) {
-      return NextResponse.json({ error: "Booking status is required." }, { status: 400 });
+    if (!hasStatusUpdate && !hasApprovalUpdate) {
+      return NextResponse.json(
+        { error: "Provide a booking status or a reschedule approval response." },
+        { status: 400 },
+      );
+    }
+
+    if (hasStatusUpdate && hasApprovalUpdate) {
+      return NextResponse.json(
+        { error: "Reschedule approval cannot be submitted with a status change." },
+        { status: 400 },
+      );
     }
 
     // 3. Find the original booking and its associated event
@@ -48,50 +68,82 @@ export async function PUT(req, { params }) {
         ? bookingToUpdate.status.toUpperCase()
         : "PENDING";
 
-    const allowedStatuses = new Set();
-    if (isOrganizer) {
-      ORGANIZER_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
-    }
-    if (isBookingOwner) {
-      ATTENDEE_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
-    }
+    if (hasStatusUpdate) {
+      const allowedStatuses = new Set();
+      if (isOrganizer) {
+        ORGANIZER_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
+      }
+      if (isBookingOwner) {
+        ATTENDEE_ALLOWED_STATUSES.forEach((value) => allowedStatuses.add(value));
+      }
 
-    if (allowedStatuses.size === 0) {
-      return NextResponse.json(
-        { error: "Forbidden: You are not allowed to update this booking." },
-        { status: 403 }
-      );
-    }
-
-    if (!allowedStatuses.has(normalizedStatus)) {
-      return NextResponse.json(
-        {
-          error:
-            isBookingOwner && normalizedStatus !== "CANCELLED"
-              ? "Only organizers can approve bookings. You may cancel your booking instead."
-              : "Invalid status provided",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (isBookingOwner && normalizedStatus === "CANCELLED" && currentStatus === "CANCELLED") {
-      return NextResponse.json(
-        { error: "This booking has already been cancelled." },
-        { status: 409 },
-      );
-    }
-
-    if (isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
-      if (currentStatus === "CANCELLED") {
+      if (allowedStatuses.size === 0) {
         return NextResponse.json(
-          { error: "Cancelled bookings cannot be rescheduled." },
+          { error: "Forbidden: You are not allowed to update this booking." },
+          { status: 403 }
+        );
+      }
+
+      if (!allowedStatuses.has(normalizedStatus)) {
+        return NextResponse.json(
+          {
+            error:
+              isBookingOwner && normalizedStatus !== "CANCELLED"
+                ? "Only organizers can approve bookings. You may cancel your booking instead."
+                : "Invalid status provided",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (isBookingOwner && normalizedStatus === "CANCELLED" && currentStatus === "CANCELLED") {
+        return NextResponse.json(
+          { error: "This booking has already been cancelled." },
           { status: 409 },
         );
       }
-      if (currentStatus === "RESCHEDULE_REQUESTED") {
+
+      if (isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
+        if (currentStatus === "CANCELLED") {
+          return NextResponse.json(
+            { error: "Cancelled bookings cannot be rescheduled." },
+            { status: 409 },
+          );
+        }
+        if (currentStatus === "RESCHEDULE_REQUESTED") {
+          return NextResponse.json(
+            { error: "Reschedule has already been requested for this booking." },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
+    if (hasApprovalUpdate) {
+      if (!isBookingOwner) {
         return NextResponse.json(
-          { error: "Reschedule has already been requested for this booking." },
+          { error: "Only the booking owner can approve a rescheduled event." },
+          { status: 403 },
+        );
+      }
+
+      if (!RESCHEDULE_APPROVAL_STATUSES.has(normalizedApprovalStatus)) {
+        return NextResponse.json(
+          { error: "Invalid reschedule approval response." },
+          { status: 400 },
+        );
+      }
+
+      if (["CANCELLED", "DECLINED", "REJECTED"].includes(currentStatus)) {
+        return NextResponse.json(
+          { error: "Cancelled or rejected bookings cannot approve a reschedule." },
+          { status: 409 },
+        );
+      }
+
+      if (!bookingToUpdate.event?.rescheduledAt) {
+        return NextResponse.json(
+          { error: "No reschedule approval is required for this event." },
           { status: 409 },
         );
       }
@@ -99,7 +151,8 @@ export async function PUT(req, { params }) {
 
     const cancellationData = {};
     const rescheduleData = {};
-    if (isBookingOwner && normalizedStatus === "CANCELLED") {
+    const approvalData = {};
+    if (hasStatusUpdate && isBookingOwner && normalizedStatus === "CANCELLED") {
       const cancelledAt = new Date();
       const cancellationOutcome = buildCancellationOutcome({
         startsAt: bookingToUpdate.event?.startsAt,
@@ -115,17 +168,29 @@ export async function PUT(req, { params }) {
       cancellationData.refundPolicyLabel = cancellationOutcome.policyLabel;
       cancellationData.rescheduleRequestedAt = null;
       cancellationData.rescheduleReason = null;
+      cancellationData.rescheduleApprovalStatus = null;
+      cancellationData.rescheduleApprovalAt = null;
     }
 
-    if (isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
+    if (hasStatusUpdate && isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
       rescheduleData.rescheduleRequestedAt = new Date();
       rescheduleData.rescheduleReason = normalizedReason;
+    }
+
+    if (hasApprovalUpdate) {
+      approvalData.rescheduleApprovalStatus = normalizedApprovalStatus;
+      approvalData.rescheduleApprovalAt = new Date();
     }
 
     // 5. Update the booking's status in the database
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: normalizedStatus, ...cancellationData, ...rescheduleData },
+      data: {
+        ...(hasStatusUpdate ? { status: normalizedStatus } : {}),
+        ...cancellationData,
+        ...rescheduleData,
+        ...approvalData,
+      },
       include: {
         user: { select: { id: true, name: true, email: true } },
         event: { select: { id: true, title: true, organizerId: true } },

@@ -369,6 +369,7 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
   const previousStatus = normalizeStatus(previousEvent.status);
   const nextStatus = normalizeStatus(nextEvent.status);
   const eventTitle = normalizeText(nextEvent.title) || "An event you joined";
+  const rescheduleReason = normalizeText(nextEvent.rescheduleReason);
 
   if (previousStatus !== nextStatus && nextStatus === "CANCELLED") {
     const refundNote = buildRefundNoteForNotification(nextBooking);
@@ -406,6 +407,12 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
   }
   if (scheduleChanged || locationChanged) {
     summaryParts.push("Your booking stays active for the new schedule");
+  }
+  if (scheduleChanged && rescheduleReason) {
+    summaryParts.push(`Reason: ${truncate(rescheduleReason, 80)}`);
+  }
+  if (scheduleChanged && normalizeStatus(nextBooking?.rescheduleApprovalStatus) === "PENDING") {
+    summaryParts.push("Please confirm the new schedule in your booking.");
   }
 
   const title = scheduleChanged || locationChanged ? "Event moved" : "Event updated";
@@ -451,6 +458,8 @@ function buildBookingSnapshot(booking) {
     refundAmount: normalizeNumber(booking.refundAmount),
     refundPolicyLabel: normalizeText(booking.refundPolicyLabel),
     totalAmount: normalizeNumber(booking.totalAmount),
+    rescheduleApprovalStatus: normalizeStatus(booking.rescheduleApprovalStatus),
+    rescheduleApprovalAt: booking.rescheduleApprovalAt ?? null,
     event: {
       id: event.id,
       title: normalizeText(event.title),
@@ -460,6 +469,8 @@ function buildBookingSnapshot(booking) {
       startsAt: event.startsAt ?? null,
       endsAt: event.endsAt ?? null,
       status: normalizeStatus(event.status),
+      rescheduleReason: normalizeText(event.rescheduleReason),
+      rescheduledAt: event.rescheduledAt ?? null,
       locationName: event.locationName ?? null,
       locationLatitude: event.locationLatitude ?? null,
       locationLongitude: event.locationLongitude ?? null,
@@ -824,8 +835,10 @@ function BookingCard({
   onOpenEvent,
   onCancelBooking,
   onRescheduleBooking,
+  onApproveReschedule,
   isCancelling,
   isRescheduling,
+  isApprovingReschedule,
 }) {
   const { styles } = useEventStyles();
   const event = booking?.event ?? null;
@@ -839,10 +852,22 @@ function BookingCard({
   const bookedAtLabel = formatDateTime(booking?.createdAt);
   const normalizedStatus =
     typeof booking?.status === "string" ? booking.status.toUpperCase() : "PENDING";
+  const rescheduleApprovalStatus = normalizeStatus(booking?.rescheduleApprovalStatus);
+  const rescheduleReason = normalizeText(event?.rescheduleReason);
+  const needsRescheduleApproval =
+    Boolean(rescheduleReason) &&
+    rescheduleApprovalStatus === "PENDING" &&
+    !["CANCELLED", "DECLINED", "REJECTED"].includes(normalizedStatus);
+  const rescheduleStartLabel = formatEventDateTimeLabel(event?.startsAt);
+  const rescheduleLocation = getLocationLabel(event);
+  const canApproveReschedule =
+    needsRescheduleApproval && typeof onApproveReschedule === "function";
   const canCancel =
+    !needsRescheduleApproval &&
     !["CANCELLED", "DECLINED", "REJECTED", "COMPLETED"].includes(normalizedStatus) &&
     typeof onCancelBooking === "function";
   const canReschedule =
+    !needsRescheduleApproval &&
     ["PENDING", "APPROVED", "CONFIRMED"].includes(normalizedStatus) &&
     typeof onRescheduleBooking === "function";
 
@@ -881,6 +906,53 @@ function BookingCard({
                 <Text style={styles.metricText}>{metric.label}</Text>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {needsRescheduleApproval ? (
+          <View style={styles.rescheduleNotice}>
+            <Text style={styles.rescheduleNoticeTitle}>Schedule updated</Text>
+            {rescheduleReason ? (
+              <Text style={styles.rescheduleNoticeText}>Reason: {rescheduleReason}</Text>
+            ) : null}
+            <Text style={styles.rescheduleNoticeText}>
+              New start: {rescheduleStartLabel}
+            </Text>
+            {rescheduleLocation ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Meeting point: {rescheduleLocation}
+              </Text>
+            ) : null}
+            <View style={styles.rescheduleNoticeActions}>
+              {canApproveReschedule ? (
+                <TouchableOpacity
+                  style={[
+                    styles.rescheduleApproveButton,
+                    isApprovingReschedule ? styles.rescheduleActionDisabled : null,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => onApproveReschedule(booking)}
+                  disabled={isApprovingReschedule}
+                >
+                  {isApprovingReschedule ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.rescheduleApproveText}>Approve new schedule</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.rescheduleCancelButton,
+                  isApprovingReschedule ? styles.rescheduleActionDisabled : null,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => onCancelBooking?.(booking)}
+                disabled={isApprovingReschedule}
+              >
+                <Text style={styles.rescheduleCancelText}>Cancel booking</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -1196,6 +1268,7 @@ export default function EventsPage({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [reschedulingBookingId, setReschedulingBookingId] = useState(null);
+  const [rescheduleApprovalBookingId, setRescheduleApprovalBookingId] = useState(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [activeTab, setActiveTab] = useState(TAB_BOOKINGS);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1647,7 +1720,7 @@ export default function EventsPage({ navigation }) {
       } else {
         Alert.alert(
           "Reschedule requested",
-          "We've sent your request to the organizer for review. They may approve or decline it. If the event is moved, all attendees will be notified and your booking will carry over to the new schedule.",
+          "We've sent your request to the organizer for review. They may approve or decline it. If the event is moved, all attendees will be notified and asked to approve the new schedule.",
         );
       }
     } catch (error) {
@@ -1688,6 +1761,51 @@ export default function EventsPage({ navigation }) {
       openReasonModal("reschedule", booking);
     },
     [openReasonModal],
+  );
+
+  const handleApproveReschedule = useCallback(
+    async (booking) => {
+      if (!booking?.id) {
+        return;
+      }
+      if (
+        typeof booking?.rescheduleApprovalStatus === "string" &&
+        booking.rescheduleApprovalStatus.toUpperCase() === "APPROVED"
+      ) {
+        return;
+      }
+      setRescheduleApprovalBookingId(booking.id);
+      try {
+        const updatedBooking = await put(`/api/bookings/${booking.id}`, {
+          rescheduleApprovalStatus: "APPROVED",
+        });
+        setBookedEvents((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) =>
+                item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item,
+              )
+            : prev,
+        );
+        const updatedSnapshot = buildBookingSnapshot(updatedBooking);
+        if (updatedSnapshot) {
+          bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
+          bookingSnapshotReadyRef.current = true;
+        }
+        Alert.alert(
+          "Schedule approved",
+          "Thanks for confirming. You're set for the new schedule.",
+        );
+      } catch (error) {
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          "We couldn't save your approval right now. Please try again.";
+        Alert.alert("Approval failed", message);
+      } finally {
+        setRescheduleApprovalBookingId(null);
+      }
+    },
+    [put],
   );
 
   const handleViewBookings = useCallback(
@@ -1890,7 +2008,7 @@ export default function EventsPage({ navigation }) {
     reasonAction === "reschedule" ? "Request reschedule" : "Cancel booking";
   const reasonModalCopy =
     reasonAction === "reschedule"
-      ? "Ask the organizer to move the event schedule. They will review your request and may approve or decline it. If the event is moved, all attendees will be notified."
+      ? "Ask the organizer to move the event schedule. They will review your request and may approve or decline it. If the event is moved, all attendees will be notified and asked to approve the new schedule."
       : "Let the organizer know why you're cancelling. Cancelling removes you from the event and is non-refundable.";
   const reasonActionLabel =
     reasonAction === "reschedule" ? "Send request" : "Cancel booking";
@@ -2041,8 +2159,10 @@ export default function EventsPage({ navigation }) {
                 onOpenEvent={handleOpenEvent}
                 onCancelBooking={handleCancelBooking}
                 onRescheduleBooking={handleRescheduleBooking}
+                onApproveReschedule={handleApproveReschedule}
                 isCancelling={cancellingBookingId === (booking?.id || null)}
                 isRescheduling={reschedulingBookingId === (booking?.id || null)}
+                isApprovingReschedule={rescheduleApprovalBookingId === (booking?.id || null)}
               />
             ))
           ) : showFilteredBookingsEmptyState ? (
@@ -2433,6 +2553,42 @@ function createStyles(theme) {
       marginBottom: 8,
     },
     metricText: { fontSize: 12, fontWeight: "600", color: theme.infoText },
+    rescheduleNotice: {
+      marginTop: 12,
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.infoText,
+      backgroundColor: theme.infoSurface,
+    },
+    rescheduleNoticeTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: theme.infoText,
+      marginBottom: 4,
+    },
+    rescheduleNoticeText: { fontSize: 12, color: theme.textSecondary, lineHeight: 18 },
+    rescheduleNoticeActions: { flexDirection: "row", marginTop: 10 },
+    rescheduleApproveButton: {
+      flex: 1,
+      backgroundColor: theme.accent,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: "center",
+      marginRight: 8,
+    },
+    rescheduleApproveText: { color: theme.textInverse, fontSize: 13, fontWeight: "700" },
+    rescheduleCancelButton: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.dangerText,
+      backgroundColor: theme.dangerSurface,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: "center",
+    },
+    rescheduleCancelText: { color: theme.dangerText, fontSize: 13, fontWeight: "700" },
+    rescheduleActionDisabled: { opacity: 0.7 },
     primaryButton: {
       marginTop: 14,
       backgroundColor: theme.accent,

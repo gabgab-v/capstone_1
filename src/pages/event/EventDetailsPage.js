@@ -40,7 +40,7 @@ const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#
 const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
 const INACTIVE_BOOKING_STATUSES = new Set(['CANCELLED', 'DECLINED', 'REJECTED']);
 const CANCELLATION_POLICY_SUMMARY =
-  'Bookings are non-refundable. Cancelling removes your spot. Reschedule requests are reviewed by the organizer. If the organizer moves the event, bookings carry over and attendees are notified.';
+  'Bookings are non-refundable. Cancelling removes your spot. Reschedule requests are reviewed by the organizer. If the organizer moves the event, bookings carry over and attendees must approve the new schedule.';
 const STRONG_MATCH_THRESHOLD = 0.75;
 const MIN_MATCH_DISPLAY_THRESHOLD = 0.15;
 const MATCH_THEMES = {
@@ -284,6 +284,11 @@ function getDetailRows(event, locationLabel) {
   const minAge = Number(event?.minAge);
   if (Number.isFinite(minAge) && minAge > 0) {
     rows.push({ label: 'Minimum age', value: `${Math.round(minAge)}+` });
+  }
+
+  const rescheduleReason = sanitizeText(event?.rescheduleReason);
+  if (rescheduleReason) {
+    rows.push({ label: 'Reschedule notice', value: rescheduleReason });
   }
 
   rows.push({ label: 'Cancellation policy', value: CANCELLATION_POLICY_SUMMARY });

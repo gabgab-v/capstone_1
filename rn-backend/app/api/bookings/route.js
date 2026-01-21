@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { BookingRequestOutcome } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
+import { ensureBookingColumns } from "@/lib/bookingColumns";
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -642,6 +643,7 @@ export async function POST(req) {
 export async function GET(req) {
   try {
     const user = await getUserFromToken(req);
+    await ensureBookingColumns();
 
     const bookings = await prisma.booking.findMany({
       where: { userId: user.id },

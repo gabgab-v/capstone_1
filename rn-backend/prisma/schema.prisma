@@ -97,6 +97,8 @@ model Event {
   announceAt           DateTime?
   announceSentAt       DateTime?
   attendanceCheckSentAt DateTime?
+  rescheduleReason     String?
+  rescheduledAt        DateTime?
 
   locationName         String?
   locationLatitude     Float?
@@ -155,6 +157,8 @@ model Booking {
   refundPolicyLabel String?
   rescheduleRequestedAt DateTime?
   rescheduleReason String?
+  rescheduleApprovalStatus String?
+  rescheduleApprovalAt DateTime?
   createdAt   DateTime @default(now())
   requestLogs BookingRequestLog[]
 }

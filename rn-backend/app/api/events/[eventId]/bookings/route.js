@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { BookingAccessAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
+import { ensureBookingColumns } from "@/lib/bookingColumns";
 
 const PUBLIC_BOOKING_STATUSES = new Set(["CONFIRMED", "APPROVED"]);
 
@@ -82,6 +83,7 @@ export async function GET(request, { params }) {
   try {
     const user = await getUserFromToken(request);
     const currentUserId = user?.id ?? null;
+    await ensureBookingColumns();
 
     if (!eventId) {
       return NextResponse.json({ error: "Event ID is missing" }, { status: 400 });
@@ -140,6 +142,8 @@ export async function GET(request, { params }) {
           cancellationReason,
           rescheduleReason,
           rescheduleRequestedAt,
+          rescheduleApprovalStatus,
+          rescheduleApprovalAt,
         } = booking;
 
         const safeUser = canViewPersonalData
@@ -162,6 +166,8 @@ export async function GET(request, { params }) {
           cancellationReason: canViewReceipt ? cancellationReason : null,
           rescheduleReason: canViewReceipt ? rescheduleReason : null,
           rescheduleRequestedAt: canViewReceipt ? rescheduleRequestedAt : null,
+          rescheduleApprovalStatus: canViewReceipt ? rescheduleApprovalStatus : null,
+          rescheduleApprovalAt: canViewReceipt ? rescheduleApprovalAt : null,
           user: safeUser,
         };
       });

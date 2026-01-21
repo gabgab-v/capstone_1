@@ -63,6 +63,22 @@ const DIFFICULTY_LEVELS = [
   },
 ];
 
+const RESCHEDULE_OTHER_VALUE = 'OTHER';
+const RESCHEDULE_REASON_MAX_LENGTH = 240;
+const RESCHEDULE_REASON_PRESETS = [
+  { value: 'Trail access is closed for the scheduled date.', label: 'Trail area closed' },
+  { value: 'Flooding reported after recent rainfall.', label: 'Flooding after heavy rain' },
+  { value: 'Severe weather advisory in effect.', label: 'Severe weather advisory' },
+  { value: 'Safety or access issue on the route.', label: 'Safety or access issue' },
+];
+const RESCHEDULE_REASON_OPTIONS = [
+  ...RESCHEDULE_REASON_PRESETS,
+  { value: RESCHEDULE_OTHER_VALUE, label: 'Other (add details)' },
+];
+const RESCHEDULE_REASON_PRESET_VALUES = new Set(
+  RESCHEDULE_REASON_PRESETS.map((option) => option.value),
+);
+
 function resolveDifficultyValue(rawValue) {
   const normalized = normalizeDifficultyValue(typeof rawValue === 'string' ? rawValue : null);
   if (!normalized) {
@@ -94,6 +110,22 @@ function sanitizeGcashInput(value) {
     return '';
   }
   return value.replace(/\D+/g, '').slice(0, GCASH_NUMBER_LENGTH);
+}
+
+function resolveRescheduleReasonChoice(value) {
+  const trimmed = trimOrNull(value);
+  if (!trimmed) {
+    return '';
+  }
+  return RESCHEDULE_REASON_PRESET_VALUES.has(trimmed) ? trimmed : RESCHEDULE_OTHER_VALUE;
+}
+
+function resolveRescheduleReasonCustom(value) {
+  const trimmed = trimOrNull(value);
+  if (!trimmed) {
+    return '';
+  }
+  return RESCHEDULE_REASON_PRESET_VALUES.has(trimmed) ? '' : trimmed;
 }
 
 const EVENT_STATUS_OPTIONS = [
@@ -196,6 +228,22 @@ function parseDate(value) {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function toTimestamp(value) {
+  const date = parseDate(value);
+  return date ? date.getTime() : null;
+}
+
+function normalizeCoordinate(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+  return Math.round(number * 10000) / 10000;
 }
 
 function clampDateToRange(value, minimumDate, maximumDate) {
@@ -470,6 +518,12 @@ export default function CreateEventPage({ route, navigation }) {
         : null;
     return raw && EVENT_STATUS_SET.has(raw) ? raw : DEFAULT_EVENT_STATUS;
   });
+  const [rescheduleReasonChoice, setRescheduleReasonChoice] = useState(() =>
+    resolveRescheduleReasonChoice(eventFromParams?.rescheduleReason),
+  );
+  const [rescheduleReasonCustom, setRescheduleReasonCustom] = useState(() =>
+    resolveRescheduleReasonCustom(eventFromParams?.rescheduleReason),
+  );
   const trailTypePickerOptions = useMemo(
     () => [{ label: 'Select...', value: '' }, ...TRAIL_TYPE_OPTIONS],
     [],
@@ -514,6 +568,29 @@ export default function CreateEventPage({ route, navigation }) {
   }, [trails, selectedTrailId, isEditMode, editingEvent, eventFromParams]);
 
   const activeEvent = editingEvent ?? eventFromParams ?? null;
+  const hasScheduleChanged = useMemo(() => {
+    if (!isEditMode || !activeEvent) {
+      return false;
+    }
+    const previousStartsAt = toTimestamp(activeEvent.startsAt);
+    const previousEndsAt = toTimestamp(activeEvent.endsAt);
+    const nextStartsAt = toTimestamp(startsAt);
+    const nextEndsAt = toTimestamp(endsAt);
+    const previousLocationName = (activeEvent.locationName ?? '').trim();
+    const nextLocationName = (locationName ?? '').trim();
+    const previousLat = normalizeCoordinate(activeEvent.locationLatitude);
+    const previousLng = normalizeCoordinate(activeEvent.locationLongitude);
+    const nextLat = normalizeCoordinate(selectedLocation?.lat);
+    const nextLng = normalizeCoordinate(selectedLocation?.lng);
+
+    return (
+      previousStartsAt !== nextStartsAt ||
+      previousEndsAt !== nextEndsAt ||
+      previousLocationName !== nextLocationName ||
+      previousLat !== nextLat ||
+      previousLng !== nextLng
+    );
+  }, [activeEvent, endsAt, isEditMode, locationName, selectedLocation, startsAt]);
   const { user } = useAuth();
   const {
     verification: identityVerification,
@@ -624,6 +701,8 @@ export default function CreateEventPage({ route, navigation }) {
         ? activeEvent.status.toUpperCase()
         : DEFAULT_EVENT_STATUS,
     );
+    setRescheduleReasonChoice(resolveRescheduleReasonChoice(activeEvent.rescheduleReason));
+    setRescheduleReasonCustom(resolveRescheduleReasonCustom(activeEvent.rescheduleReason));
 
     hasPrefilledRef.current = true;
   }, [isEditMode, activeEvent]);
@@ -915,6 +994,31 @@ export default function CreateEventPage({ route, navigation }) {
       normalizedMinAge = parsedMinAge;
     }
 
+    let resolvedRescheduleReason = null;
+    if (hasScheduleChanged) {
+      if (!rescheduleReasonChoice) {
+        Alert.alert(
+          'Reschedule reason required',
+          'Select a reason for moving the event schedule so attendees understand the change.',
+        );
+        setActiveTab('details');
+        return;
+      }
+      if (rescheduleReasonChoice === RESCHEDULE_OTHER_VALUE) {
+        resolvedRescheduleReason = trimOrNull(rescheduleReasonCustom);
+      } else {
+        resolvedRescheduleReason = rescheduleReasonChoice;
+      }
+      if (!resolvedRescheduleReason) {
+        Alert.alert(
+          'Reschedule reason required',
+          'Add a short reason for the reschedule before saving.',
+        );
+        setActiveTab('details');
+        return;
+      }
+    }
+
     const normalizedStatus = EVENT_STATUS_SET.has(status) ? status : DEFAULT_EVENT_STATUS;
 
     const targetEventId = activeEvent?.id ?? eventIdFromParams ?? null;
@@ -1006,6 +1110,7 @@ export default function CreateEventPage({ route, navigation }) {
         trailType: normalizedTrailType,
         mountainTag: normalizedMountainTag,
         minAge: normalizedMinAge,
+        ...(hasScheduleChanged ? { rescheduleReason: resolvedRescheduleReason } : {}),
       };
 
       let savedEvent;
@@ -1078,6 +1183,9 @@ export default function CreateEventPage({ route, navigation }) {
     maxParticipants,
     status,
     mountainTag,
+    hasScheduleChanged,
+    rescheduleReasonChoice,
+    rescheduleReasonCustom,
     scheduleNotification,
     isEditMode,
     activeEvent,
@@ -1426,6 +1534,37 @@ export default function CreateEventPage({ route, navigation }) {
                 maximumDate={startsAt}
                 helperText="Optional notification to remind confirmed hikers before the event."
               />
+              {isEditMode ? (
+                <View style={styles.rescheduleSection}>
+                  <Text style={styles.infoLabel}>Reschedule reason</Text>
+                  <SafePicker
+                    options={RESCHEDULE_REASON_OPTIONS}
+                    selectedValue={rescheduleReasonChoice}
+                    onValueChange={setRescheduleReasonChoice}
+                    placeholder="Select reason"
+                    containerStyle={styles.pickerContainer}
+                    dropdownIconColor={pickerIconColor}
+                    textColor={pickerTextColor}
+                    modalTitle="Select reschedule reason"
+                  />
+                  <Text style={styles.helperText}>
+                    {hasScheduleChanged
+                      ? 'Required when moving the schedule or meeting point so attendees can approve the change.'
+                      : 'Required if you move the schedule or meeting point.'}
+                  </Text>
+                  {rescheduleReasonChoice === RESCHEDULE_OTHER_VALUE ? (
+                    <TextInput
+                      style={styles.input}
+                      value={rescheduleReasonCustom}
+                      onChangeText={setRescheduleReasonCustom}
+                      placeholder="Add reschedule details"
+                      placeholderTextColor="#94a3b8"
+                      multiline
+                      maxLength={RESCHEDULE_REASON_MAX_LENGTH}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.subSection}>
@@ -1833,6 +1972,9 @@ function createStyles(theme) {
       fontWeight: '700',
       color: theme.textPrimary,
       marginBottom: 14,
+    },
+    rescheduleSection: {
+      marginTop: 8,
     },
     datetimeField: {
       marginBottom: 16,
