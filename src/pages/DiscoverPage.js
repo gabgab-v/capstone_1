@@ -150,7 +150,6 @@ const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
 const MAX_DISTANCE_KM = 40;
 const MAX_ELEVATION_M = 2000;
-const MAX_MOUNTAIN_MATCH_WEIGHT = 1;
 
 function clamp(value, min = 0, max = 1) {
   if (!Number.isFinite(value)) {
@@ -445,55 +444,6 @@ function extractTrailDescriptor(event) {
   return parts.join(" | ");
 }
 
-function buildMountainHaystack(event) {
-  const parts = [
-    event?.mountainTag,
-    event?.title,
-    event?.trail?.label,
-    event?.locationName,
-    event?.overview,
-  ].filter((value) => typeof value === "string" && value.trim().length > 0);
-  if (!parts.length) {
-    return null;
-  }
-  return parts.join(" | ").toLowerCase();
-}
-
-function computeMountainMatchScore(event, mountains, enabled) {
-  if (!enabled || !Array.isArray(mountains) || mountains.length === 0) {
-    return { score: 0, match: null };
-  }
-
-  const haystack = buildMountainHaystack(event);
-  if (!haystack) {
-    return { score: 0, match: null };
-  }
-
-  let bestScore = 0;
-  let bestMatch = null;
-  mountains.forEach((mountain) => {
-    const normalized = typeof mountain === "string" ? mountain.trim().toLowerCase() : "";
-    if (!normalized) {
-      return;
-    }
-    if (haystack.includes(normalized)) {
-      if (bestScore < 1) {
-        bestScore = 1;
-        bestMatch = mountain;
-      }
-      return;
-    }
-    const tokens = normalized.split(/\s+/).filter((token) => token.length >= 3);
-    const partialHit = tokens.some((token) => haystack.includes(token));
-    if (partialHit && bestScore < 0.6) {
-      bestScore = 0.6;
-      bestMatch = mountain;
-    }
-  });
-
-  return { score: clamp(bestScore, 0, 1), match: bestMatch };
-}
-
 function computeUserVector(user) {
   if (!user) {
     return null;
@@ -512,11 +462,6 @@ function computeUserVector(user) {
       ? budgetRange.min
       : 0
   );
-  const hasMountains =
-    user?.mountainSuggestionsEnabled !== false &&
-    Array.isArray(user?.preferredMountains) &&
-    user.preferredMountains.length > 0;
-  const mountainWeight = hasMountains ? MAX_MOUNTAIN_MATCH_WEIGHT : 0;
 
   return [
     levelToScore(user.experienceLevel),
@@ -526,7 +471,6 @@ function computeUserVector(user) {
     user?.preferredTrailType ? 1 : 0,
     distanceScore,
     elevationScore,
-    mountainWeight,
   ];
 }
 
@@ -549,15 +493,6 @@ function computeEventVector(event, user) {
       : 0;
   const distanceScore = normalizeDistance(Number(event?.distanceKm));
   const elevationScore = normalizeElevation(Number(event?.elevationM));
-  const mountainsEnabled =
-    user?.mountainSuggestionsEnabled !== false &&
-    Array.isArray(user?.preferredMountains) &&
-    user.preferredMountains.length > 0;
-  const { score: mountainScore, match: mountainMatch } = computeMountainMatchScore(
-    event,
-    user?.preferredMountains,
-    mountainsEnabled
-  );
 
   return {
     vector: [
@@ -568,10 +503,7 @@ function computeEventVector(event, user) {
       trailScore,
       distanceScore,
       elevationScore,
-      mountainsEnabled ? mountainScore : 0,
     ],
-    mountainMatch,
-    mountainsEnabled,
   };
 }
 
@@ -599,14 +531,6 @@ function collectPreferenceMatchPercents(user, event) {
   const matchesTrail =
     Boolean(preferredTrail) &&
     (hasDirectTrailMatch || (descriptor && textContains(descriptor, preferredTrail)));
-  const preferredMountains = Array.isArray(user?.preferredMountains) ? user.preferredMountains : [];
-  const mountainsEnabled =
-    user?.mountainSuggestionsEnabled !== false && preferredMountains.length > 0;
-  const { score: mountainScore, match: mountainMatch } = computeMountainMatchScore(
-    event,
-    preferredMountains,
-    mountainsEnabled
-  );
 
   return {
     eventDifficultyLabel,
@@ -623,9 +547,6 @@ function collectPreferenceMatchPercents(user, event) {
     preferredTrail,
     eventTrailType,
     matchesTrail,
-    preferredMountains,
-    mountainsEnabled,
-    mountainMatch,
     percents: {
       experience: computeDifficultyMatchPercent(userExperienceLevel, eventDifficultyLabel),
       preferredDifficulty: computeDifficultyMatchPercent(userPreferredDifficulty, eventDifficultyLabel),
@@ -634,7 +555,6 @@ function collectPreferenceMatchPercents(user, event) {
       trailType: preferredTrail ? (matchesTrail ? 1 : 0) : null,
       distance: computeNumericMatchPercent(preferredDistance, eventDistance),
       elevation: computeNumericMatchPercent(preferredElevation, eventElevation),
-      mountain: mountainsEnabled ? mountainScore : null,
     },
   };
 }
@@ -689,9 +609,6 @@ function buildMatchBreakdown({ user, event }) {
     preferredTrail,
     eventTrailType,
     matchesTrail,
-    preferredMountains,
-    mountainsEnabled,
-    mountainMatch,
     percents,
   } = collectPreferenceMatchPercents(user, event);
 
@@ -715,9 +632,6 @@ function buildMatchBreakdown({ user, event }) {
     preferredTrail,
     eventTrailType,
     matchesTrail,
-    preferredMountains,
-    mountainsEnabled,
-    mountainMatch,
   };
 
   const formatRange = (min, max) => {
@@ -917,20 +831,6 @@ function buildMatchBreakdown({ user, event }) {
         return `Trail description has not mentioned ${preferredTrail} yet.`;
       },
     },
-    {
-      key: "mountain",
-      label: "Familiar mountains",
-      percent: percents.mountain,
-      detail: ({ preferredMountains: mountains, mountainsEnabled: enabled, mountainMatch: match }) => {
-        if (!enabled || !mountains?.length) {
-          return null;
-        }
-        if (match) {
-          return `Surfaced because it mentions ${match}, one of your saved mountains/trails.`;
-        }
-        return "Does not mention your saved mountains/trails yet.";
-      },
-    },
   ];
 
   return groups
@@ -941,10 +841,9 @@ function buildMatchBreakdown({ user, event }) {
       }
 
       const percentValue = group.percent;
-      const includeDespiteShare = group.key === "mountain" && detail;
       if (
         !Number.isFinite(percentValue) ||
-        (!includeDespiteShare && percentValue < MIN_BREAKDOWN_SHARE)
+        percentValue < MIN_BREAKDOWN_SHARE
       ) {
         return null;
       }
