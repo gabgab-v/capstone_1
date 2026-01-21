@@ -99,6 +99,9 @@ model Event {
   attendanceCheckSentAt DateTime?
   rescheduleReason     String?
   rescheduledAt        DateTime?
+  reschedulePollOpensAt DateTime?
+  reschedulePollClosesAt DateTime?
+  reschedulePollStatus String?
 
   locationName         String?
   locationLatitude     Float?

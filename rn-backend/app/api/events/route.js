@@ -99,6 +99,9 @@ const EVENT_COLUMN_QUERIES = [
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "gcashNumber" TEXT;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduleReason" TEXT;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduledAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollOpensAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollClosesAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollStatus" TEXT;',
 ];
 
 async function ensureEventColumns() {

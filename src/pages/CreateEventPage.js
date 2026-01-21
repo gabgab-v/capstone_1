@@ -500,6 +500,12 @@ export default function CreateEventPage({ route, navigation }) {
     parseDate(eventFromParams?.registrationClosesAt),
   );
   const [announceAt, setAnnounceAt] = useState(() => parseDate(eventFromParams?.announceAt));
+  const [reschedulePollOpensAt, setReschedulePollOpensAt] = useState(() =>
+    parseDate(eventFromParams?.reschedulePollOpensAt),
+  );
+  const [reschedulePollClosesAt, setReschedulePollClosesAt] = useState(() =>
+    parseDate(eventFromParams?.reschedulePollClosesAt),
+  );
   const [minParticipants, setMinParticipants] = useState(() =>
     Number.isFinite(Number(eventFromParams?.minParticipants))
       ? String(eventFromParams.minParticipants)
@@ -684,6 +690,8 @@ export default function CreateEventPage({ route, navigation }) {
     setRegistrationOpensAt(parseDate(activeEvent.registrationOpensAt));
     setRegistrationClosesAt(parseDate(activeEvent.registrationClosesAt));
     setAnnounceAt(parseDate(activeEvent.announceAt));
+    setReschedulePollOpensAt(parseDate(activeEvent.reschedulePollOpensAt));
+    setReschedulePollClosesAt(parseDate(activeEvent.reschedulePollClosesAt));
     setMinParticipants(
       Number.isFinite(Number(activeEvent.minParticipants))
         ? String(activeEvent.minParticipants)
@@ -944,6 +952,9 @@ export default function CreateEventPage({ route, navigation }) {
       return;
     }
 
+    const normalizedReschedulePollOpensAt = parseDate(reschedulePollOpensAt);
+    const normalizedReschedulePollClosesAt = parseDate(reschedulePollClosesAt);
+
     const minParticipantsTrimmed = (minParticipants ?? '').trim();
     const minParticipantsValueRaw =
       minParticipantsTrimmed.length > 0 ? toIntOrNull(minParticipantsTrimmed) : 0;
@@ -1013,6 +1024,30 @@ export default function CreateEventPage({ route, navigation }) {
         Alert.alert(
           'Reschedule reason required',
           'Add a short reason for the reschedule before saving.',
+        );
+        setActiveTab('details');
+        return;
+      }
+      if (!normalizedReschedulePollOpensAt || !normalizedReschedulePollClosesAt) {
+        Alert.alert(
+          'Reschedule poll required',
+          'Set the start and end time for the reschedule approval poll.',
+        );
+        setActiveTab('details');
+        return;
+      }
+      if (normalizedReschedulePollClosesAt <= normalizedReschedulePollOpensAt) {
+        Alert.alert(
+          'Check poll window',
+          'The reschedule poll must close after it opens.',
+        );
+        setActiveTab('details');
+        return;
+      }
+      if (normalizedReschedulePollClosesAt >= normalizedStartsAt) {
+        Alert.alert(
+          'Check poll window',
+          'The reschedule poll must close before the event starts.',
         );
         setActiveTab('details');
         return;
@@ -1110,7 +1145,13 @@ export default function CreateEventPage({ route, navigation }) {
         trailType: normalizedTrailType,
         mountainTag: normalizedMountainTag,
         minAge: normalizedMinAge,
-        ...(hasScheduleChanged ? { rescheduleReason: resolvedRescheduleReason } : {}),
+        ...(hasScheduleChanged
+          ? {
+              rescheduleReason: resolvedRescheduleReason,
+              reschedulePollOpensAt: normalizedReschedulePollOpensAt?.toISOString() ?? null,
+              reschedulePollClosesAt: normalizedReschedulePollClosesAt?.toISOString() ?? null,
+            }
+          : {}),
       };
 
       let savedEvent;
@@ -1563,6 +1604,29 @@ export default function CreateEventPage({ route, navigation }) {
                       maxLength={RESCHEDULE_REASON_MAX_LENGTH}
                     />
                   ) : null}
+                  <DateTimeInputField
+                    styles={styles}
+                    label="Reschedule poll opens"
+                    value={reschedulePollOpensAt}
+                    onChange={setReschedulePollOpensAt}
+                    allowClear
+                    maximumDate={reschedulePollClosesAt ?? startsAt}
+                    helperText={
+                      hasScheduleChanged
+                        ? 'Required when moving the schedule so attendees can vote.'
+                        : 'Required if you move the schedule or meeting point.'
+                    }
+                  />
+                  <DateTimeInputField
+                    styles={styles}
+                    label="Reschedule poll closes"
+                    value={reschedulePollClosesAt}
+                    onChange={setReschedulePollClosesAt}
+                    allowClear
+                    minimumDate={reschedulePollOpensAt}
+                    maximumDate={startsAt}
+                    helperText="Polls must close before the event starts."
+                  />
                 </View>
               ) : null}
             </View>

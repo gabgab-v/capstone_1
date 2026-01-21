@@ -142,6 +142,27 @@ function toTimestamp(value) {
   return date.getTime();
 }
 
+function getReschedulePollWindow(event) {
+  const opensAt = event?.reschedulePollOpensAt ?? null;
+  const closesAt = event?.reschedulePollClosesAt ?? null;
+  const opensTs = toTimestamp(opensAt);
+  const closesTs = toTimestamp(closesAt);
+  const now = Date.now();
+  const isOpen = opensTs !== null && closesTs !== null && now >= opensTs && now < closesTs;
+  const isUpcoming = opensTs !== null && now < opensTs;
+  const isClosed = closesTs !== null && now >= closesTs;
+  return {
+    opensAt,
+    closesAt,
+    opensTs,
+    closesTs,
+    isOpen,
+    isUpcoming,
+    isClosed,
+    hasWindow: opensTs !== null && closesTs !== null,
+  };
+}
+
 function roundCoordinate(value) {
   if (value === null || value === undefined) {
     return null;
@@ -370,6 +391,9 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
   const nextStatus = normalizeStatus(nextEvent.status);
   const eventTitle = normalizeText(nextEvent.title) || "An event you joined";
   const rescheduleReason = normalizeText(nextEvent.rescheduleReason);
+  const previousPollStatus = normalizeStatus(previousEvent.reschedulePollStatus);
+  const nextPollStatus = normalizeStatus(nextEvent.reschedulePollStatus);
+  const pollStatusChanged = nextPollStatus && nextPollStatus !== previousPollStatus;
 
   if (previousStatus !== nextStatus && nextStatus === "CANCELLED") {
     const refundNote = buildRefundNoteForNotification(nextBooking);
@@ -388,10 +412,24 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
   const otherChanges = collectEventChangeLabels(previousEvent, nextEvent);
 
   if (!scheduleChanged && !locationChanged && otherChanges.length === 0) {
+    if (pollStatusChanged) {
+      const pollTitle =
+        nextPollStatus === "APPROVED" ? "Reschedule approved" : "Reschedule rejected";
+      const pollBody =
+        nextPollStatus === "APPROVED"
+          ? `${eventTitle} was approved by majority for the new schedule.`
+          : `${eventTitle} reschedule was rejected by majority.`;
+      return {
+        title: pollTitle,
+        body: pollBody,
+        eventId: nextEvent.id,
+      };
+    }
     return null;
   }
 
   const summaryParts = [];
+  const pollWindow = getReschedulePollWindow(nextEvent);
   if (scheduleChanged) {
     summaryParts.push(`New time: ${formatEventDateTimeLabel(nextEvent.startsAt)}`);
   }
@@ -411,8 +449,29 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
   if (scheduleChanged && rescheduleReason) {
     summaryParts.push(`Reason: ${truncate(rescheduleReason, 80)}`);
   }
-  if (scheduleChanged && normalizeStatus(nextBooking?.rescheduleApprovalStatus) === "PENDING") {
-    summaryParts.push("Please confirm the new schedule in your booking.");
+  if (scheduleChanged) {
+    if (nextPollStatus === "APPROVED") {
+      summaryParts.push("Majority approved the reschedule.");
+    } else if (nextPollStatus === "REJECTED") {
+      summaryParts.push("Majority rejected the reschedule.");
+    } else if (pollWindow.hasWindow) {
+      if (pollWindow.isUpcoming) {
+        const opensLabel = formatEventDateTimeLabel(pollWindow.opensAt);
+        summaryParts.push(
+          opensLabel ? `Reschedule poll opens ${opensLabel}` : "Reschedule poll opens soon.",
+        );
+      } else if (pollWindow.isOpen) {
+        const closesLabel = formatEventDateTimeLabel(pollWindow.closesAt);
+        summaryParts.push(
+          closesLabel ? `Vote on the new schedule by ${closesLabel}` : "Vote on the new schedule.",
+        );
+      } else if (pollWindow.isClosed) {
+        summaryParts.push("Reschedule poll closed. Organizer will follow up.");
+      }
+    }
+    if (normalizeStatus(nextBooking?.rescheduleApprovalStatus) === "PENDING") {
+      summaryParts.push("Cast your vote in the reschedule poll from your booking.");
+    }
   }
 
   const title = scheduleChanged || locationChanged ? "Event moved" : "Event updated";
@@ -471,6 +530,9 @@ function buildBookingSnapshot(booking) {
       status: normalizeStatus(event.status),
       rescheduleReason: normalizeText(event.rescheduleReason),
       rescheduledAt: event.rescheduledAt ?? null,
+      reschedulePollOpensAt: event.reschedulePollOpensAt ?? null,
+      reschedulePollClosesAt: event.reschedulePollClosesAt ?? null,
+      reschedulePollStatus: normalizeStatus(event.reschedulePollStatus),
       locationName: event.locationName ?? null,
       locationLatitude: event.locationLatitude ?? null,
       locationLongitude: event.locationLongitude ?? null,
@@ -835,10 +897,11 @@ function BookingCard({
   onOpenEvent,
   onCancelBooking,
   onRescheduleBooking,
-  onApproveReschedule,
+  onVoteReschedule,
   isCancelling,
   isRescheduling,
-  isApprovingReschedule,
+  isVotingReschedule,
+  voteChoice,
 }) {
   const { styles } = useEventStyles();
   const event = booking?.event ?? null;
@@ -853,23 +916,33 @@ function BookingCard({
   const normalizedStatus =
     typeof booking?.status === "string" ? booking.status.toUpperCase() : "PENDING";
   const rescheduleApprovalStatus = normalizeStatus(booking?.rescheduleApprovalStatus);
+  const reschedulePollStatus = normalizeStatus(event?.reschedulePollStatus);
   const rescheduleReason = normalizeText(event?.rescheduleReason);
-  const needsRescheduleApproval =
+  const pollWindow = getReschedulePollWindow(event);
+  const showRescheduleNotice =
     Boolean(rescheduleReason) &&
-    rescheduleApprovalStatus === "PENDING" &&
+    Boolean(rescheduleApprovalStatus) &&
     !["CANCELLED", "DECLINED", "REJECTED"].includes(normalizedStatus);
+  const pollFinalized =
+    reschedulePollStatus === "APPROVED" || reschedulePollStatus === "REJECTED";
+  const hasPendingVote = rescheduleApprovalStatus === "PENDING";
   const rescheduleStartLabel = formatEventDateTimeLabel(event?.startsAt);
   const rescheduleLocation = getLocationLabel(event);
-  const canApproveReschedule =
-    needsRescheduleApproval && typeof onApproveReschedule === "function";
+  const canVote =
+    showRescheduleNotice &&
+    hasPendingVote &&
+    pollWindow.isOpen &&
+    !pollFinalized &&
+    typeof onVoteReschedule === "function";
   const canCancel =
-    !needsRescheduleApproval &&
     !["CANCELLED", "DECLINED", "REJECTED", "COMPLETED"].includes(normalizedStatus) &&
     typeof onCancelBooking === "function";
   const canReschedule =
-    !needsRescheduleApproval &&
+    !showRescheduleNotice &&
     ["PENDING", "APPROVED", "CONFIRMED"].includes(normalizedStatus) &&
     typeof onRescheduleBooking === "function";
+  const isVotingApprove = isVotingReschedule && voteChoice === "APPROVED";
+  const isVotingReject = isVotingReschedule && voteChoice === "REJECTED";
 
   return (
     <View style={styles.card}>
@@ -909,50 +982,78 @@ function BookingCard({
           </View>
         ) : null}
 
-        {needsRescheduleApproval ? (
+        {showRescheduleNotice ? (
           <View style={styles.rescheduleNotice}>
-            <Text style={styles.rescheduleNoticeTitle}>Schedule updated</Text>
+            <Text style={styles.rescheduleNoticeTitle}>Schedule update poll</Text>
             {rescheduleReason ? (
               <Text style={styles.rescheduleNoticeText}>Reason: {rescheduleReason}</Text>
             ) : null}
-            <Text style={styles.rescheduleNoticeText}>
-              New start: {rescheduleStartLabel}
-            </Text>
+            <Text style={styles.rescheduleNoticeText}>New start: {rescheduleStartLabel}</Text>
             {rescheduleLocation ? (
               <Text style={styles.rescheduleNoticeText}>
                 Meeting point: {rescheduleLocation}
               </Text>
             ) : null}
-            <View style={styles.rescheduleNoticeActions}>
-              {canApproveReschedule ? (
+            {reschedulePollStatus === "APPROVED" ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Majority approved the new schedule.
+              </Text>
+            ) : reschedulePollStatus === "REJECTED" ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Majority rejected the new schedule.
+              </Text>
+            ) : pollWindow.isOpen ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Poll open until {formatEventDateTimeLabel(pollWindow.closesAt)}.
+              </Text>
+            ) : pollWindow.isUpcoming ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Poll opens {formatEventDateTimeLabel(pollWindow.opensAt)}.
+              </Text>
+            ) : pollWindow.isClosed ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Poll closed. Organizer will follow up.
+              </Text>
+            ) : null}
+            {rescheduleApprovalStatus === "APPROVED" ? (
+              <Text style={styles.rescheduleNoticeText}>Your vote: Approved</Text>
+            ) : rescheduleApprovalStatus === "REJECTED" ? (
+              <Text style={styles.rescheduleNoticeText}>Your vote: Rejected</Text>
+            ) : null}
+            {canVote ? (
+              <View style={styles.rescheduleNoticeActions}>
                 <TouchableOpacity
                   style={[
                     styles.rescheduleApproveButton,
-                    isApprovingReschedule ? styles.rescheduleActionDisabled : null,
+                    isVotingReschedule ? styles.rescheduleActionDisabled : null,
                   ]}
                   activeOpacity={0.85}
-                  onPress={() => onApproveReschedule(booking)}
-                  disabled={isApprovingReschedule}
+                  onPress={() => onVoteReschedule(booking, "APPROVED")}
+                  disabled={isVotingReschedule}
                 >
-                  {isApprovingReschedule ? (
+                  {isVotingApprove ? (
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
-                    <Text style={styles.rescheduleApproveText}>Approve new schedule</Text>
+                    <Text style={styles.rescheduleApproveText}>Approve schedule</Text>
                   )}
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity
-                style={[
-                  styles.rescheduleCancelButton,
-                  isApprovingReschedule ? styles.rescheduleActionDisabled : null,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => onCancelBooking?.(booking)}
-                disabled={isApprovingReschedule}
-              >
-                <Text style={styles.rescheduleCancelText}>Cancel booking</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={[
+                    styles.rescheduleRejectButton,
+                    isVotingReschedule ? styles.rescheduleActionDisabled : null,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => onVoteReschedule(booking, "REJECTED")}
+                  disabled={isVotingReschedule}
+                >
+                  {isVotingReject ? (
+                    <ActivityIndicator size="small" color="#991b1b" />
+                  ) : (
+                    <Text style={styles.rescheduleRejectText}>Reject schedule</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -1268,7 +1369,10 @@ export default function EventsPage({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [reschedulingBookingId, setReschedulingBookingId] = useState(null);
-  const [rescheduleApprovalBookingId, setRescheduleApprovalBookingId] = useState(null);
+  const [rescheduleVoteState, setRescheduleVoteState] = useState({
+    bookingId: null,
+    choice: null,
+  });
   const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [activeTab, setActiveTab] = useState(TAB_BOOKINGS);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1285,6 +1389,7 @@ export default function EventsPage({ navigation }) {
   const suggestionNotificationInFlightRef = useRef(false);
   const bookingSnapshotRef = useRef(new Map());
   const bookingSnapshotReadyRef = useRef(false);
+  const reschedulePollReminderRef = useRef(new Set());
   const organizerAttendeeSnapshotRef = useRef(new Map());
   const organizerAttendeeSnapshotReadyRef = useRef(false);
   const insets = useSafeAreaInsets();
@@ -1384,6 +1489,48 @@ export default function EventsPage({ navigation }) {
     [get, scheduleNotification],
   );
 
+  const maybeScheduleReschedulePollReminder = useCallback(
+    async (booking) => {
+      const event = booking?.event;
+      if (!event?.id) {
+        return;
+      }
+      const pollStatus = normalizeStatus(event?.reschedulePollStatus);
+      if (pollStatus && pollStatus !== "PENDING") {
+        return;
+      }
+      if (normalizeStatus(booking?.rescheduleApprovalStatus) !== "PENDING") {
+        return;
+      }
+
+      const pollWindow = getReschedulePollWindow(event);
+      if (!pollWindow.isUpcoming || !pollWindow.opensAt) {
+        return;
+      }
+      const opensAtDate = new Date(pollWindow.opensAt);
+      if (Number.isNaN(opensAtDate.valueOf())) {
+        return;
+      }
+
+      const key = `${event.id}:${opensAtDate.toISOString()}`;
+      if (reschedulePollReminderRef.current.has(key)) {
+        return;
+      }
+      reschedulePollReminderRef.current.add(key);
+
+      await scheduleNotification({
+        title: "Reschedule poll opens",
+        body: `Vote on the new schedule for ${event.title || "your event"}.`,
+        data: {
+          type: "reschedule-poll",
+          eventId: event.id,
+        },
+        trigger: opensAtDate,
+      });
+    },
+    [scheduleNotification],
+  );
+
   const maybeNotifyBookingUpdates = useCallback(
     async (bookings) => {
       if (!Array.isArray(bookings)) {
@@ -1392,6 +1539,7 @@ export default function EventsPage({ navigation }) {
 
       const nextSnapshots = new Map();
       const notifications = [];
+      const pollReminderTasks = [];
 
       bookings.forEach((booking) => {
         const snapshot = buildBookingSnapshot(booking);
@@ -1399,6 +1547,7 @@ export default function EventsPage({ navigation }) {
           return;
         }
         nextSnapshots.set(snapshot.id, snapshot);
+        pollReminderTasks.push(maybeScheduleReschedulePollReminder(booking));
 
         if (!bookingSnapshotReadyRef.current) {
           return;
@@ -1430,23 +1579,29 @@ export default function EventsPage({ navigation }) {
       }
 
       if (!notifications.length) {
+        if (pollReminderTasks.length) {
+          await Promise.all(pollReminderTasks);
+        }
         return;
       }
 
       await Promise.all(
-        notifications.map((notice) =>
-          scheduleNotification({
-            title: notice.title,
-            body: notice.body,
-            data: {
-              type: "event-update",
-              eventId: notice.eventId ?? null,
-            },
-          }),
-        ),
+        [
+          ...notifications.map((notice) =>
+            scheduleNotification({
+              title: notice.title,
+              body: notice.body,
+              data: {
+                type: "event-update",
+                eventId: notice.eventId ?? null,
+              },
+            }),
+          ),
+          ...pollReminderTasks,
+        ],
       );
     },
-    [scheduleNotification],
+    [maybeScheduleReschedulePollReminder, scheduleNotification],
   );
 
   const maybeNotifyOrganizerBookingUpdates = useCallback(
@@ -1720,7 +1875,7 @@ export default function EventsPage({ navigation }) {
       } else {
         Alert.alert(
           "Reschedule requested",
-          "We've sent your request to the organizer for review. They may approve or decline it. If the event is moved, all attendees will be notified and asked to approve the new schedule.",
+          "We've sent your request to the organizer for review. They may approve or decline it. If the event is moved, attendees will be notified and asked to vote in a reschedule poll.",
         );
       }
     } catch (error) {
@@ -1763,21 +1918,28 @@ export default function EventsPage({ navigation }) {
     [openReasonModal],
   );
 
-  const handleApproveReschedule = useCallback(
-    async (booking) => {
+  const handleRescheduleVote = useCallback(
+    async (booking, choice) => {
       if (!booking?.id) {
         return;
       }
-      if (
-        typeof booking?.rescheduleApprovalStatus === "string" &&
-        booking.rescheduleApprovalStatus.toUpperCase() === "APPROVED"
-      ) {
+      const normalizedChoice =
+        typeof choice === "string" ? choice.trim().toUpperCase() : "";
+      if (!["APPROVED", "REJECTED"].includes(normalizedChoice)) {
         return;
       }
-      setRescheduleApprovalBookingId(booking.id);
+      const existingVote =
+        typeof booking?.rescheduleApprovalStatus === "string"
+          ? booking.rescheduleApprovalStatus.toUpperCase()
+          : "";
+      if (existingVote === normalizedChoice) {
+        return;
+      }
+
+      setRescheduleVoteState({ bookingId: booking.id, choice: normalizedChoice });
       try {
         const updatedBooking = await put(`/api/bookings/${booking.id}`, {
-          rescheduleApprovalStatus: "APPROVED",
+          rescheduleApprovalStatus: normalizedChoice,
         });
         setBookedEvents((prev) =>
           Array.isArray(prev)
@@ -1791,18 +1953,27 @@ export default function EventsPage({ navigation }) {
           bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
           bookingSnapshotReadyRef.current = true;
         }
-        Alert.alert(
-          "Schedule approved",
-          "Thanks for confirming. You're set for the new schedule.",
-        );
+
+        const pollStatus = normalizeStatus(updatedBooking?.event?.reschedulePollStatus);
+        const voteLabel =
+          normalizedChoice === "APPROVED"
+            ? "You approved the new schedule."
+            : "You voted to reject the new schedule.";
+        const pollLabel =
+          pollStatus === "APPROVED"
+            ? "Majority approved the reschedule."
+            : pollStatus === "REJECTED"
+              ? "Majority rejected the reschedule."
+              : "We'll notify everyone once the poll closes.";
+        Alert.alert("Vote submitted", `${voteLabel} ${pollLabel}`);
       } catch (error) {
         const message =
           error?.body?.error ||
           error?.message ||
-          "We couldn't save your approval right now. Please try again.";
-        Alert.alert("Approval failed", message);
+          "We couldn't save your vote right now. Please try again.";
+        Alert.alert("Vote failed", message);
       } finally {
-        setRescheduleApprovalBookingId(null);
+        setRescheduleVoteState({ bookingId: null, choice: null });
       }
     },
     [put],
@@ -2159,10 +2330,11 @@ export default function EventsPage({ navigation }) {
                 onOpenEvent={handleOpenEvent}
                 onCancelBooking={handleCancelBooking}
                 onRescheduleBooking={handleRescheduleBooking}
-                onApproveReschedule={handleApproveReschedule}
+                onVoteReschedule={handleRescheduleVote}
                 isCancelling={cancellingBookingId === (booking?.id || null)}
                 isRescheduling={reschedulingBookingId === (booking?.id || null)}
-                isApprovingReschedule={rescheduleApprovalBookingId === (booking?.id || null)}
+                isVotingReschedule={rescheduleVoteState.bookingId === (booking?.id || null)}
+                voteChoice={rescheduleVoteState.choice}
               />
             ))
           ) : showFilteredBookingsEmptyState ? (
@@ -2578,7 +2750,7 @@ function createStyles(theme) {
       marginRight: 8,
     },
     rescheduleApproveText: { color: theme.textInverse, fontSize: 13, fontWeight: "700" },
-    rescheduleCancelButton: {
+    rescheduleRejectButton: {
       flex: 1,
       borderWidth: 1,
       borderColor: theme.dangerText,
@@ -2587,7 +2759,7 @@ function createStyles(theme) {
       borderRadius: 10,
       alignItems: "center",
     },
-    rescheduleCancelText: { color: theme.dangerText, fontSize: 13, fontWeight: "700" },
+    rescheduleRejectText: { color: theme.dangerText, fontSize: 13, fontWeight: "700" },
     rescheduleActionDisabled: { opacity: 0.7 },
     primaryButton: {
       marginTop: 14,

@@ -5,6 +5,7 @@ import { BookingRequestOutcome } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 import { ensureBookingColumns } from "@/lib/bookingColumns";
+import { resolveReschedulePollStatus } from "@/lib/reschedulePoll";
 
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -649,6 +650,36 @@ export async function GET(req) {
       where: { userId: user.id },
       include: { event: true },
     });
+
+    const eventsToCheck = new Map();
+    bookings.forEach((booking) => {
+      const event = booking?.event;
+      if (!event?.id) {
+        return;
+      }
+      const pollStatus =
+        typeof event.reschedulePollStatus === "string" && event.reschedulePollStatus.trim().length
+          ? event.reschedulePollStatus.trim().toUpperCase()
+          : "PENDING";
+      if (pollStatus !== "PENDING") {
+        return;
+      }
+      if (!event.rescheduledAt) {
+        return;
+      }
+      eventsToCheck.set(event.id, event);
+    });
+
+    for (const event of eventsToCheck.values()) {
+      try {
+        const nextStatus = await resolveReschedulePollStatus(prisma, event);
+        if (nextStatus && event) {
+          event.reschedulePollStatus = nextStatus;
+        }
+      } catch (pollError) {
+        console.error("Failed to resolve reschedule poll:", pollError);
+      }
+    }
 
     return new Response(JSON.stringify(bookings), { status: 200 });
   } catch (err) {

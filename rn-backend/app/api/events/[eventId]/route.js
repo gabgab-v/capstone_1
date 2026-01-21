@@ -174,6 +174,9 @@ const EVENT_COLUMN_QUERIES = [
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "gcashNumber" TEXT;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduleReason" TEXT;',
   'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "rescheduledAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollOpensAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollClosesAt" TIMESTAMP;',
+  'ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "reschedulePollStatus" TEXT;',
 ];
 
 async function ensureEventColumns() {
@@ -467,6 +470,19 @@ export async function PATCH(request, { params }) {
       ? toDate(body?.announceAt)
       : existingEvent.announceAt ?? null;
 
+    const reschedulePollOpensAt = Object.prototype.hasOwnProperty.call(
+      body,
+      "reschedulePollOpensAt",
+    )
+      ? toDate(body?.reschedulePollOpensAt)
+      : existingEvent.reschedulePollOpensAt ?? null;
+    const reschedulePollClosesAt = Object.prototype.hasOwnProperty.call(
+      body,
+      "reschedulePollClosesAt",
+    )
+      ? toDate(body?.reschedulePollClosesAt)
+      : existingEvent.reschedulePollClosesAt ?? null;
+
     if (announceAt && startsAt && announceAt >= startsAt) {
       return NextResponse.json(
         { error: "Announcement time must be before the event starts." },
@@ -481,11 +497,31 @@ export async function PATCH(request, { params }) {
       normalizeCoordinate(existingEvent.locationLatitude) !== normalizeCoordinate(locationLatitude) ||
       normalizeCoordinate(existingEvent.locationLongitude) !== normalizeCoordinate(locationLongitude);
 
-    if (scheduleChanged && !normalizedRescheduleReason) {
-      return NextResponse.json(
-        { error: "Reschedule reason is required when moving the schedule." },
-        { status: 400 },
-      );
+    if (scheduleChanged) {
+      if (!normalizedRescheduleReason) {
+        return NextResponse.json(
+          { error: "Reschedule reason is required when moving the schedule." },
+          { status: 400 },
+        );
+      }
+      if (!reschedulePollOpensAt || !reschedulePollClosesAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll start and end times are required." },
+          { status: 400 },
+        );
+      }
+      if (reschedulePollClosesAt <= reschedulePollOpensAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll must close after it opens." },
+          { status: 400 },
+        );
+      }
+      if (startsAt && reschedulePollClosesAt >= startsAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll must close before the event starts." },
+          { status: 400 },
+        );
+      }
     }
 
     let approvedCount = 0;
@@ -552,6 +588,9 @@ export async function PATCH(request, { params }) {
     if (scheduleChanged) {
       updateData.rescheduleReason = normalizedRescheduleReason;
       updateData.rescheduledAt = new Date();
+      updateData.reschedulePollOpensAt = reschedulePollOpensAt;
+      updateData.reschedulePollClosesAt = reschedulePollClosesAt;
+      updateData.reschedulePollStatus = "PENDING";
     }
 
     if (status === "COMPLETED") {

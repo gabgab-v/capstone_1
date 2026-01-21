@@ -4,11 +4,12 @@ import { getUserFromToken } from "@/lib/auth";
 import { isChatEligibleStatus, syncEventGroupConversation } from "@/lib/conversations";
 import { buildCancellationOutcome } from "@/lib/cancellationPolicy";
 import { ensureBookingColumns } from "@/lib/bookingColumns";
+import { resolveReschedulePollStatus } from "@/lib/reschedulePoll";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED", "RESCHEDULE_REQUESTED"]);
 const MAX_REASON_LENGTH = 500;
-const RESCHEDULE_APPROVAL_STATUSES = new Set(["APPROVED"]);
+const RESCHEDULE_APPROVAL_STATUSES = new Set(["APPROVED", "REJECTED"]);
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -53,7 +54,19 @@ export async function PUT(req, { params }) {
     // 3. Find the original booking and its associated event
     const bookingToUpdate = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { event: true }, // Include the event to check its organizer
+      include: {
+        event: {
+          select: {
+            id: true,
+            title: true,
+            organizerId: true,
+            rescheduledAt: true,
+            reschedulePollOpensAt: true,
+            reschedulePollClosesAt: true,
+            reschedulePollStatus: true,
+          },
+        },
+      }, // Include the event to check its organizer
     });
 
     if (!bookingToUpdate) {
@@ -141,6 +154,48 @@ export async function PUT(req, { params }) {
         );
       }
 
+      const pollStatus =
+        typeof bookingToUpdate.event?.reschedulePollStatus === "string"
+          ? bookingToUpdate.event.reschedulePollStatus.toUpperCase()
+          : "PENDING";
+      if (pollStatus !== "PENDING") {
+        return NextResponse.json(
+          { error: "Reschedule poll is already finalized." },
+          { status: 409 },
+        );
+      }
+
+      const pollOpensAt = bookingToUpdate.event?.reschedulePollOpensAt ?? null;
+      const pollClosesAt = bookingToUpdate.event?.reschedulePollClosesAt ?? null;
+      if (!pollOpensAt || !pollClosesAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll window is not available for this event." },
+          { status: 409 },
+        );
+      }
+
+      const now = new Date();
+      const opensAt = new Date(pollOpensAt);
+      const closesAt = new Date(pollClosesAt);
+      if (Number.isNaN(opensAt.valueOf()) || Number.isNaN(closesAt.valueOf())) {
+        return NextResponse.json(
+          { error: "Reschedule poll schedule is invalid." },
+          { status: 400 },
+        );
+      }
+      if (now < opensAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll has not opened yet." },
+          { status: 409 },
+        );
+      }
+      if (now >= closesAt) {
+        return NextResponse.json(
+          { error: "Reschedule poll has closed." },
+          { status: 409 },
+        );
+      }
+
       if (!bookingToUpdate.event?.rescheduledAt) {
         return NextResponse.json(
           { error: "No reschedule approval is required for this event." },
@@ -183,18 +238,34 @@ export async function PUT(req, { params }) {
     }
 
     // 5. Update the booking's status in the database
-    const updatedBooking = await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        ...(hasStatusUpdate ? { status: normalizedStatus } : {}),
-        ...cancellationData,
-        ...rescheduleData,
-        ...approvalData,
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        event: { select: { id: true, title: true, organizerId: true } },
-      },
+    const shouldEvaluatePoll = hasApprovalUpdate || hasStatusUpdate;
+    const updatedBooking = await prisma.$transaction(async (tx) => {
+      const savedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          ...(hasStatusUpdate ? { status: normalizedStatus } : {}),
+          ...cancellationData,
+          ...rescheduleData,
+          ...approvalData,
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          event: true,
+        },
+      });
+
+      if (shouldEvaluatePoll && savedBooking?.event?.id) {
+        try {
+          const nextPollStatus = await resolveReschedulePollStatus(tx, savedBooking.event);
+          if (nextPollStatus && savedBooking.event) {
+            savedBooking.event.reschedulePollStatus = nextPollStatus;
+          }
+        } catch (pollError) {
+          console.error("Failed to resolve reschedule poll:", pollError);
+        }
+      }
+
+      return savedBooking;
     });
 
     const shouldSyncConversation =

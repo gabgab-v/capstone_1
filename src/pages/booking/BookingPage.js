@@ -57,7 +57,7 @@ const OPTIONAL_DOCUMENTS_BY_DIFFICULTY = {
 const BOOKING_POLICY_ITEMS = [
   "Bookings are non-refundable once submitted. Cancelling releases your slot.",
   "You may request a schedule transfer. The organizer reviews each request and may approve or decline it.",
-  "If the organizer moves the event schedule, your booking carries over and you will be asked to approve the new schedule.",
+  "If the organizer moves the event schedule, attendees vote in a reschedule poll and the majority decides.",
   "If you cannot attend, update your attendance status so the organizer can plan accurately.",
 ];
 

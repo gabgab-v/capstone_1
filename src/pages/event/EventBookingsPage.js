@@ -135,6 +135,14 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
     booking.rescheduleApprovalStatus.trim().length
       ? booking.rescheduleApprovalStatus.trim().toUpperCase()
       : null;
+  const rescheduleApprovalLabel =
+    rescheduleApprovalStatus === "APPROVED"
+      ? "Approved"
+      : rescheduleApprovalStatus === "REJECTED"
+        ? "Rejected"
+        : rescheduleApprovalStatus === "PENDING"
+          ? "Pending"
+          : rescheduleApprovalStatus;
 
   const actionButtons = [];
   if (!isApproved) {
@@ -176,7 +184,7 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
       ) : null}
       {rescheduleApprovalStatus ? (
         <Text style={styles.reasonText}>
-          Reschedule approval: {rescheduleApprovalStatus === "APPROVED" ? "Approved" : "Pending"}
+          Reschedule approval: {rescheduleApprovalLabel}
         </Text>
       ) : null}
       {cancellationReason ? (

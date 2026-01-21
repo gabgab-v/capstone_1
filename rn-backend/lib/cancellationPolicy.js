@@ -58,4 +58,4 @@ export function buildCancellationOutcome({ startsAt, cancelledAt, totalAmount })
 }
 
 export const CANCELLATION_POLICY_SUMMARY =
-  "Bookings are non-refundable. Cancelling removes your spot. Reschedule requests are reviewed by the organizer. If the organizer moves an event, bookings carry over and attendees are asked to confirm the new schedule.";
+  "Bookings are non-refundable. Cancelling removes your spot. Reschedule requests are reviewed by the organizer. If the organizer moves an event, attendees vote in a reschedule poll and the majority decides.";
