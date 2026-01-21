@@ -77,7 +77,7 @@ function buildRefundMessage(booking) {
     return "";
   }
   if (refundPercentage <= 0) {
-    return "This booking is non-refundable. You can request a schedule transfer instead.";
+    return "This booking is non-refundable. You can request a schedule transfer for organizer review.";
   }
   const refundAmount = Number(booking?.refundAmount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
@@ -293,7 +293,7 @@ function buildRefundNoteForNotification(booking) {
 
   if (refundPercentage !== null) {
     if (refundPercentage <= 0) {
-      return "This booking is non-refundable. You can request a schedule transfer.";
+      return "This booking is non-refundable. You can request a schedule transfer for organizer review.";
     }
     if (refundAmount === null || refundAmount <= 0) {
       return "This booking was free, so there is no payment to refund.";
@@ -302,11 +302,11 @@ function buildRefundNoteForNotification(booking) {
   }
 
   if (eventStatus === "CANCELLED" && totalAmount && totalAmount > 0) {
-    return "This booking is non-refundable. You can request a schedule transfer.";
+    return "This booking is non-refundable. You can request a schedule transfer for organizer review.";
   }
 
   if (totalAmount && totalAmount > 0) {
-    return "This booking is non-refundable. You can request a schedule transfer.";
+    return "This booking is non-refundable. You can request a schedule transfer for organizer review.";
   }
 
   return "This event was free, so no payment is due.";
@@ -1641,13 +1641,13 @@ export default function EventsPage({ navigation }) {
 
       if (targetStatus === "CANCELLED") {
         const refundMessage = buildRefundMessage(updatedBooking);
-        const baseMessage = "Your booking has been cancelled successfully.";
+        const baseMessage = "Your booking has been cancelled and your spot has been released.";
         const fullMessage = refundMessage ? `${baseMessage} ${refundMessage}` : baseMessage;
         Alert.alert("Booking cancelled", fullMessage);
       } else {
         Alert.alert(
           "Reschedule requested",
-          "We've sent your reschedule request to the organizer. Your payment will transfer to the new schedule once confirmed.",
+          "We've sent your request to the organizer for review. They may approve or decline it. If the event is moved, all attendees will be notified and your booking will carry over to the new schedule.",
         );
       }
     } catch (error) {
@@ -1663,7 +1663,22 @@ export default function EventsPage({ navigation }) {
 
   const handleCancelBooking = useCallback(
     (booking) => {
-      openReasonModal("cancel", booking);
+      if (!booking?.id) {
+        return;
+      }
+      const eventTitle = normalizeText(booking?.event?.title) || "this event";
+      Alert.alert(
+        "Cancel booking?",
+        `Cancelling removes you from ${eventTitle}. This booking is non-refundable.`,
+        [
+          { text: "Keep booking", style: "cancel" },
+          {
+            text: "Continue",
+            style: "destructive",
+            onPress: () => openReasonModal("cancel", booking),
+          },
+        ],
+      );
     },
     [openReasonModal],
   );
@@ -1875,8 +1890,8 @@ export default function EventsPage({ navigation }) {
     reasonAction === "reschedule" ? "Request reschedule" : "Cancel booking";
   const reasonModalCopy =
     reasonAction === "reschedule"
-      ? "Tell the organizer why you need to move your booking. Your payment transfers to the new schedule."
-      : "Let the organizer know why you're cancelling. Cancellations are non-refundable.";
+      ? "Ask the organizer to move the event schedule. They will review your request and may approve or decline it. If the event is moved, all attendees will be notified."
+      : "Let the organizer know why you're cancelling. Cancelling removes you from the event and is non-refundable.";
   const reasonActionLabel =
     reasonAction === "reschedule" ? "Send request" : "Cancel booking";
 

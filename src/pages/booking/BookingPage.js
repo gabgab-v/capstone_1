@@ -54,6 +54,12 @@ const OPTIONAL_DOCUMENTS_BY_DIFFICULTY = {
   Technical: ["experienceProof"],
   Expert: [],
 };
+const BOOKING_POLICY_ITEMS = [
+  "Bookings are non-refundable once submitted. Cancelling releases your slot.",
+  "You may request a schedule transfer. The organizer reviews each request and may approve or decline it.",
+  "If the organizer moves the event schedule, your booking carries over and all attendees are notified.",
+  "If you cannot attend, update your attendance status so the organizer can plan accurately.",
+];
 
 export default function BookingPage({ route, navigation }) {
   const { event } = route.params;
@@ -69,6 +75,7 @@ export default function BookingPage({ route, navigation }) {
   const { scheduleNotification } = useNotifications();
   const [expertWaiverAccepted, setExpertWaiverAccepted] = useState(false);
   const [safetyWaiverAccepted, setSafetyWaiverAccepted] = useState(false);
+  const [policyAccepted, setPolicyAccepted] = useState(false);
   const [bookingRequestKey, setBookingRequestKey] = useState(() => createIdempotencyKey());
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false);
 
@@ -105,6 +112,7 @@ export default function BookingPage({ route, navigation }) {
   }, [optionalDocuments, requiredDocuments]);
   const isExpertGatePending = isExpertDifficulty && !expertWaiverAccepted;
   const isSafetyWaiverPending = !safetyWaiverAccepted;
+  const isPolicyPending = !policyAccepted;
   const readinessAssessment = useMemo(
     () => evaluateEventReadiness(user, event),
     [event, user],
@@ -149,6 +157,7 @@ export default function BookingPage({ route, navigation }) {
   useEffect(() => {
     setExpertWaiverAccepted(false);
     setSafetyWaiverAccepted(false);
+    setPolicyAccepted(false);
     setBookingRequestKey(createIdempotencyKey());
     setDocuments({ waiver: null, medicalCertificate: null, experienceProof: [], trailPolicy: null });
     setReceipt(null);
@@ -466,6 +475,14 @@ export default function BookingPage({ route, navigation }) {
         return;
       }
 
+      if (isPolicyPending) {
+        Alert.alert(
+          "Policy acknowledgement required",
+          "Please review the booking policy and agree to the terms before submitting.",
+        );
+        return;
+      }
+
       if (isSafetyWaiverPending) {
         Alert.alert(
           "Safety Waiver Required",
@@ -589,6 +606,34 @@ export default function BookingPage({ route, navigation }) {
           </Text>
         </View>
       ) : null}
+
+      <View style={styles.policyCard}>
+        <Text style={styles.policyCardTitle}>Booking policy</Text>
+        <Text style={styles.policyCardBody}>
+          Please review the booking terms before submitting. These policies are required for all
+          participants.
+        </Text>
+        <View style={styles.policyList}>
+          {BOOKING_POLICY_ITEMS.map((item, index) => (
+            <Text key={`policy-${index}`} style={styles.policyListItem}>
+              - {item}
+            </Text>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={styles.policyToggle}
+          onPress={() => setPolicyAccepted((prev) => !prev)}
+          disabled={loading}
+          activeOpacity={0.8}
+        >
+          <View style={styles.policyCheckbox}>
+            {policyAccepted ? <View style={styles.policyCheckboxInner} /> : null}
+          </View>
+          <Text style={styles.policyText}>
+            I have read and agree to the booking policy terms listed above.
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.safetyCard}>
         <Text style={styles.safetyCardTitle}>Trail Safety Waiver</Text>
@@ -748,7 +793,8 @@ export default function BookingPage({ route, navigation }) {
       <TouchableOpacity
         style={[
           styles.confirmBtn,
-          (loading || isExpertGatePending || isSafetyWaiverPending || isEventFull) && styles.disabledBtn,
+          (loading || isExpertGatePending || isSafetyWaiverPending || isPolicyPending || isEventFull) &&
+            styles.disabledBtn,
           (hasReadinessBlockers || isEventFull) && styles.confirmBlocked,
         ]}
         onPress={handleConfirmPress}
@@ -828,6 +874,42 @@ const styles = StyleSheet.create({
   readinessGateTitle: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 6 },
   readinessGateItem: { fontSize: 13, color: "#1f2937", lineHeight: 19 },
   readinessGateNote: { marginTop: 8, fontSize: 12, color: "#6b7280" },
+  policyCard: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: "#eff6ff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#93c5fd",
+  },
+  policyCardTitle: { fontSize: 16, fontWeight: "700", color: "#1e3a8a", marginBottom: 6 },
+  policyCardBody: {
+    fontSize: 13,
+    color: "#1e40af",
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  policyList: { marginBottom: 12 },
+  policyListItem: { fontSize: 12, color: "#1e3a8a", lineHeight: 18, marginBottom: 6 },
+  policyToggle: { flexDirection: "row", alignItems: "flex-start" },
+  policyCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: "#2563eb",
+    borderRadius: 4,
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe",
+  },
+  policyCheckboxInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: "#2563eb",
+  },
+  policyText: { flex: 1, fontSize: 13, color: "#1e40af", lineHeight: 20 },
   safetyCard: {
     marginBottom: 20,
     padding: 16,

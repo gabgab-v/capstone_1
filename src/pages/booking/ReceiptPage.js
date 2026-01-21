@@ -62,7 +62,7 @@ function buildRefundMessage(booking) {
     return null;
   }
   if (refundPercentage <= 0) {
-    return "This booking is non-refundable. You can request a schedule transfer.";
+    return "This booking is non-refundable. You can request a schedule transfer for organizer review.";
   }
   const refundAmount = Number(booking?.refundAmount);
   if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
