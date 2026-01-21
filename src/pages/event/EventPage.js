@@ -404,6 +404,9 @@ function buildEventUpdateNotification(previousBooking, nextBooking) {
       moreCount > 0 ? `Updated: ${listed} +${moreCount} more` : `Updated: ${listed}`,
     );
   }
+  if (scheduleChanged || locationChanged) {
+    summaryParts.push("Your booking stays active for the new schedule");
+  }
 
   const title = scheduleChanged || locationChanged ? "Event moved" : "Event updated";
   const body = summaryParts.join(". ") + ".";
@@ -528,7 +531,7 @@ const EVENT_STATUS_OPTIONS = [
   { value: "DRAFT", label: "Draft" },
   { value: "CLOSED", label: "Closed (stop new bookings)" },
   { value: "COMPLETED", label: "Completed" },
-  { value: "CANCELLED", label: "Cancelled" },
+  { value: "CANCELLED", label: "Cancelled (event will not proceed)" },
 ];
 
 const EVENT_STATUS_FILTER_OPTIONS = [{ value: "ALL", label: "All statuses" }, ...EVENT_STATUS_OPTIONS];
@@ -1672,46 +1675,6 @@ export default function EventsPage({ navigation }) {
     [openReasonModal],
   );
 
-  const handleChangeStatus = useCallback(
-    async (targetEvent, nextStatusRaw) => {
-      if (!targetEvent?.id) {
-        return;
-      }
-
-      const normalizedStatus =
-        typeof nextStatusRaw === "string" ? nextStatusRaw.toUpperCase() : null;
-      if (!normalizedStatus || normalizedStatus === (targetEvent?.status || "").toUpperCase()) {
-        return;
-      }
-
-      try {
-        setStatusUpdatingId(targetEvent.id);
-        const latest = await get(`/api/events/${targetEvent.id}`);
-        if (!latest) {
-          throw new Error("Unable to load event details.");
-        }
-
-        const payload = buildEventUpdatePayload(latest, { status: normalizedStatus });
-        if (!payload.registrationClosesAt) {
-          payload.registrationClosesAt = latest?.registrationClosesAt ?? null;
-        }
-
-        await patch(`/api/events/${targetEvent.id}`, payload);
-        await fetchData();
-      } catch (error) {
-        console.error(`Failed to update status for event ${targetEvent?.id}:`, error);
-        const message =
-          error?.body?.error ||
-          error?.message ||
-          "We couldn't update the event status right now. Please try again.";
-        Alert.alert("Update failed", message);
-      } finally {
-        setStatusUpdatingId(null);
-      }
-    },
-    [fetchData]
-  );
-
   const handleViewBookings = useCallback(
     (event) => {
       if (!event?.id) {
@@ -1741,6 +1704,83 @@ export default function EventsPage({ navigation }) {
       });
     },
     [navigation, fetchData]
+  );
+
+  const handleChangeStatus = useCallback(
+    async (targetEvent, nextStatusRaw) => {
+      if (!targetEvent?.id) {
+        return;
+      }
+
+      const normalizedStatus =
+        typeof nextStatusRaw === "string" ? nextStatusRaw.toUpperCase() : null;
+      if (!normalizedStatus || normalizedStatus === (targetEvent?.status || "").toUpperCase()) {
+        return;
+      }
+
+      const applyStatusChange = async () => {
+        try {
+          setStatusUpdatingId(targetEvent.id);
+          const latest = await get(`/api/events/${targetEvent.id}`);
+          if (!latest) {
+            throw new Error("Unable to load event details.");
+          }
+
+          const payload = buildEventUpdatePayload(latest, { status: normalizedStatus });
+          if (!payload.registrationClosesAt) {
+            payload.registrationClosesAt = latest?.registrationClosesAt ?? null;
+          }
+
+          await patch(`/api/events/${targetEvent.id}`, payload);
+          await fetchData();
+        } catch (error) {
+          console.error(`Failed to update status for event ${targetEvent?.id}:`, error);
+          const message =
+            error?.body?.error ||
+            error?.message ||
+            "We couldn't update the event status right now. Please try again.";
+          Alert.alert("Update failed", message);
+        } finally {
+          setStatusUpdatingId(null);
+        }
+      };
+
+      if (normalizedStatus === "CANCELLED") {
+        const attendees = eventAttendees?.[targetEvent.id];
+        const approvedCount = Array.isArray(attendees)
+          ? attendees.filter((booking) => {
+              const status =
+                typeof booking?.status === "string" ? booking.status.toUpperCase() : "";
+              return status === "APPROVED" || status === "CONFIRMED";
+            }).length
+          : 0;
+
+        if (approvedCount > 0) {
+          Alert.alert(
+            "Reschedule instead?",
+            "This event has approved hikers. If you're cancelling due to weather or safety, reschedule the event so approved hikers stay booked and any payments carry over. No refunds are issued.",
+            [
+              {
+                text: "Edit schedule",
+                onPress: () => handleEditEvent(targetEvent),
+              },
+              {
+                text: "Cancel event",
+                style: "destructive",
+                onPress: () => {
+                  void applyStatusChange();
+                },
+              },
+              { text: "Keep status", style: "cancel" },
+            ],
+          );
+          return;
+        }
+      }
+
+      await applyStatusChange();
+    },
+    [eventAttendees, fetchData, handleEditEvent]
   );
 
   const deleteHostedEvent = useCallback(async (eventId) => {

@@ -101,7 +101,7 @@ const EVENT_STATUS_OPTIONS = [
   { value: 'DRAFT', label: 'Draft (hidden)' },
   { value: 'CLOSED', label: 'Closed (no new bookings)' },
   { value: 'COMPLETED', label: 'Completed (archived)' },
-  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'CANCELLED', label: 'Cancelled (event will not proceed)' },
 ];
 
 const EVENT_STATUS_SET = new Set(EVENT_STATUS_OPTIONS.map((option) => option.value));
@@ -1465,7 +1465,8 @@ export default function CreateEventPage({ route, navigation }) {
                   modalTitle="Select event status"
                 />
                 <Text style={styles.helperText}>
-                  Completed or cancelled events stay hidden from the Discover page.
+                  Completed or cancelled events stay hidden from the Discover page. To move a hike
+                  due to weather, edit the schedule instead so approved bookings stay active.
                 </Text>
               </View>
             </View>

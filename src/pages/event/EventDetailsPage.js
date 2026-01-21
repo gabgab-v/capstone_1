@@ -40,7 +40,7 @@ const AVATAR_COLORS = ['#DCFCE7', '#E0F2FE', '#FDE68A', '#FCE7F3', '#EDE9FE', '#
 const APPROVED_BOOKING_STATUSES = new Set(['APPROVED', 'CONFIRMED']);
 const INACTIVE_BOOKING_STATUSES = new Set(['CANCELLED', 'DECLINED', 'REJECTED']);
 const CANCELLATION_POLICY_SUMMARY =
-  'Bookings are non-refundable. Schedule transfers are allowed via reschedule requests.';
+  'Bookings are non-refundable. Schedule transfers are allowed via reschedule requests. If the organizer moves an event due to weather, your booking stays active for the new schedule.';
 const STRONG_MATCH_THRESHOLD = 0.75;
 const MIN_MATCH_DISPLAY_THRESHOLD = 0.15;
 const MATCH_THEMES = {

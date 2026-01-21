@@ -58,4 +58,4 @@ export function buildCancellationOutcome({ startsAt, cancelledAt, totalAmount })
 }
 
 export const CANCELLATION_POLICY_SUMMARY =
-  "Bookings are non-refundable. Schedule transfers are allowed via reschedule requests.";
+  "Bookings are non-refundable. Schedule transfers are allowed via reschedule requests. If the organizer moves an event due to weather, your booking stays active for the new schedule.";
