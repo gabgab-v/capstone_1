@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -444,6 +444,41 @@ function extractTrailDescriptor(event) {
   return parts.join(" | ");
 }
 
+function normalizeMountainName(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .toLowerCase()
+    .replace(/mountain|mt\.?/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findFamiliarMountainMatch(event, preferredMountains, enabled) {
+  if (!enabled || typeof event?.mountainTag !== "string") {
+    return null;
+  }
+  if (!Array.isArray(preferredMountains) || preferredMountains.length === 0) {
+    return null;
+  }
+  const tag = normalizeMountainName(event.mountainTag);
+  if (!tag) {
+    return null;
+  }
+  for (const mountain of preferredMountains) {
+    const normalized = normalizeMountainName(mountain);
+    if (!normalized) {
+      continue;
+    }
+    if (tag === normalized || tag.includes(normalized) || normalized.includes(tag)) {
+      return mountain;
+    }
+  }
+  return null;
+}
+
 function computeUserVector(user) {
   if (!user) {
     return null;
@@ -867,7 +902,14 @@ export default function DiscoverPage() {
   const [error, setError] = useState(null);
   const navigation = useNavigation();
   const { user } = useAuth();
+  const preferredMountains = useMemo(
+    () => (Array.isArray(user?.preferredMountains) ? user.preferredMountains : []),
+    [user?.preferredMountains]
+  );
+  const mountainSuggestionsEnabled = user?.mountainSuggestionsEnabled !== false;
+  const canSuggestMountains = mountainSuggestionsEnabled && preferredMountains.length > 0;
   const [showWeakMatches, setShowWeakMatches] = useState(() => !Boolean(user?.preferencesComplete));
+  const [showFamiliarMountains, setShowFamiliarMountains] = useState(false);
   const { isDarkMode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
   const insets = useSafeAreaInsets();
@@ -888,26 +930,38 @@ export default function DiscoverPage() {
 
   const hasPreferences = Boolean(user?.preferencesComplete);
 
+  useEffect(() => {
+    if (!canSuggestMountains || !hasPreferences) {
+      setShowFamiliarMountains(false);
+    }
+  }, [canSuggestMountains, hasPreferences]);
+
   const scoredEvents = useMemo(() => {
     if (!Array.isArray(events)) {
       return [];
     }
 
-    const baseline = events.map((event, index) => ({
-      event,
-      score: null,
-      index,
-    }));
+    const baseline = events.map((event, index) => {
+      const familiarMountain = canSuggestMountains
+        ? findFamiliarMountainMatch(event, preferredMountains, canSuggestMountains)
+        : null;
+      return {
+        event,
+        score: null,
+        index,
+        familiarMountain,
+      };
+    });
 
     if (!hasPreferences) {
       return baseline;
     }
 
     return baseline
-      .map(({ event, index }) => {
+      .map(({ event, index, familiarMountain }) => {
         const score = computeMatchScore(user, event);
         const breakdown = buildMatchBreakdown({ user, event });
-        return { event, score, index, breakdown };
+        return { event, score, index, breakdown, familiarMountain };
       })
       .sort((a, b) => {
         if (a.score === null && b.score === null) {
@@ -924,16 +978,30 @@ export default function DiscoverPage() {
         }
         return a.index - b.index;
       });
-  }, [events, hasPreferences, user]);
+  }, [events, hasPreferences, user, preferredMountains, canSuggestMountains]);
+
+  const familiarMatchCount = useMemo(() => {
+    if (!canSuggestMountains) {
+      return 0;
+    }
+    return scoredEvents.reduce(
+      (count, item) => (item.familiarMountain ? count + 1 : count),
+      0
+    );
+  }, [scoredEvents, canSuggestMountains]);
 
   const filteredEvents = useMemo(() => {
-    if (!hasPreferences || showWeakMatches) {
-      return scoredEvents;
+    let result = scoredEvents;
+    if (hasPreferences && !showWeakMatches) {
+      result = result.filter(
+        ({ score }) => typeof score === "number" && score >= STRONG_MATCH_THRESHOLD
+      );
     }
-    return scoredEvents.filter(
-      ({ score }) => typeof score === "number" && score >= STRONG_MATCH_THRESHOLD
-    );
-  }, [hasPreferences, scoredEvents, showWeakMatches]);
+    if (showFamiliarMountains && canSuggestMountains && hasPreferences) {
+      result = result.filter(({ familiarMountain }) => Boolean(familiarMountain));
+    }
+    return result;
+  }, [hasPreferences, scoredEvents, showWeakMatches, showFamiliarMountains, canSuggestMountains]);
 
   const { strongMatchCount, weakMatchCount } = useMemo(() => {
     if (!hasPreferences) {
@@ -986,6 +1054,17 @@ export default function DiscoverPage() {
       : "Strong matches only (none yet)";
     const actionLabel = showWeakMatches ? "Hide weak matches" : "Show weak matches";
     const disableToggle = weakMatchCount === 0 && !showWeakMatches;
+    const showFamiliarToggle =
+      canSuggestMountains && (familiarMatchCount > 0 || showFamiliarMountains);
+    const familiarStatusLabel = showFamiliarMountains
+      ? `Familiar mountains only (${familiarMatchCount})`
+      : familiarMatchCount > 0
+      ? `Familiar mountains available (${familiarMatchCount})`
+      : "No familiar mountains yet";
+    const familiarActionLabel = showFamiliarMountains
+      ? "Show all mountains"
+      : "Show familiar only";
+    const disableFamiliarToggle = familiarMatchCount === 0 && !showFamiliarMountains;
 
     return (
       <View style={styles.preferenceBanner}>
@@ -1009,9 +1088,33 @@ export default function DiscoverPage() {
             </TouchableOpacity>
           </View>
         ) : null}
+        {showFamiliarToggle ? (
+          <View style={styles.matchFilterRow}>
+            <Text style={styles.matchFilterLabel}>{familiarStatusLabel}</Text>
+            <TouchableOpacity
+              style={[
+                styles.matchFilterButton,
+                disableFamiliarToggle && styles.matchFilterButtonDisabled,
+              ]}
+              disabled={disableFamiliarToggle}
+              onPress={() => setShowFamiliarMountains((value) => !value)}
+            >
+              <Text style={styles.matchFilterButtonText}>{familiarActionLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     );
-  }, [hasPreferences, showWeakMatches, strongMatchCount, weakMatchCount, topSimilarity]);
+  }, [
+    hasPreferences,
+    showWeakMatches,
+    strongMatchCount,
+    weakMatchCount,
+    topSimilarity,
+    canSuggestMountains,
+    familiarMatchCount,
+    showFamiliarMountains,
+  ]);
 
   const preferenceHeaderStyle = preferenceHeader ? styles.preferenceBannerWrapper : null;
 
@@ -1125,7 +1228,21 @@ export default function DiscoverPage() {
         ListHeaderComponent={preferenceHeader}
         ListHeaderComponentStyle={preferenceHeaderStyle}
         ListEmptyComponent={
-          hasPreferences && !showWeakMatches ? (
+          showFamiliarMountains && canSuggestMountains ? (
+            <View style={styles.emptyStrongMatchContainer}>
+              <Text style={styles.emptyStrongMatchTitle}>No familiar mountains yet</Text>
+              <Text style={styles.emptyStrongMatchText}>
+                We did not find events tagged with your saved mountains. Try turning off the
+                filter to see more hikes.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyStrongMatchButton}
+                onPress={() => setShowFamiliarMountains(false)}
+              >
+                <Text style={styles.emptyStrongMatchButtonText}>Show all events</Text>
+              </TouchableOpacity>
+            </View>
+          ) : hasPreferences && !showWeakMatches ? (
             <View style={styles.emptyStrongMatchContainer}>
               <Text style={styles.emptyStrongMatchTitle}>No strong matches yet</Text>
               <Text style={styles.emptyStrongMatchText}>
@@ -1151,7 +1268,7 @@ export default function DiscoverPage() {
           />
         }
         renderItem={({ item }) => {
-          const { event, score, breakdown } = item;
+          const { event, score, breakdown, familiarMountain } = item;
         const breakdownEntries = Array.isArray(breakdown) ? breakdown : [];
 
         const metrics = [
@@ -1255,6 +1372,11 @@ export default function DiscoverPage() {
         }
 
         const priceNumber = Number(event.price);
+        const mountainTagText =
+          typeof event.mountainTag === "string" ? event.mountainTag.trim() : "";
+        const familiarTagText = familiarMountain
+          ? `Familiar • ${mountainTagText || familiarMountain}`
+          : null;
 
         return (
           <TouchableOpacity
@@ -1281,9 +1403,15 @@ export default function DiscoverPage() {
                     <Text style={matchChipConfig.text}>{matchChipConfig.label}</Text>
                   </View>
                 ) : null}
-                {event.mountainTag ? (
+                {familiarTagText ? (
+                  <View style={[styles.mountainTagChip, styles.mountainTagChipFamiliar]}>
+                    <Text style={[styles.mountainTagText, styles.mountainTagTextFamiliar]}>
+                      {familiarTagText}
+                    </Text>
+                  </View>
+                ) : mountainTagText ? (
                   <View style={styles.mountainTagChip}>
-                    <Text style={styles.mountainTagText}>{event.mountainTag}</Text>
+                    <Text style={styles.mountainTagText}>{mountainTagText}</Text>
                   </View>
                 ) : null}
               </View>
@@ -1722,10 +1850,18 @@ function createStyles(theme, isDarkMode) {
       marginLeft: 8,
       marginBottom: 10,
     },
+    mountainTagChipFamiliar: {
+      backgroundColor: theme.accentSurface,
+      borderWidth: 1,
+      borderColor: theme.accent,
+    },
     mountainTagText: {
       color: theme.textPrimary,
       fontSize: 11,
       fontWeight: "700",
+    },
+    mountainTagTextFamiliar: {
+      color: theme.accent,
     },
     matchBreakdownContainer: {
       backgroundColor: matchBreakdownBg,
