@@ -651,8 +651,76 @@ export async function GET(req) {
       include: { event: true },
     });
 
+    const eventIds = Array.from(
+      new Set(bookings.map((booking) => booking?.eventId).filter(Boolean)),
+    );
+    const pollSummaryByEvent = new Map();
+    if (eventIds.length) {
+      const eligibleStatuses = ["PENDING", "APPROVED", "CONFIRMED", "RESCHEDULE_REQUESTED"];
+      const approvalStatuses = ["PENDING", "APPROVED", "REJECTED"];
+
+      const grouped = await prisma.booking
+        .groupBy({
+          by: ["eventId", "rescheduleApprovalStatus"],
+          where: {
+            eventId: { in: eventIds },
+            status: { in: eligibleStatuses },
+            rescheduleApprovalStatus: { in: approvalStatuses },
+          },
+          _count: { _all: true },
+        })
+        .catch((error) => {
+          console.error("Failed to group reschedule poll counts:", error);
+          return [];
+        });
+
+      grouped.forEach((entry) => {
+        const eventId = entry.eventId;
+        const normalizedStatus =
+          typeof entry.rescheduleApprovalStatus === "string"
+            ? entry.rescheduleApprovalStatus.toUpperCase()
+            : "PENDING";
+        if (!pollSummaryByEvent.has(eventId)) {
+          pollSummaryByEvent.set(eventId, {
+            approved: 0,
+            rejected: 0,
+            pending: 0,
+            total: 0,
+          });
+        }
+        const summary = pollSummaryByEvent.get(eventId);
+        const count = entry?._count?._all ?? 0;
+        if (normalizedStatus === "APPROVED") {
+          summary.approved += count;
+        } else if (normalizedStatus === "REJECTED") {
+          summary.rejected += count;
+        } else {
+          summary.pending += count;
+        }
+        summary.total += count;
+      });
+    }
+
+    const enrichedBookings = bookings.map((booking) => {
+      const event = booking?.event ?? null;
+      if (!event?.id) {
+        return booking;
+      }
+      const pollSummary = pollSummaryByEvent.get(event.id) ?? null;
+      if (!pollSummary) {
+        return booking;
+      }
+      return {
+        ...booking,
+        event: {
+          ...event,
+          reschedulePollSummary: pollSummary,
+        },
+      };
+    });
+
     const eventsToCheck = new Map();
-    bookings.forEach((booking) => {
+    enrichedBookings.forEach((booking) => {
       const event = booking?.event;
       if (!event?.id) {
         return;
@@ -681,7 +749,7 @@ export async function GET(req) {
       }
     }
 
-    return new Response(JSON.stringify(bookings), { status: 200 });
+    return new Response(JSON.stringify(enrichedBookings), { status: 200 });
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });

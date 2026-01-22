@@ -678,6 +678,66 @@ function buildBookingSnapshot(booking) {
   };
 }
 
+function mergeBookingUpdate(previous, updated) {
+  if (!previous) {
+    return updated;
+  }
+  if (!updated) {
+    return previous;
+  }
+  const previousEvent = previous?.event ?? null;
+  const updatedEvent = updated?.event ?? null;
+  let mergedEvent = updatedEvent ? { ...updatedEvent } : previousEvent;
+  if (previousEvent && updatedEvent) {
+    mergedEvent = { ...previousEvent, ...updatedEvent };
+  }
+  if (
+    previousEvent?.reschedulePollSummary &&
+    !updatedEvent?.reschedulePollSummary
+  ) {
+    mergedEvent = {
+      ...mergedEvent,
+      reschedulePollSummary: previousEvent.reschedulePollSummary,
+    };
+  }
+  return {
+    ...previous,
+    ...updated,
+    ...(mergedEvent ? { event: mergedEvent } : {}),
+  };
+}
+
+function updateReschedulePollSummary(summary, previousVote, nextVote) {
+  if (!summary) {
+    return null;
+  }
+  const approved = Number(summary.approved) || 0;
+  const rejected = Number(summary.rejected) || 0;
+  const pending = Number(summary.pending) || 0;
+  const next = { approved, rejected, pending, total: 0 };
+  const normalizedPrev = normalizeStatus(previousVote);
+  const normalizedNext = normalizeStatus(nextVote);
+
+  if (normalizedPrev === "APPROVED") {
+    next.approved = Math.max(0, next.approved - 1);
+  } else if (normalizedPrev === "REJECTED") {
+    next.rejected = Math.max(0, next.rejected - 1);
+  } else if (normalizedPrev === "PENDING") {
+    next.pending = Math.max(0, next.pending - 1);
+  }
+
+  if (normalizedNext === "APPROVED") {
+    next.approved += 1;
+  } else if (normalizedNext === "REJECTED") {
+    next.rejected += 1;
+  } else if (normalizedNext === "PENDING") {
+    next.pending += 1;
+  }
+
+  next.total = next.approved + next.rejected + next.pending;
+  return next;
+}
+
 function truncate(text, limit = 160) {
   if (typeof text !== "string") {
     return null;
@@ -1047,6 +1107,10 @@ function BookingCard({
   const rescheduleApprovalStatus = normalizeStatus(booking?.rescheduleApprovalStatus);
   const reschedulePollStatus = normalizeStatus(event?.reschedulePollStatus);
   const rescheduleReason = normalizeText(event?.rescheduleReason);
+  const pollSummary = event?.reschedulePollSummary ?? null;
+  const approvedVotes = Number(pollSummary?.approved);
+  const rejectedVotes = Number(pollSummary?.rejected);
+  const hasVoteCounts = Number.isFinite(approvedVotes) && Number.isFinite(rejectedVotes);
   const pollWindow = getReschedulePollWindow(event);
   const showRescheduleNotice =
     Boolean(rescheduleReason) &&
@@ -1059,7 +1123,6 @@ function BookingCard({
   const rescheduleLocation = getLocationLabel(event);
   const canVote =
     showRescheduleNotice &&
-    hasPendingVote &&
     pollWindow.isOpen &&
     !pollFinalized &&
     typeof onVoteReschedule === "function";
@@ -1144,10 +1207,22 @@ function BookingCard({
                 Poll closed. Organizer will follow up.
               </Text>
             ) : null}
+            {hasVoteCounts ? (
+              <Text style={styles.rescheduleNoticeText}>
+                Votes: {Math.max(0, approvedVotes)} approve, {Math.max(0, rejectedVotes)} decline
+              </Text>
+            ) : null}
             {rescheduleApprovalStatus === "APPROVED" ? (
               <Text style={styles.rescheduleNoticeText}>Your vote: Approved</Text>
             ) : rescheduleApprovalStatus === "REJECTED" ? (
               <Text style={styles.rescheduleNoticeText}>Your vote: Rejected</Text>
+            ) : hasPendingVote ? (
+              <Text style={styles.rescheduleNoticeText}>Your vote: Not submitted</Text>
+            ) : null}
+            {pollWindow.isOpen && !pollFinalized ? (
+              <Text style={styles.rescheduleNoticeHint}>
+                You can change your vote until the poll closes.
+              </Text>
             ) : null}
             {canVote ? (
               <View style={styles.rescheduleNoticeActions}>
@@ -2038,7 +2113,7 @@ export default function EventsPage({ navigation }) {
       setBookedEvents((prev) =>
         Array.isArray(prev)
           ? prev.map((item) =>
-              item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item,
+              item?.id === updatedBooking?.id ? mergeBookingUpdate(item, updatedBooking) : item,
             )
           : prev,
       );
@@ -2117,6 +2192,11 @@ export default function EventsPage({ navigation }) {
       if (existingVote === normalizedChoice) {
         return;
       }
+      const updatedSummary = updateReschedulePollSummary(
+        booking?.event?.reschedulePollSummary,
+        existingVote,
+        normalizedChoice,
+      );
 
       setRescheduleVoteState({ bookingId: booking.id, choice: normalizedChoice });
       try {
@@ -2125,9 +2205,22 @@ export default function EventsPage({ navigation }) {
         });
         setBookedEvents((prev) =>
           Array.isArray(prev)
-            ? prev.map((item) =>
-                item?.id === updatedBooking?.id ? { ...item, ...updatedBooking } : item,
-              )
+            ? prev.map((item) => {
+                if (item?.id !== updatedBooking?.id) {
+                  return item;
+                }
+                const merged = mergeBookingUpdate(item, updatedBooking);
+                if (!updatedSummary) {
+                  return merged;
+                }
+                return {
+                  ...merged,
+                  event: {
+                    ...(merged?.event ?? item?.event),
+                    reschedulePollSummary: updatedSummary,
+                  },
+                };
+              })
             : prev,
         );
         const updatedSnapshot = buildBookingSnapshot(updatedBooking);
@@ -2922,6 +3015,13 @@ function createStyles(theme) {
       marginBottom: 4,
     },
     rescheduleNoticeText: { fontSize: 12, color: theme.textSecondary, lineHeight: 18 },
+    rescheduleNoticeHint: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      lineHeight: 18,
+      marginTop: 6,
+      fontStyle: "italic",
+    },
     rescheduleNoticeActions: { flexDirection: "row", marginTop: 10 },
     rescheduleApproveButton: {
       flex: 1,
