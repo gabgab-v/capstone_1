@@ -16,6 +16,7 @@ import {
 import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import * as SecureStore from "expo-secure-store";
 import { del, get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
 import SafePicker from "../../components/SafePicker";
@@ -27,6 +28,8 @@ const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
 const TAB_BOOKINGS = "bookings";
 const TAB_HOSTING = "hosting";
+const BOOKING_SNAPSHOT_STORAGE_PREFIX = "booking-snapshot";
+const ORGANIZER_SNAPSHOT_STORAGE_PREFIX = "organizer-booking-snapshot";
 const BOOKING_STATUS_FILTER_OPTIONS = [
   { value: "ALL", label: "All statuses" },
   { value: "PENDING", label: "Pending" },
@@ -124,6 +127,132 @@ function normalizeStatus(value) {
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getSnapshotStorageKey(userId) {
+  if (!userId) {
+    return null;
+  }
+  return `${BOOKING_SNAPSHOT_STORAGE_PREFIX}:${userId}`;
+}
+
+async function loadStoredBookingSnapshot(userId) {
+  const key = getSnapshotStorageKey(userId);
+  if (!key) {
+    return null;
+  }
+  try {
+    const stored = await SecureStore.getItemAsync(key);
+    if (!stored) {
+      return null;
+    }
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    const map = new Map();
+    parsed.forEach((entry) => {
+      if (entry?.id) {
+        map.set(entry.id, entry);
+      }
+    });
+    return map;
+  } catch (error) {
+    console.warn("Failed to load booking snapshot:", error);
+    return null;
+  }
+}
+
+async function saveStoredBookingSnapshot(userId, snapshotMap) {
+  const key = getSnapshotStorageKey(userId);
+  if (!key) {
+    return;
+  }
+  try {
+    const payload = Array.from(snapshotMap.values());
+    await SecureStore.setItemAsync(key, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Failed to save booking snapshot:", error);
+  }
+}
+
+function getOrganizerSnapshotStorageKey(userId) {
+  if (!userId) {
+    return null;
+  }
+  return `${ORGANIZER_SNAPSHOT_STORAGE_PREFIX}:${userId}`;
+}
+
+function serializeOrganizerSnapshot(snapshotMap) {
+  if (!(snapshotMap instanceof Map)) {
+    return [];
+  }
+  return Array.from(snapshotMap.entries()).map(([eventId, attendeeMap]) => {
+    const attendees = attendeeMap instanceof Map ? Array.from(attendeeMap.entries()) : [];
+    return {
+      eventId,
+      attendees: attendees.map(([bookingId, entry]) => ({
+        id: bookingId,
+        status: normalizeStatus(entry?.status),
+        name: normalizeText(entry?.name),
+      })),
+    };
+  });
+}
+
+function buildOrganizerSnapshotMap(payload) {
+  const snapshot = new Map();
+  if (!Array.isArray(payload)) {
+    return snapshot;
+  }
+  payload.forEach((entry) => {
+    if (!entry?.eventId || !Array.isArray(entry.attendees)) {
+      return;
+    }
+    const attendeeMap = new Map();
+    entry.attendees.forEach((attendee) => {
+      if (!attendee?.id) {
+        return;
+      }
+      attendeeMap.set(attendee.id, {
+        status: normalizeStatus(attendee.status),
+        name: normalizeText(attendee.name),
+      });
+    });
+    snapshot.set(entry.eventId, attendeeMap);
+  });
+  return snapshot;
+}
+
+async function loadStoredOrganizerSnapshot(userId) {
+  const key = getOrganizerSnapshotStorageKey(userId);
+  if (!key) {
+    return null;
+  }
+  try {
+    const stored = await SecureStore.getItemAsync(key);
+    if (!stored) {
+      return null;
+    }
+    const parsed = JSON.parse(stored);
+    return buildOrganizerSnapshotMap(parsed);
+  } catch (error) {
+    console.warn("Failed to load organizer snapshot:", error);
+    return null;
+  }
+}
+
+async function saveStoredOrganizerSnapshot(userId, snapshotMap) {
+  const key = getOrganizerSnapshotStorageKey(userId);
+  if (!key) {
+    return;
+  }
+  try {
+    const payload = serializeOrganizerSnapshot(snapshotMap);
+    await SecureStore.setItemAsync(key, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Failed to save organizer snapshot:", error);
+  }
 }
 
 function normalizeNumber(value) {
@@ -1389,9 +1518,13 @@ export default function EventsPage({ navigation }) {
   const suggestionNotificationInFlightRef = useRef(false);
   const bookingSnapshotRef = useRef(new Map());
   const bookingSnapshotReadyRef = useRef(false);
+  const bookingSnapshotLoadedRef = useRef(false);
+  const bookingSnapshotUserIdRef = useRef(null);
   const reschedulePollReminderRef = useRef(new Set());
   const organizerAttendeeSnapshotRef = useRef(new Map());
   const organizerAttendeeSnapshotReadyRef = useRef(false);
+  const organizerSnapshotLoadedRef = useRef(false);
+  const organizerSnapshotUserIdRef = useRef(null);
   const insets = useSafeAreaInsets();
   const contentInsets = useMemo(
     () => ({
@@ -1532,7 +1665,7 @@ export default function EventsPage({ navigation }) {
   );
 
   const maybeNotifyBookingUpdates = useCallback(
-    async (bookings) => {
+    async (bookings, userId) => {
       if (!Array.isArray(bookings)) {
         return;
       }
@@ -1575,12 +1708,18 @@ export default function EventsPage({ navigation }) {
 
       if (!bookingSnapshotReadyRef.current) {
         bookingSnapshotReadyRef.current = true;
+        if (userId) {
+          await saveStoredBookingSnapshot(userId, nextSnapshots);
+        }
         return;
       }
 
       if (!notifications.length) {
         if (pollReminderTasks.length) {
           await Promise.all(pollReminderTasks);
+        }
+        if (userId) {
+          await saveStoredBookingSnapshot(userId, nextSnapshots);
         }
         return;
       }
@@ -1600,15 +1739,21 @@ export default function EventsPage({ navigation }) {
           ...pollReminderTasks,
         ],
       );
+      if (userId) {
+        await saveStoredBookingSnapshot(userId, nextSnapshots);
+      }
     },
     [maybeScheduleReschedulePollReminder, scheduleNotification],
   );
 
   const maybeNotifyOrganizerBookingUpdates = useCallback(
-    async (events, attendeeEntries) => {
+    async (events, attendeeEntries, userId) => {
       if (!Array.isArray(events) || events.length === 0) {
         organizerAttendeeSnapshotRef.current = new Map();
         organizerAttendeeSnapshotReadyRef.current = true;
+        if (userId) {
+          await saveStoredOrganizerSnapshot(userId, organizerAttendeeSnapshotRef.current);
+        }
         return;
       }
 
@@ -1624,6 +1769,9 @@ export default function EventsPage({ navigation }) {
       if (!organizerAttendeeSnapshotReadyRef.current) {
         organizerAttendeeSnapshotRef.current = nextSnapshots;
         organizerAttendeeSnapshotReadyRef.current = true;
+        if (userId) {
+          await saveStoredOrganizerSnapshot(userId, nextSnapshots);
+        }
         return;
       }
 
@@ -1647,6 +1795,9 @@ export default function EventsPage({ navigation }) {
       organizerAttendeeSnapshotRef.current = nextSnapshots;
 
       if (!notifications.length) {
+        if (userId) {
+          await saveStoredOrganizerSnapshot(userId, nextSnapshots);
+        }
         return;
       }
 
@@ -1662,6 +1813,9 @@ export default function EventsPage({ navigation }) {
           }),
         ),
       );
+      if (userId) {
+        await saveStoredOrganizerSnapshot(userId, nextSnapshots);
+      }
     },
     [scheduleNotification],
   );
@@ -1733,6 +1887,21 @@ export default function EventsPage({ navigation }) {
         const currentUser = await get("/api/users/me");
         setUser(currentUser ?? null);
 
+        if (!currentUser?.id) {
+          bookingSnapshotLoadedRef.current = false;
+          bookingSnapshotReadyRef.current = false;
+          bookingSnapshotUserIdRef.current = null;
+        } else if (
+          !bookingSnapshotLoadedRef.current ||
+          bookingSnapshotUserIdRef.current !== currentUser.id
+        ) {
+          const storedSnapshot = await loadStoredBookingSnapshot(currentUser.id);
+          bookingSnapshotRef.current = storedSnapshot ?? new Map();
+          bookingSnapshotReadyRef.current = Boolean(storedSnapshot);
+          bookingSnapshotLoadedRef.current = true;
+          bookingSnapshotUserIdRef.current = currentUser.id;
+        }
+
         const bookingsPromise = get("/api/bookings").catch((error) => {
           console.error("Failed to fetch bookings:", error);
           return [];
@@ -1748,7 +1917,7 @@ export default function EventsPage({ navigation }) {
 
         const [bookingsData, eventsData] = await Promise.all([bookingsPromise, eventsPromise]);
 
-        await maybeNotifyBookingUpdates(bookingsData);
+        await maybeNotifyBookingUpdates(bookingsData, currentUser?.id ?? null);
         setBookedEvents(Array.isArray(bookingsData) ? bookingsData : []);
 
         if (currentUser?.role === "ORGANIZER") {
@@ -1757,6 +1926,17 @@ export default function EventsPage({ navigation }) {
             : [];
 
           setCreatedEvents(myEvents);
+
+          if (
+            !organizerSnapshotLoadedRef.current ||
+            organizerSnapshotUserIdRef.current !== currentUser.id
+          ) {
+            const storedOrganizerSnapshot = await loadStoredOrganizerSnapshot(currentUser.id);
+            organizerAttendeeSnapshotRef.current = storedOrganizerSnapshot ?? new Map();
+            organizerAttendeeSnapshotReadyRef.current = Boolean(storedOrganizerSnapshot);
+            organizerSnapshotLoadedRef.current = true;
+            organizerSnapshotUserIdRef.current = currentUser.id;
+          }
 
           if (myEvents.length) {
             const attendeeEntries = await Promise.all(
@@ -1770,7 +1950,7 @@ export default function EventsPage({ navigation }) {
                 }
               })
             );
-            await maybeNotifyOrganizerBookingUpdates(myEvents, attendeeEntries);
+            await maybeNotifyOrganizerBookingUpdates(myEvents, attendeeEntries, currentUser.id);
             setEventAttendees(Object.fromEntries(attendeeEntries));
           } else {
             setEventAttendees({});
@@ -1780,6 +1960,8 @@ export default function EventsPage({ navigation }) {
           setEventAttendees({});
           organizerAttendeeSnapshotRef.current = new Map();
           organizerAttendeeSnapshotReadyRef.current = false;
+          organizerSnapshotLoadedRef.current = false;
+          organizerSnapshotUserIdRef.current = null;
         }
       } catch (error) {
         console.error("Failed to fetch events page data:", error);

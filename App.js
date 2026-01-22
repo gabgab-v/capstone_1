@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import './global.css';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import 'react-native-url-polyfill/auto';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -9,7 +9,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { NotificationProvider } from './src/context/NotificationContext';
+import { NotificationProvider, useNotifications } from './src/context/NotificationContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { TrailSyncProvider } from './src/context/TrailSyncContext';
 
@@ -35,6 +35,29 @@ import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
 
 const Stack = createNativeStackNavigator();
+
+function NotificationQueueBridge() {
+  const { user } = useAuth();
+  const { flushQueuedNotifications, recordLogout, setActiveUserId } = useNotifications();
+  const previousUserIdRef = useRef(null);
+
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+    setActiveUserId(currentUserId);
+
+    if (previousUserIdRef.current && !currentUserId) {
+      recordLogout();
+    }
+
+    if (currentUserId && previousUserIdRef.current !== currentUserId) {
+      flushQueuedNotifications({ userId: currentUserId });
+    }
+
+    previousUserIdRef.current = currentUserId;
+  }, [user?.id, flushQueuedNotifications, recordLogout, setActiveUserId]);
+
+  return null;
+}
 
 function AppNavigator() {
   const { user, isLoading } = useAuth();
@@ -127,6 +150,7 @@ export default function App() {
         <NotificationProvider>
           <AuthProvider>
             <TrailSyncProvider>
+              <NotificationQueueBridge />
               <ThemedNavigation />
             </TrailSyncProvider>
           </AuthProvider>

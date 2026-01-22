@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as SecureStore from 'expo-secure-store';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { decode } from 'base64-arraybuffer';
@@ -47,6 +48,49 @@ function getProfileDisplayName(profile) {
     return email.split('@')[0];
   }
   return 'Explorer';
+}
+
+const FOLLOWER_SNAPSHOT_STORAGE_PREFIX = 'follower-snapshot';
+
+function getFollowerSnapshotStorageKey(userId) {
+  if (!userId) {
+    return null;
+  }
+  return `${FOLLOWER_SNAPSHOT_STORAGE_PREFIX}:${userId}`;
+}
+
+async function loadStoredFollowerSnapshot(userId) {
+  const key = getFollowerSnapshotStorageKey(userId);
+  if (!key) {
+    return null;
+  }
+  try {
+    const stored = await SecureStore.getItemAsync(key);
+    if (!stored) {
+      return null;
+    }
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn('Failed to load follower snapshot:', error);
+    return null;
+  }
+}
+
+async function saveStoredFollowerSnapshot(userId, count) {
+  const key = getFollowerSnapshotStorageKey(userId);
+  if (!key) {
+    return;
+  }
+  const normalized = Number(count);
+  if (!Number.isFinite(normalized)) {
+    return;
+  }
+  try {
+    await SecureStore.setItemAsync(key, String(Math.max(0, normalized)));
+  } catch (error) {
+    console.warn('Failed to save follower snapshot:', error);
+  }
 }
 
 function StatTile({ label, value, onPress }) {
@@ -445,6 +489,8 @@ function ProfilePageContent({ navigation, route }) {
   const profileOwnerIdRef = useRef(null);
   const followerSnapshotRef = useRef(null);
   const followerSnapshotReadyRef = useRef(false);
+  const followerSnapshotLoadedRef = useRef(false);
+  const followerSnapshotUserIdRef = useRef(null);
   const insets = useSafeAreaInsets();
   const headerTopPadding = useMemo(() => Math.max(insets.top, 16), [insets.top]);
   const listContentInset = useMemo(
@@ -901,6 +947,8 @@ function ProfilePageContent({ navigation, route }) {
       if (!nextProfile || !isOwnProfile || nextProfile.role !== 'ORGANIZER') {
         followerSnapshotRef.current = null;
         followerSnapshotReadyRef.current = false;
+        followerSnapshotLoadedRef.current = false;
+        followerSnapshotUserIdRef.current = null;
         return;
       }
 
@@ -909,11 +957,33 @@ function ProfilePageContent({ navigation, route }) {
         return;
       }
 
+      const ownerId = nextProfile.id ?? null;
+      if (!ownerId) {
+        return;
+      }
+
+      if (
+        !followerSnapshotLoadedRef.current ||
+        followerSnapshotUserIdRef.current !== ownerId
+      ) {
+        const storedCount = await loadStoredFollowerSnapshot(ownerId);
+        if (typeof storedCount === 'number') {
+          followerSnapshotRef.current = storedCount;
+          followerSnapshotReadyRef.current = true;
+        } else {
+          followerSnapshotRef.current = null;
+          followerSnapshotReadyRef.current = false;
+        }
+        followerSnapshotLoadedRef.current = true;
+        followerSnapshotUserIdRef.current = ownerId;
+      }
+
       const previousCount = followerSnapshotRef.current;
       followerSnapshotRef.current = nextCount;
 
       if (!followerSnapshotReadyRef.current) {
         followerSnapshotReadyRef.current = true;
+        await saveStoredFollowerSnapshot(ownerId, nextCount);
         return;
       }
 
@@ -932,6 +1002,7 @@ function ProfilePageContent({ navigation, route }) {
           },
         });
       }
+      await saveStoredFollowerSnapshot(ownerId, nextCount);
     },
     [isOwnProfile, scheduleNotification],
   );
