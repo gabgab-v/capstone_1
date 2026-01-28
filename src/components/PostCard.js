@@ -91,7 +91,9 @@ const TrailMapAttachment = ({ trail }) => {
   if (!trail) {
     return null;
   }
-  const cameraRef = useRef(null);
+  const previewCameraRef = useRef(null);
+  const expandedCameraRef = useRef(null);
+  const [isMapExpanded, setMapExpanded] = useState(false);
   const lineString = useMemo(() => ensureLineStringFromTrail(trail), [trail]);
   const trailMeta = useMemo(() => computeLineStringMeta(lineString), [lineString]);
   const durationMs = useMemo(
@@ -99,16 +101,39 @@ const TrailMapAttachment = ({ trail }) => {
     [trail?.samples, trail?.endedAt, trail?.startedAt],
   );
 
+  const fitCameraToBounds = useCallback(
+    (camera) => {
+      if (!camera?.current || !trailMeta?.bounds) {
+        return;
+      }
+      camera.current.fitBounds(trailMeta.bounds.northEast, trailMeta.bounds.southWest, 30, 400);
+    },
+    [trailMeta?.bounds],
+  );
+
   useEffect(() => {
-    if (!cameraRef.current || !trailMeta?.bounds) {
+    fitCameraToBounds(previewCameraRef);
+  }, [fitCameraToBounds]);
+
+  useEffect(() => {
+    if (!isMapExpanded) {
       return;
     }
-    cameraRef.current.fitBounds(trailMeta.bounds.northEast, trailMeta.bounds.southWest, 30, 400);
-  }, [trailMeta?.bounds]);
+    const timer = setTimeout(() => fitCameraToBounds(expandedCameraRef), 200);
+    return () => clearTimeout(timer);
+  }, [fitCameraToBounds, isMapExpanded]);
+
+  const handleExpandMap = useCallback(() => {
+    setMapExpanded(true);
+  }, []);
+
+  const handleCloseMap = useCallback(() => {
+    setMapExpanded(false);
+  }, []);
 
   const hasMapToken = MAPBOX_ACCESS_TOKEN && MAPBOX_ACCESS_TOKEN !== 'YOUR_MAPBOX_ACCESS_TOKEN';
 
-  const renderMap = () => {
+  const renderMap = ({ expanded }) => {
     if (!hasMapToken) {
       return (
         <View className="h-48 items-center justify-center bg-slate-800/40 px-4">
@@ -129,8 +154,19 @@ const TrailMapAttachment = ({ trail }) => {
       );
     }
 
+    const cameraRef = expanded ? expandedCameraRef : previewCameraRef;
+    const mapIdSuffix = expanded ? 'expanded' : 'preview';
+
     return (
-      <MapboxGL.MapView style={{ flex: 1 }} styleURL={MapboxGL.StyleURL.Outdoors} logoEnabled={false}>
+      <MapboxGL.MapView
+        style={{ flex: 1 }}
+        styleURL={MapboxGL.StyleURL.Outdoors}
+        logoEnabled={false}
+        scrollEnabled={expanded}
+        zoomEnabled={expanded}
+        rotateEnabled={expanded}
+        pitchEnabled={expanded}
+      >
         <MapboxGL.Camera
           ref={cameraRef}
           centerCoordinate={trailMeta?.center}
@@ -138,9 +174,9 @@ const TrailMapAttachment = ({ trail }) => {
           animationMode="flyTo"
           animationDuration={400}
         />
-        <MapboxGL.ShapeSource id={`post-trail-${trail.id}`} shape={lineString}>
+        <MapboxGL.ShapeSource id={`post-trail-${trail.id}-${mapIdSuffix}`} shape={lineString}>
           <MapboxGL.LineLayer
-            id={`post-trail-line-${trail.id}`}
+            id={`post-trail-line-${trail.id}-${mapIdSuffix}`}
             style={{ lineColor: '#22c55e', lineWidth: 4, lineCap: 'round', lineJoin: 'round' }}
           />
         </MapboxGL.ShapeSource>
@@ -150,7 +186,20 @@ const TrailMapAttachment = ({ trail }) => {
 
   return (
     <View className="mt-3 overflow-hidden rounded-2xl border border-gray-200 dark:border-slate-700">
-      <View style={{ height: 200 }}>{renderMap()}</View>
+      <View style={{ height: 200 }}>
+        {renderMap({ expanded: false })}
+        {hasMapToken && lineString ? (
+          <TouchableOpacity
+            style={styles.mapExpandOverlay}
+            activeOpacity={0.9}
+            onPress={handleExpandMap}
+          >
+            <View style={styles.mapExpandButton}>
+              <Text style={styles.mapExpandText}>Expand map</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       <View className="flex-row justify-between bg-slate-900/90 px-4 py-3">
         <View>
           <Text className="text-[11px] uppercase text-slate-300">Distance</Text>
@@ -169,6 +218,23 @@ const TrailMapAttachment = ({ trail }) => {
           </Text>
         </View>
       </View>
+
+      <Modal
+        visible={isMapExpanded}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCloseMap}
+      >
+        <SafeAreaView style={styles.mapExpandedSafeArea}>
+          <View style={styles.mapExpandedHeader}>
+            <Text style={styles.mapExpandedTitle}>{trail?.label || 'Trail Map'}</Text>
+            <TouchableOpacity style={styles.mapExpandedClose} onPress={handleCloseMap}>
+              <Text style={styles.mapExpandedCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.mapExpandedContainer}>{renderMap({ expanded: true })}</View>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 };
@@ -1173,5 +1239,57 @@ const styles = StyleSheet.create({
   zoomImage: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  mapExpandOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    padding: 12,
+  },
+  mapExpandButton: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  mapExpandText: {
+    color: '#f8fafc',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mapExpandedSafeArea: {
+    flex: 1,
+    backgroundColor: '#0b1120',
+  },
+  mapExpandedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  mapExpandedTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f8fafc',
+  },
+  mapExpandedClose: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#1e293b',
+  },
+  mapExpandedCloseText: {
+    color: '#f8fafc',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  mapExpandedContainer: {
+    flex: 1,
+    backgroundColor: '#0b1120',
   },
 });

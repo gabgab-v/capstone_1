@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { decode } from 'base64-arraybuffer';
 
 import { useAuth } from '../context/AuthContext';
@@ -2259,12 +2259,24 @@ function ProfilePageContent({ navigation, route }) {
           ) : null}
         </View>
       </Modal>
-      <Modal visible={!!trailPreview} transparent animationType="slide" onRequestClose={handleCloseTrailPreview}>
-        <View className="flex-1 items-center justify-center bg-black/70 p-4">
-          {trailPreview ? (
-            <RecordedTrailSummary trail={trailPreview} onClose={handleCloseTrailPreview} />
-          ) : null}
-        </View>
+      <Modal
+        visible={!!trailPreview}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCloseTrailPreview}
+      >
+        <SafeAreaView className="flex-1 bg-slate-950">
+          <ScrollView
+            contentContainerStyle={{
+              padding: 16,
+              paddingBottom: Math.max(32, insets.bottom + 16),
+            }}
+          >
+            {trailPreview ? (
+              <RecordedTrailSummary trail={trailPreview} onClose={handleCloseTrailPreview} />
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
       <Modal
         visible={!!editingTrail}
