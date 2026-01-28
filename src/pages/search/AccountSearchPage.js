@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  SectionList,
   Image,
   RefreshControl,
   StyleSheet,
@@ -29,11 +29,45 @@ function useDebouncedValue(value, delay = 300) {
   return debounced;
 }
 
+function buildBadgeTokens(badges = [], colors) {
+  const badgeSet = new Set(badges);
+  const tokens = [];
+
+  if (badgeSet.has('VERIFIED_ORGANIZER')) {
+    tokens.push({
+      key: 'VERIFIED_ORGANIZER',
+      label: 'Verified Organizer',
+      background: colors.positiveSurface,
+      text: colors.positiveText,
+    });
+  } else if (badgeSet.has('ORGANIZER')) {
+    tokens.push({
+      key: 'ORGANIZER',
+      label: 'Organizer',
+      background: colors.infoSurface,
+      text: colors.infoText,
+    });
+  }
+
+  if (badgeSet.has('EXPERT')) {
+    tokens.push({
+      key: 'EXPERT',
+      label: 'Expert',
+      background: colors.warningSurface,
+      text: colors.warningText,
+    });
+  }
+
+  return tokens;
+}
+
 export default function AccountSearchPage({ navigation }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [suggested, setSuggested] = useState([]);
+  const [badged, setBadged] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -44,14 +78,6 @@ export default function AccountSearchPage({ navigation }) {
 
   const fetchResults = useCallback(
     async ({ refreshing: isRefreshing = false } = {}) => {
-      if (!trimmedQuery) {
-        setResults([]);
-        setError(null);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
       if (isRefreshing) {
         setRefreshing(true);
       } else {
@@ -61,13 +87,29 @@ export default function AccountSearchPage({ navigation }) {
 
       try {
         const params = new URLSearchParams();
-        params.append('q', trimmedQuery);
+        if (trimmedQuery) {
+          params.append('q', trimmedQuery);
+        }
         params.append('limit', '20');
         const data = await get(`/api/users/search?${params.toString()}`);
-        setResults(Array.isArray(data?.users) ? data.users : []);
+        const users = Array.isArray(data?.users) ? data.users : [];
+        const suggestedUsers = Array.isArray(data?.suggested) ? data.suggested : [];
+        const badgedUsers = Array.isArray(data?.badged) ? data.badged : [];
+
+        if (trimmedQuery) {
+          setResults(users);
+          setSuggested([]);
+          setBadged([]);
+        } else {
+          setResults([]);
+          setSuggested(suggestedUsers);
+          setBadged(badgedUsers);
+        }
       } catch (err) {
         console.error('Failed to search users:', err);
         setResults([]);
+        setSuggested([]);
+        setBadged([]);
         setError(err?.body?.error || err?.message || 'Unable to search right now.');
       } finally {
         if (isRefreshing) {
@@ -85,11 +127,8 @@ export default function AccountSearchPage({ navigation }) {
   }, [fetchResults]);
 
   const handleRefresh = useCallback(() => {
-    if (!trimmedQuery) {
-      return;
-    }
     fetchResults({ refreshing: true });
-  }, [fetchResults, trimmedQuery]);
+  }, [fetchResults]);
 
   const handleSelectUser = useCallback(
     (user) => {
@@ -119,18 +158,19 @@ export default function AccountSearchPage({ navigation }) {
       try {
         const endpoint = `/api/users/${user.id}/follow`;
         const result = user.isViewerFollowing ? await del(endpoint) : await post(endpoint);
-        setResults((current) =>
-          current.map((item) => {
-            if (item.id !== user.id) {
-              return item;
-            }
-            const nextFollowing =
-              typeof result?.isFollowing === 'boolean'
-                ? result.isFollowing
-                : !item.isViewerFollowing;
-            return { ...item, isViewerFollowing: nextFollowing };
-          }),
-        );
+        const updateUser = (item) => {
+          if (item.id !== user.id) {
+            return item;
+          }
+          const nextFollowing =
+            typeof result?.isFollowing === 'boolean'
+              ? result.isFollowing
+              : !item.isViewerFollowing;
+          return { ...item, isViewerFollowing: nextFollowing };
+        };
+        setResults((current) => current.map(updateUser));
+        setSuggested((current) => current.map(updateUser));
+        setBadged((current) => current.map(updateUser));
       } catch (followError) {
         console.error('Failed to update follow state:', followError);
         Alert.alert(
@@ -151,26 +191,12 @@ export default function AccountSearchPage({ navigation }) {
   );
 
   const listEmpty = useMemo(() => {
-    if (!trimmedQuery) {
-      return (
-        <View style={styles.emptyState}>
-          <Icon name="search" size={28} color={colors.textMuted} />
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-            Search for accounts
-          </Text>
-          <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>
-            Try a name, email, or bio keyword to find hikers and organizers.
-          </Text>
-        </View>
-      );
-    }
-
     if (loading) {
       return (
         <View style={styles.emptyState}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>
-            Searching...
+            {trimmedQuery ? 'Searching...' : 'Loading suggestions...'}
           </Text>
         </View>
       );
@@ -183,6 +209,20 @@ export default function AccountSearchPage({ navigation }) {
             Unable to search
           </Text>
           <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>{error}</Text>
+        </View>
+      );
+    }
+
+    if (!trimmedQuery) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="user-plus" size={28} color={colors.textMuted} />
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
+            No suggestions yet
+          </Text>
+          <Text style={[styles.emptyMessage, { color: colors.textSecondary }]}>
+            Try searching to discover hikers and organizers.
+          </Text>
         </View>
       );
     }
@@ -213,6 +253,10 @@ export default function AccountSearchPage({ navigation }) {
       const avatarUri = ensureAvatarUri(item?.avatarUrl, item?.id ?? item?.email ?? 'user');
       const isUpdating = followUpdatingIds.has(item.id);
       const isFollowing = Boolean(item?.isViewerFollowing);
+      const badgeItems = buildBadgeTokens(item?.badges ?? [], colors).slice(0, 2);
+      const mutualCount = Number(item?.mutualCount ?? 0);
+      const mutualLabel =
+        mutualCount > 0 ? `${mutualCount} mutual${mutualCount === 1 ? '' : 's'}` : null;
 
       return (
         <TouchableOpacity
@@ -234,6 +278,23 @@ export default function AccountSearchPage({ navigation }) {
             >
               {subtitle || 'Explorer'}
             </Text>
+            {badgeItems.length > 0 || mutualLabel ? (
+              <View style={styles.metaRow}>
+                {badgeItems.map((badge) => (
+                  <View
+                    key={badge.key}
+                    style={[styles.badgePill, { backgroundColor: badge.background }]}
+                  >
+                    <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
+                  </View>
+                ))}
+                {mutualLabel ? (
+                  <Text style={[styles.mutualText, { color: colors.textMuted }]}>
+                    {mutualLabel}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </View>
           {item?.isSelf ? (
             <View style={[styles.selfBadge, { backgroundColor: colors.surfaceMuted }]}>
@@ -265,21 +326,44 @@ export default function AccountSearchPage({ navigation }) {
       );
     },
     [
-      colors.accent,
-      colors.border,
-      colors.surface,
-      colors.surfaceMuted,
-      colors.textPrimary,
-      colors.textSecondary,
+      colors,
       followUpdatingIds,
       handleSelectUser,
       handleToggleFollow,
     ],
   );
 
-  const resultsCountLabel = trimmedQuery
-    ? `${results.length} result${results.length === 1 ? '' : 's'}`
-    : null;
+  const sections = useMemo(() => {
+    if (trimmedQuery) {
+      if (results.length === 0) {
+        return [];
+      }
+      return [{ title: 'Results', data: results }];
+    }
+
+    const nextSections = [];
+    if (suggested.length) {
+      nextSections.push({ title: 'Suggested for you', data: suggested });
+    }
+    if (badged.length) {
+      nextSections.push({ title: 'Badged accounts', data: badged });
+    }
+    return nextSections;
+  }, [badged, results, suggested, trimmedQuery]);
+
+  const renderSectionHeader = useCallback(
+    ({ section }) => (
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+        {section.title}
+      </Text>
+    ),
+    [colors.textPrimary],
+  );
+
+  const resultsCountLabel =
+    trimmedQuery && results.length > 0
+      ? `${results.length} result${results.length === 1 ? '' : 's'}`
+      : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -324,17 +408,23 @@ export default function AccountSearchPage({ navigation }) {
         </Text>
       ) : null}
 
-      <FlatList
-        data={results}
+      <SectionList
+        sections={sections}
         keyExtractor={(item, index) => item?.id ?? `search-${index}`}
         renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
         style={styles.list}
-        contentContainerStyle={results.length === 0 ? styles.listEmpty : null}
+        contentContainerStyle={sections.length === 0 ? styles.listEmpty : null}
         ListEmptyComponent={listEmpty}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accent}
+          />
         }
         keyboardShouldPersistTaps="handled"
+        stickySectionHeadersEnabled={false}
       />
     </View>
   );
@@ -388,6 +478,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
   },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 8,
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,6 +510,27 @@ const styles = StyleSheet.create({
   cardSubtitle: {
     fontSize: 12,
     marginTop: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  badgePill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  mutualText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   followButton: {
     borderRadius: 999,
