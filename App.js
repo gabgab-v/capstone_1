@@ -33,6 +33,7 @@ import IdentityVerificationPage from './src/pages/user/IdentityVerificationPage'
 import ChatConversationPage from './src/pages/chat/ChatConversationPage';
 import LegalDocumentPage from './src/pages/legal/LegalDocumentPage';
 import ConnectionsListPage from './src/pages/connections/ConnectionsListPage';
+import AccountSearchPage from './src/pages/search/AccountSearchPage';
 
 const Stack = createNativeStackNavigator();
 
@@ -105,6 +106,7 @@ function AppNavigator() {
           <Stack.Screen name="ApplyExpert" component={ApplyExpertPage} />
           <Stack.Screen name="ChatConversation" component={ChatConversationPage} />
           <Stack.Screen name="ConnectionsList" component={ConnectionsListPage} />
+          <Stack.Screen name="AccountSearch" component={AccountSearchPage} />
         </>
       ) : (
         <>

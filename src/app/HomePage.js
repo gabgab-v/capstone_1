@@ -232,11 +232,17 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   );
 };
 
-export default function HomePage({ user }) {
+export default function HomePage({ user, navigation }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isModalVisible, setModalVisible] = useState(false);
+
+  const handleOpenSearch = useCallback(() => {
+    if (navigation?.navigate) {
+      navigation.navigate('AccountSearch');
+    }
+  }, [navigation]);
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -332,7 +338,7 @@ export default function HomePage({ user }) {
 
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-gray-100 dark:bg-slate-950">
-      <AppHeader />
+      <AppHeader onSearchPress={handleOpenSearch} />
 
       <FlatList
         data={posts}
