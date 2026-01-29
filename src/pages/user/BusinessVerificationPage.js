@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,12 +10,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
+import ViewShot from 'react-native-view-shot';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -23,11 +24,10 @@ import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
-const MAX_DOCUMENTS = 3;
-const TIN_PATTERN = /^\d{3}-\d{3}-\d{3}-\d{3}$/;
+const MAX_SCREENSHOTS = 3;
 const BNRS_URL = 'https://bnrs.dti.gov.ph/search';
 
-function mapExistingDocuments(urls) {
+function mapExistingScreenshots(urls) {
   if (!Array.isArray(urls) || urls.length === 0) {
     return [];
   }
@@ -36,7 +36,7 @@ function mapExistingDocuments(urls) {
     uri: url,
     uploadedUrl: url,
     isExisting: true,
-    name: `Document ${index + 1}`,
+    name: `BNRS Screenshot ${index + 1}`,
   }));
 }
 
@@ -58,17 +58,6 @@ function formatErrorMessage(error, fallback) {
   return fallback;
 }
 
-function formatDateInput(value) {
-  if (!value) return '';
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toISOString().split('T')[0];
-  } catch {
-    return '';
-  }
-}
-
 function statusMeta(status) {
   switch (status) {
     case 'VERIFIED':
@@ -82,66 +71,34 @@ function statusMeta(status) {
     case 'PROCESSING':
     case 'PENDING':
     default:
-      return { label: 'Processing', color: '#2563eb', accent: '#dbeafe' };
+      return { label: 'Pending review', color: '#2563eb', accent: '#dbeafe' };
   }
-}
-
-function CheckRow({ label, passed, detail }) {
-  return (
-    <View style={styles.checkRow}>
-      <Text style={[styles.checkIcon, { color: passed ? '#15803d' : '#dc2626' }]}>
-        {passed ? '✓' : '⚠'}
-      </Text>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.checkLabel}>{label}</Text>
-        {detail ? <Text style={styles.checkDetail}>{detail}</Text> : null}
-      </View>
-    </View>
-  );
 }
 
 export default function BusinessVerificationPage({ navigation }) {
   const { user, refreshUser } = useAuth();
   const existingVerification = user?.businessVerification ?? null;
 
-  const [businessName, setBusinessName] = useState(existingVerification?.businessName ?? user?.name ?? '');
-  const [businessAddress, setBusinessAddress] = useState(existingVerification?.businessAddress ?? '');
-  const [tin, setTin] = useState(existingVerification?.tin ?? '');
-  const [referenceNumber, setReferenceNumber] = useState(existingVerification?.referenceNumber ?? '');
-  const [documentType, setDocumentType] = useState(existingVerification?.documentType ?? 'DTI_CERTIFICATE');
-  const [issueDate, setIssueDate] = useState(formatDateInput(existingVerification?.issueDate));
-  const [expiryDate, setExpiryDate] = useState(formatDateInput(existingVerification?.expiryDate));
-  const [documents, setDocuments] = useState(() =>
-    mapExistingDocuments(existingVerification?.documentUrls ?? []),
+  const [screenshots, setScreenshots] = useState(() =>
+    mapExistingScreenshots(existingVerification?.documentUrls ?? []),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [bnrsError, setBnrsError] = useState(false);
   const [bnrsReloadKey, setBnrsReloadKey] = useState(0);
   const [isBnrsExpanded, setBnrsExpanded] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const bnrsShotRef = useRef(null);
 
   useEffect(() => {
     if (!existingVerification) return;
-    setBusinessName(existingVerification.businessName ?? user?.name ?? '');
-    setBusinessAddress(existingVerification.businessAddress ?? '');
-    setTin(existingVerification.tin ?? '');
-    setReferenceNumber(existingVerification.referenceNumber ?? '');
-    setDocumentType(existingVerification.documentType ?? 'DTI_CERTIFICATE');
-    setIssueDate(formatDateInput(existingVerification.issueDate));
-    setExpiryDate(formatDateInput(existingVerification.expiryDate));
-    setDocuments(mapExistingDocuments(existingVerification.documentUrls ?? []));
+    setScreenshots(mapExistingScreenshots(existingVerification.documentUrls ?? []));
   }, [existingVerification?.id, existingVerification?.updatedAt]);
 
-  const scoreLabel = useMemo(() => {
-    if (!existingVerification) return '0 / 40 pts';
-    const value = typeof existingVerification.score === 'number' ? existingVerification.score : 0;
-    return `${value} / 40 pts`;
-  }, [existingVerification]);
-
-  const pickDocument = useCallback(async () => {
+  const pickScreenshot = useCallback(async () => {
     try {
-      if (documents.length >= MAX_DOCUMENTS) {
-        Alert.alert('Limit reached', `You can upload up to ${MAX_DOCUMENTS} files.`);
+      if (screenshots.length >= MAX_SCREENSHOTS) {
+        Alert.alert('Limit reached', `You can upload up to ${MAX_SCREENSHOTS} screenshots.`);
         return;
       }
 
@@ -168,7 +125,7 @@ export default function BusinessVerificationPage({ navigation }) {
       }
 
       setSubmitError(null);
-      setDocuments((prev) => [
+      setScreenshots((prev) => [
         ...prev,
         {
           id: `local-${Date.now()}-${Math.random()}`,
@@ -179,19 +136,59 @@ export default function BusinessVerificationPage({ navigation }) {
           name:
             asset.fileName ||
             asset.uri?.split('/').pop()?.split('?')[0] ||
-            `business-doc-${prev.length + 1}.${extensionFromMime(asset.mimeType)}`,
+            `bnrs-screenshot-${prev.length + 1}.${extensionFromMime(asset.mimeType)}`,
         },
       ]);
     } catch (err) {
-      console.error('Document picker failed:', err);
-      const message = formatErrorMessage(err, 'Could not pick a file right now.');
+      console.error('Screenshot picker failed:', err);
+      const message = formatErrorMessage(err, 'Could not pick a screenshot right now.');
       setSubmitError(message);
-      Alert.alert('File picker error', message);
+      Alert.alert('Screenshot picker error', message);
     }
-  }, [documents.length]);
+  }, [screenshots.length]);
 
-  const removeDocument = useCallback((id) => {
-    setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+  const captureBnrsScreenshot = useCallback(async () => {
+    if (screenshots.length >= MAX_SCREENSHOTS) {
+      Alert.alert('Limit reached', `You can upload up to ${MAX_SCREENSHOTS} screenshots.`);
+      return;
+    }
+    if (!bnrsShotRef.current?.capture) {
+      Alert.alert('Capture unavailable', 'Open the full view to capture a screenshot.');
+      return;
+    }
+    setIsCapturing(true);
+    try {
+      const uri = await bnrsShotRef.current.capture();
+      if (!uri) {
+        throw new Error('Screenshot capture returned empty.');
+      }
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setSubmitError(null);
+      setScreenshots((prev) => [
+        ...prev,
+        {
+          id: `capture-${Date.now()}-${Math.random()}`,
+          uri,
+          base64,
+          mimeType: 'image/jpeg',
+          isExisting: false,
+          name: `BNRS Screenshot ${prev.length + 1}.jpg`,
+        },
+      ]);
+    } catch (err) {
+      console.error('BNRS screenshot capture failed:', err);
+      const message = formatErrorMessage(err, 'Could not capture the BNRS screenshot.');
+      setSubmitError(message);
+      Alert.alert('Screenshot failed', message);
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [screenshots.length]);
+
+  const removeScreenshot = useCallback((id) => {
+    setScreenshots((prev) => prev.filter((shot) => shot.id !== id));
   }, []);
 
   const handleOpenBnrs = useCallback(async () => {
@@ -230,19 +227,8 @@ export default function BusinessVerificationPage({ navigation }) {
       return;
     }
 
-    const trimmedName = businessName.trim();
-    if (!trimmedName) {
-      Alert.alert('Missing info', 'Business name is required.');
-      return;
-    }
-
-    if (documents.length === 0) {
-      Alert.alert('Missing document', 'Upload at least one DTI certificate or permit.');
-      return;
-    }
-
-    if (tin && !TIN_PATTERN.test(tin.trim())) {
-      Alert.alert('Check TIN', 'TIN should look like 123-456-789-000.');
+    if (screenshots.length === 0) {
+      Alert.alert('Missing screenshot', 'Capture or upload at least one BNRS screenshot.');
       return;
     }
 
@@ -253,11 +239,11 @@ export default function BusinessVerificationPage({ navigation }) {
       const existingUrls = [];
       const uploadQueue = [];
 
-      documents.forEach((doc) => {
-        if (doc.isExisting && doc.uploadedUrl) {
-          existingUrls.push(doc.uploadedUrl);
-        } else if (doc.base64) {
-          uploadQueue.push(doc);
+      screenshots.forEach((shot) => {
+        if (shot.isExisting && shot.uploadedUrl) {
+          existingUrls.push(shot.uploadedUrl);
+        } else if (shot.base64) {
+          uploadQueue.push(shot);
         }
       });
 
@@ -265,21 +251,21 @@ export default function BusinessVerificationPage({ navigation }) {
       const timestamp = Date.now();
 
       for (let index = 0; index < uploadQueue.length; index += 1) {
-        const doc = uploadQueue[index];
-        const ext = extensionFromMime(doc.mimeType);
-        const path = `business-verification/${user.id}/${timestamp}-${index}-${Math.random()
+        const shot = uploadQueue[index];
+        const ext = extensionFromMime(shot.mimeType);
+        const path = `business-verification/${user.id}/bnrs-${timestamp}-${index}-${Math.random()
           .toString(36)
           .slice(2, 8)}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
           .from('Capstone')
-          .upload(path, decode(doc.base64), {
-            contentType: doc.mimeType || 'image/jpeg',
+          .upload(path, decode(shot.base64), {
+            contentType: shot.mimeType || 'image/jpeg',
           });
 
         if (uploadError) {
-          console.error('Document upload error:', uploadError);
-          throw new Error('Failed to upload one of the business documents.');
+          console.error('Screenshot upload error:', uploadError);
+          throw new Error('Failed to upload one of the BNRS screenshots.');
         }
 
         const { data: urlData } = supabase.storage.from('Capstone').getPublicUrl(path);
@@ -289,21 +275,16 @@ export default function BusinessVerificationPage({ navigation }) {
         uploadedUrls.push(urlData.publicUrl);
       }
 
+      const screenshotUrls = [...existingUrls, ...uploadedUrls];
       const payload = {
-        businessName: trimmedName,
-        businessAddress: businessAddress.trim(),
-        tin: tin.trim(),
-        referenceNumber: referenceNumber.trim(),
-        documentType: (documentType || '').trim() || 'DTI_CERTIFICATE',
-        issueDate: issueDate?.trim() || null,
-        expiryDate: expiryDate?.trim() || null,
-        documentUrls: [...existingUrls, ...uploadedUrls],
+        screenshotUrls,
+        documentUrls: screenshotUrls,
       };
 
       const response = await post('/api/users/business-verification', payload);
       await refreshUser?.();
-      setDocuments(mapExistingDocuments(response?.verification?.documentUrls ?? payload.documentUrls));
-      Alert.alert('Submitted', response?.message ?? 'Business verification submitted.', [
+      setScreenshots(mapExistingScreenshots(response?.verification?.documentUrls ?? screenshotUrls));
+      Alert.alert('Submitted', response?.message ?? 'BNRS screenshot submitted for review.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
       setSubmitError(null);
@@ -317,21 +298,13 @@ export default function BusinessVerificationPage({ navigation }) {
       setIsSubmitting(false);
     }
   }, [
-    businessAddress,
-    businessName,
-    documents,
-    expiryDate,
     isSubmitting,
-    issueDate,
     navigation,
-    referenceNumber,
     refreshUser,
-    tin,
-    documentType,
+    screenshots,
     user?.id,
   ]);
 
-  const findings = existingVerification?.validationFindings;
   const failureReasons = existingVerification?.failureReasons ?? [];
   const status = existingVerification?.status ?? 'PENDING';
   const statusStyles = statusMeta(status);
@@ -358,27 +331,41 @@ export default function BusinessVerificationPage({ navigation }) {
     const webViewStyle = expanded ? styles.webViewExpanded : styles.webView;
     const keySuffix = expanded ? 'expanded' : 'preview';
 
+    const webViewNode = (
+      <WebView
+        key={`bnrs-${bnrsReloadKey}-${keySuffix}`}
+        source={{ uri: BNRS_URL }}
+        style={webViewStyle}
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.webLoader}>
+            <ActivityIndicator color="#1d4ed8" />
+            <Text style={styles.webLoaderText}>Loading BNRS search...</Text>
+          </View>
+        )}
+        onError={() => setBnrsError(true)}
+        onHttpError={() => setBnrsError(true)}
+        setSupportMultipleWindows={false}
+        javaScriptEnabled
+        domStorageEnabled
+        nestedScrollEnabled
+        originWhitelist={['*']}
+      />
+    );
+
     return (
       <View style={containerStyle}>
-        <WebView
-          key={`bnrs-${bnrsReloadKey}-${keySuffix}`}
-          source={{ uri: BNRS_URL }}
-          style={webViewStyle}
-          startInLoadingState
-          renderLoading={() => (
-            <View style={styles.webLoader}>
-              <ActivityIndicator color="#1d4ed8" />
-              <Text style={styles.webLoaderText}>Loading BNRS search...</Text>
-            </View>
-          )}
-          onError={() => setBnrsError(true)}
-          onHttpError={() => setBnrsError(true)}
-          setSupportMultipleWindows={false}
-          javaScriptEnabled
-          domStorageEnabled
-          nestedScrollEnabled
-          originWhitelist={['*']}
-        />
+        {expanded ? (
+          <ViewShot
+            ref={bnrsShotRef}
+            style={styles.webViewShot}
+            options={{ format: 'jpg', quality: 0.9 }}
+          >
+            {webViewNode}
+          </ViewShot>
+        ) : (
+          webViewNode
+        )}
       </View>
     );
   };
@@ -392,22 +379,28 @@ export default function BusinessVerificationPage({ navigation }) {
       <ScreenHeader
         navigation={navigation}
         title="Business Verification"
-        subtitle="Upload your DTI Business Name Certificate or local permit. We will auto-check format, TIN, and layout, then score you as Verified, Partially Verified, or Rejected (0–40 pts)."
+        subtitle="Search your business name in the DTI BNRS site, capture a screenshot, and submit it for manual review."
       />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={[styles.statusCard, { backgroundColor: statusStyles.accent }]}>
-          <Text style={[styles.statusLabel, { color: statusStyles.color }]}>{statusStyles.label}</Text>
-          <Text style={styles.statusScore}>{scoreLabel}</Text>
-          <Text style={styles.statusTimestamp}>
-            {existingVerification?.processedAt
-              ? `Last checked ${new Date(existingVerification.processedAt).toLocaleString()}`
-              : 'Pending automatic checks'}
-          </Text>
-        </View>
+        {existingVerification ? (
+          <View style={[styles.statusCard, { backgroundColor: statusStyles.accent }]}>
+            <Text style={[styles.statusLabel, { color: statusStyles.color }]}>{statusStyles.label}</Text>
+            <Text style={styles.statusScore}>
+              {existingVerification?.processedAt ? 'Reviewed by admin' : 'Awaiting admin review'}
+            </Text>
+            <Text style={styles.statusTimestamp}>
+              {existingVerification?.processedAt
+                ? `Reviewed ${new Date(existingVerification.processedAt).toLocaleString()}`
+                : existingVerification?.createdAt
+                ? `Submitted ${new Date(existingVerification.createdAt).toLocaleString()}`
+                : 'Submitted for review'}
+            </Text>
+          </View>
+        ) : null}
 
         {failureReasons.length ? (
           <View style={styles.warningCard}>
-            <Text style={styles.warningTitle}>What to fix</Text>
+            <Text style={styles.warningTitle}>Admin feedback</Text>
             {failureReasons.map((reason, index) => (
               <Text key={`${reason}-${index}`} style={styles.warningItem}>
                 • {reason}
@@ -442,111 +435,35 @@ export default function BusinessVerificationPage({ navigation }) {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Business name *</Text>
-          <TextInput
-            style={styles.input}
-            value={businessName}
-            onChangeText={setBusinessName}
-            placeholder="Exact business name on the certificate"
-            placeholderTextColor="#94a3b8"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>TIN</Text>
-          <TextInput
-            style={styles.input}
-            value={tin}
-            onChangeText={setTin}
-            placeholder="123-456-789-000"
-            placeholderTextColor="#94a3b8"
-            keyboardType="number-pad"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Reference / Certificate number</Text>
-          <TextInput
-            style={styles.input}
-            value={referenceNumber}
-            onChangeText={setReferenceNumber}
-            placeholder="Enter the BNRS reference or permit number"
-            placeholderTextColor="#94a3b8"
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Business address</Text>
-          <TextInput
-            style={[styles.input, styles.multiline]}
-            multiline
-            value={businessAddress}
-            onChangeText={setBusinessAddress}
-            placeholder="Street, city/municipality, province"
-            placeholderTextColor="#94a3b8"
-          />
-        </View>
-
-        <View style={styles.sectionRow}>
-          <View style={styles.rowItem}>
-            <Text style={styles.label}>Document type</Text>
-            <TextInput
-              style={styles.input}
-              value={documentType}
-              onChangeText={setDocumentType}
-              placeholder="e.g., DTI_CERTIFICATE or LGU_PERMIT"
-              placeholderTextColor="#94a3b8"
-              autoCapitalize="characters"
-            />
-          </View>
-          <View style={styles.rowItem}>
-            <Text style={styles.label}>Issue date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={issueDate}
-              onChangeText={setIssueDate}
-              placeholder="2024-01-10"
-              placeholderTextColor="#94a3b8"
-            />
-          </View>
-        </View>
-
-        <View style={styles.sectionRow}>
-          <View style={styles.rowItem}>
-            <Text style={styles.label}>Expiry date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={expiryDate}
-              onChangeText={setExpiryDate}
-              placeholder="2025-01-10"
-              placeholderTextColor="#94a3b8"
-            />
-          </View>
-          <View style={styles.rowItem}>
-            <Text style={styles.label}>Score goal</Text>
-            <Text style={styles.helperText}>32+ pts → Verified</Text>
-            <Text style={styles.helperText}>16–31 pts → Partial</Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.label}>Upload certificate *</Text>
-            <Text style={styles.helper}>{documents.length}/{MAX_DOCUMENTS}</Text>
+            <Text style={styles.label}>BNRS screenshot *</Text>
+            <Text style={styles.helper}>{screenshots.length}/{MAX_SCREENSHOTS}</Text>
           </View>
           <Text style={styles.helperText}>
-            Upload a clear photo of your DTI Business Name Certificate, BNRS QR, or local business permit.
+            Open the full BNRS view, search your business name, and capture a screenshot of the results.
           </Text>
+          <View style={styles.screenshotActions}>
+            <TouchableOpacity style={styles.screenshotPrimary} onPress={handleOpenBnrsExpanded}>
+              <Text style={styles.screenshotPrimaryText}>Open full view</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.screenshotSecondary}
+              onPress={pickScreenshot}
+              disabled={isSubmitting}
+            >
+              <Text style={styles.screenshotSecondaryText}>Upload screenshot</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.documentsGrid}>
-            {documents.map((doc) => (
-              <View key={doc.id} style={styles.documentCard}>
-                <Image source={{ uri: doc.uri }} style={styles.documentImage} />
+            {screenshots.map((shot) => (
+              <View key={shot.id} style={styles.documentCard}>
+                <Image source={{ uri: shot.uri }} style={styles.documentImage} />
                 <Text style={styles.documentName} numberOfLines={1}>
-                  {doc.name}
+                  {shot.name}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => removeDocument(doc.id)}
+                  onPress={() => removeScreenshot(shot.id)}
                   style={styles.removeButton}
                   disabled={isSubmitting}
                 >
@@ -554,30 +471,18 @@ export default function BusinessVerificationPage({ navigation }) {
                 </TouchableOpacity>
               </View>
             ))}
-            {documents.length < MAX_DOCUMENTS ? (
-              <TouchableOpacity style={styles.addCard} onPress={pickDocument} disabled={isSubmitting}>
+            {screenshots.length < MAX_SCREENSHOTS ? (
+              <TouchableOpacity
+                style={styles.addCard}
+                onPress={handleOpenBnrsExpanded}
+                disabled={isSubmitting}
+              >
                 <Text style={styles.addCardIcon}>+</Text>
-                <Text style={styles.addCardLabel}>Add File</Text>
+                <Text style={styles.addCardLabel}>Capture in full view</Text>
               </TouchableOpacity>
             ) : null}
           </View>
         </View>
-
-        {findings?.checks?.length ? (
-          <View style={styles.section}>
-            <Text style={styles.label}>Automatic checks</Text>
-            <View style={styles.checkList}>
-              {findings.checks.map((check) => (
-                <CheckRow
-                  key={check.key}
-                  label={check.detail || check.key}
-                  detail={check.detail}
-                  passed={Boolean(check.passed)}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
 
         <TouchableOpacity
           style={[styles.submitButton, isSubmitting && styles.buttonDisabled]}
@@ -588,7 +493,7 @@ export default function BusinessVerificationPage({ navigation }) {
             <ActivityIndicator color="#ffffff" />
           ) : (
             <Text style={styles.submitButtonText}>
-              {existingVerification ? 'Resubmit verification' : 'Submit for verification'}
+              {existingVerification ? 'Resubmit BNRS screenshot' : 'Submit BNRS screenshot'}
             </Text>
           )}
         </TouchableOpacity>
@@ -607,9 +512,22 @@ export default function BusinessVerificationPage({ navigation }) {
         <SafeAreaView style={styles.bnrsExpandedSafeArea}>
           <View style={styles.bnrsExpandedHeader}>
             <Text style={styles.bnrsExpandedTitle}>DTI BNRS search</Text>
-            <TouchableOpacity style={styles.bnrsExpandedClose} onPress={handleCloseBnrsExpanded}>
-              <Text style={styles.bnrsExpandedCloseText}>Close</Text>
-            </TouchableOpacity>
+            <View style={styles.bnrsExpandedActions}>
+              <TouchableOpacity
+                style={[styles.bnrsCaptureButton, (isCapturing || bnrsError) && styles.buttonDisabled]}
+                onPress={captureBnrsScreenshot}
+                disabled={isCapturing || bnrsError}
+              >
+                {isCapturing ? (
+                  <ActivityIndicator color="#0f172a" />
+                ) : (
+                  <Text style={styles.bnrsCaptureButtonText}>Capture</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.bnrsExpandedClose} onPress={handleCloseBnrsExpanded}>
+                <Text style={styles.bnrsExpandedCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.bnrsExpandedBody}>{renderBnrsEmbed({ expanded: true })}</View>
         </SafeAreaView>
@@ -728,6 +646,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
   },
+  screenshotActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  screenshotPrimary: {
+    backgroundColor: '#1d4ed8',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  screenshotPrimaryText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  screenshotSecondary: {
+    marginLeft: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: '#e2e8f0',
+  },
+  screenshotSecondaryText: {
+    color: '#1e293b',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   inlineLinkButton: {
     paddingHorizontal: 4,
     paddingVertical: 2,
@@ -750,6 +697,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   webView: {
+    flex: 1,
+  },
+  webViewShot: {
     flex: 1,
   },
   webViewExpandedContainer: {
@@ -832,6 +782,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
+  },
+  bnrsExpandedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bnrsCaptureButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#fde047',
+    marginRight: 10,
+  },
+  bnrsCaptureButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   bnrsExpandedTitle: {
     fontSize: 16,

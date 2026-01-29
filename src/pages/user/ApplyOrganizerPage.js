@@ -469,7 +469,7 @@ export default function ApplyOrganizerPage({ navigation }) {
         <View style={[styles.verificationCard, { backgroundColor: '#e0f2fe' }]}>
           <Text style={[styles.statusLabel, { color: '#0369a1' }]}>Business verification</Text>
           <Text style={styles.statusHelper}>
-            Upload your DTI/permit for automated checks and to boost your trust score.
+            Search your business on BNRS, capture a screenshot, and submit it for manual review.
           </Text>
           <TouchableOpacity
             style={styles.actionButton}

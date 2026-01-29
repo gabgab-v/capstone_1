@@ -318,8 +318,10 @@ const Dashboard = ({ setToken }) => {
 
   const [organizerStats, setOrganizerStats] = useState(defaultStats);
   const [expertStats, setExpertStats] = useState(defaultStats);
+  const [businessStats, setBusinessStats] = useState(defaultStats);
   const [organizerData, setOrganizerData] = useState([]);
   const [expertData, setExpertData] = useState([]);
+  const [businessData, setBusinessData] = useState([]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -385,8 +387,18 @@ const Dashboard = ({ setToken }) => {
         type: 'Expert',
       })) ?? [];
 
-    if (organizerEntries.length || expertEntries.length) {
-      return [...organizerEntries, ...expertEntries];
+    const businessEntries =
+      businessData?.map((request) => ({
+        id: `business-${request.id ?? request.userId ?? Math.random().toString(36).slice(2)}`,
+        applicant: request.businessName || request.user?.name || 'Business verification',
+        email: request.user?.email || request.email || '',
+        submittedAt: request.submittedAt || request.createdAt || request.updatedAt,
+        status: resolveSubmissionStatus(request),
+        type: 'Business',
+      })) ?? [];
+
+    if (organizerEntries.length || expertEntries.length || businessEntries.length) {
+      return [...organizerEntries, ...expertEntries, ...businessEntries];
     }
 
     return (users || []).map((user) => ({
@@ -397,7 +409,7 @@ const Dashboard = ({ setToken }) => {
       status: user.status || user.role || 'Active',
       type: user.role || 'User',
     }));
-  }, [expertData, organizerData, users]);
+  }, [businessData, expertData, organizerData, users]);
 
   const statusOptions = useMemo(() => {
     const values = new Set();
@@ -434,12 +446,12 @@ const Dashboard = ({ setToken }) => {
 
   const aggregatedStats = useMemo(
     () => ({
-      total: (organizerStats.total || 0) + (expertStats.total || 0),
-      pending: (organizerStats.pending || 0) + (expertStats.pending || 0),
-      approved: (organizerStats.approved || 0) + (expertStats.approved || 0),
-      rejected: (organizerStats.rejected || 0) + (expertStats.rejected || 0),
+      total: (organizerStats.total || 0) + (expertStats.total || 0) + (businessStats.total || 0),
+      pending: (organizerStats.pending || 0) + (expertStats.pending || 0) + (businessStats.pending || 0),
+      approved: (organizerStats.approved || 0) + (expertStats.approved || 0) + (businessStats.approved || 0),
+      rejected: (organizerStats.rejected || 0) + (expertStats.rejected || 0) + (businessStats.rejected || 0),
     }),
-    [expertStats, organizerStats],
+    [businessStats, expertStats, organizerStats],
   );
 
   const statCards = [
@@ -480,6 +492,8 @@ const Dashboard = ({ setToken }) => {
     const element =
       target === 'organizer'
         ? document.getElementById('organizer-requests')
+        : target === 'business'
+        ? document.getElementById('business-verifications')
         : target === 'expert'
         ? document.getElementById('expert-requests')
         : target === 'bookingLogs'
@@ -568,7 +582,7 @@ const Dashboard = ({ setToken }) => {
                   </button>
                 </div>
               </div>
-              <p className="panel__subtitle">Latest actions from organizer and expert applications.</p>
+              <p className="panel__subtitle">Latest actions from organizer, expert, and business verification queues.</p>
             </div>
             <div className="panel__body">
               {recentActivity.length === 0 ? (
@@ -598,7 +612,7 @@ const Dashboard = ({ setToken }) => {
               <div className="panel__header-row">
                 <h2 className="panel__title">Certificate Submissions</h2>
               </div>
-              <p className="panel__subtitle">Search, filter, and review incoming organizer and expert requests.</p>
+              <p className="panel__subtitle">Search, filter, and review organizer, expert, and business requests.</p>
             </div>
             <div className="panel__body">
               {error ? <div className="error-banner">{error}</div> : null}
@@ -670,7 +684,13 @@ const Dashboard = ({ setToken }) => {
                               className="link-button"
                               onClick={() =>
                                 handleNavigate(
-                                  item.type === 'Organizer' ? 'organizer' : item.type === 'Expert' ? 'expert' : 'submissions',
+                                  item.type === 'Organizer'
+                                    ? 'organizer'
+                                    : item.type === 'Expert'
+                                    ? 'expert'
+                                    : item.type === 'Business'
+                                    ? 'business'
+                                    : 'submissions',
                                 )
                               }
                             >
@@ -689,6 +709,12 @@ const Dashboard = ({ setToken }) => {
             onUnauthorized={handleLogout}
             onStatsUpdate={setOrganizerStats}
             onDataChange={setOrganizerData}
+          />
+
+          <BusinessVerificationRequests
+            onUnauthorized={handleLogout}
+            onStatsUpdate={setBusinessStats}
+            onDataChange={setBusinessData}
           />
 
           <ExpertRequests
@@ -1098,6 +1124,219 @@ const OrganizerRequests = ({ onUnauthorized, onStatsUpdate, onDataChange }) => {
                           </div>
                         </div>
                       ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+const BusinessVerificationRequests = ({ onUnauthorized, onStatsUpdate, onDataChange }) => {
+  const [requests, setRequests] = useState([]);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+
+  const fetchRequests = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const response = await adminApi.get('/api/admin/business-verifications');
+      const payload = response.data?.requests ?? response.data ?? [];
+      const items = Array.isArray(payload) ? payload : [];
+      setRequests(items);
+      onStatsUpdate?.(computeStatusCounts(items));
+      onDataChange?.(items);
+    } catch (err) {
+      console.error('Fetch business verifications error:', err);
+      if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+        onUnauthorized?.();
+      } else if (err.response) {
+        setError(err.response.data?.message || 'Unable to load business verifications.');
+      } else if (err.request) {
+        setError('Network error: no response received.');
+      } else {
+        setError('Unexpected error while fetching business verifications.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onDataChange, onStatsUpdate, onUnauthorized]);
+
+  useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+
+  const toggleExpanded = (requestId) => {
+    setExpandedId((prev) => (prev === requestId ? null : requestId));
+  };
+
+  const handleApprove = async (userId) => {
+    setProcessingId(userId);
+    setError('');
+    setMessage('');
+    try {
+      const response = await adminApi.post(`/api/admin/approve-business-verification/${userId}`);
+      setMessage(response.data?.message || 'Business verification approved.');
+      await fetchRequests();
+    } catch (err) {
+      console.error('Approve business verification error:', err);
+      if (err.response) {
+        setError(err.response.data?.message || 'Failed to approve business verification.');
+        if (err.response.status === 401 || err.response.status === 403) {
+          onUnauthorized?.();
+        }
+      } else if (err.request) {
+        setError('Network error: no response received.');
+      } else {
+        setError('Unexpected error while approving business verification.');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (userId) => {
+    const reason = window.prompt('Optional: include notes for the applicant (leave blank for none).', '');
+    if (reason === null) {
+      return;
+    }
+    setProcessingId(userId);
+    setError('');
+    setMessage('');
+    try {
+      const response = await adminApi.post(`/api/admin/reject-business-verification/${userId}`, {
+        reason: reason.trim() || undefined,
+      });
+      setMessage(response.data?.message || 'Business verification marked for resubmission.');
+      await fetchRequests();
+    } catch (err) {
+      console.error('Reject business verification error:', err);
+      if (err.response) {
+        setError(err.response.data?.message || 'Failed to reject business verification.');
+        if (err.response.status === 401 || err.response.status === 403) {
+          onUnauthorized?.();
+        }
+      } else if (err.request) {
+        setError('Network error: no response received.');
+      } else {
+        setError('Unexpected error while rejecting business verification.');
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  return (
+    <section className="panel" id="business-verifications">
+      <div className="panel__header">
+        <div className="panel__header-row">
+          <h2 className="panel__title">Business Verifications</h2>
+          <div className="panel__actions">
+            <button type="button" className="link-button" onClick={fetchRequests} disabled={isLoading}>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <p className="panel__subtitle">Review BNRS screenshots before approving organizers.</p>
+      </div>
+      <div className="panel__body">
+        {error ? <div className="error-banner">{error}</div> : null}
+        {message ? <div className="success-banner">{message}</div> : null}
+        {isLoading ? (
+          <p className="panel__empty">Loading business verifications...</p>
+        ) : requests.length === 0 ? (
+          <p className="panel__empty">No business verifications require attention right now.</p>
+        ) : (
+          <div className="request-stack">
+            {requests.map((request) => {
+              const key = request.id ?? request.userId;
+              const applicant = request.user || {};
+              const isExpanded = expandedId === key;
+              const isProcessing = processingId === request.userId;
+              return (
+                <article key={key} className="request-card">
+                  <div className="request-card__header">
+                    <div>
+                      <h3 className="request-card__title">
+                        {request.businessName || applicant.name || 'Business verification'}
+                      </h3>
+                      <p className="request-card__meta">
+                        {applicant.email || request.email || 'No email on file'} | Submitted{' '}
+                        {formatDateTime(request.submittedAt, { includeTime: true })}
+                      </p>
+                    </div>
+                    <div className="request-card__actions">
+                      <button type="button" className="button button--ghost" onClick={() => toggleExpanded(key)}>
+                        {isExpanded ? 'Hide details' : 'View details'}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--approve"
+                        onClick={() => handleApprove(request.userId)}
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? 'Processing...' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--reject"
+                        onClick={() => handleReject(request.userId)}
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? 'Processing...' : 'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded ? (
+                    <div className="request-card__body">
+                      <div className="request-detail-grid">
+                        <div>
+                          <span className="detail-label">User</span>
+                          <p className="detail-value">{applicant.name || unknownValue}</p>
+                        </div>
+                        <div>
+                          <span className="detail-label">Email</span>
+                          <p className="detail-value">{applicant.email || unknownValue}</p>
+                        </div>
+                        <div>
+                          <span className="detail-label">Trust score</span>
+                          <p className="detail-value">
+                            {typeof applicant.organizerTrustScore === 'number'
+                              ? applicant.organizerTrustScore
+                              : unknownValue}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="detail-label">Trust tier</span>
+                          <p className="detail-value">{applicant.organizerTrustTier || unknownValue}</p>
+                        </div>
+                      </div>
+                      {request.documentUrls && request.documentUrls.length > 0 ? (
+                        <div>
+                          <span className="detail-label">BNRS screenshots</span>
+                          <div className="request-documents">
+                            {request.documentUrls.map((url, index) => (
+                              <button
+                                key={`${key}-bnrs-${index}`}
+                                type="button"
+                                className="document-preview"
+                                onClick={() => window.open(url, '_blank', 'noopener')}
+                              >
+                                <img src={url} alt={`BNRS screenshot ${index + 1}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="panel__empty">No BNRS screenshots attached.</p>
+                      )}
                     </div>
                   ) : null}
                 </article>
