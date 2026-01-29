@@ -31,6 +31,50 @@ adminApi.interceptors.request.use((config) => {
 
 const defaultStats = Object.freeze({ total: 0, pending: 0, approved: 0, rejected: 0 });
 const unknownValue = 'N/A';
+const roleStatusValues = new Set(['expert', 'organizer', 'user', 'admin']);
+
+const resolveSubmissionStatus = (request, fallback = 'Pending') => {
+  if (!request) {
+    return fallback;
+  }
+  const roleHints = [
+    request.role,
+    request.type,
+    request.userType,
+    request.user?.role,
+    request.user?.type,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+  const blockedValues = new Set([...roleStatusValues, ...roleHints]);
+  const candidates = [
+    request.reviewStatus,
+    request.verificationStatus,
+    request.certificationStatus,
+    request.applicationStatus,
+    request.approvalStatus,
+    request.expertStatus,
+    request.organizerStatus,
+    request.decision,
+    request.state,
+    request.status,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) {
+      continue;
+    }
+    const value = String(candidate).trim();
+    if (!value) {
+      continue;
+    }
+    const normalized = value.toLowerCase();
+    if (blockedValues.has(normalized)) {
+      continue;
+    }
+    return value;
+  }
+  return fallback;
+};
 
 const normaliseStatus = (value) => {
   if (!value) {
@@ -153,7 +197,7 @@ const formatDateTime = (value, { includeTime = false } = {}) => {
 const computeStatusCounts = (collection = []) =>
   collection.reduce(
     (acc, item) => {
-      const status = normaliseStatus(item.status || item.reviewStatus || item.decision || item.state);
+      const status = normaliseStatus(resolveSubmissionStatus(item));
       acc.total += 1;
       if (status === 'approved') {
         acc.approved += 1;
@@ -327,7 +371,7 @@ const Dashboard = ({ setToken }) => {
         applicant: request.legalName || request.user?.name || 'Organizer applicant',
         email: request.user?.email || request.email || '',
         submittedAt: request.submittedAt || request.createdAt || request.updatedAt,
-        status: request.status || request.reviewStatus || request.decision || 'Pending',
+        status: resolveSubmissionStatus(request),
         type: 'Organizer',
       })) ?? [];
 
@@ -337,7 +381,7 @@ const Dashboard = ({ setToken }) => {
         applicant: request.user?.name || request.summitName || 'Expert applicant',
         email: request.user?.email || request.email || '',
         submittedAt: request.submittedAt || request.createdAt || request.updatedAt,
-        status: request.status || request.reviewStatus || request.decision || 'Pending',
+        status: resolveSubmissionStatus(request),
         type: 'Expert',
       })) ?? [];
 
@@ -1241,7 +1285,7 @@ const ExpertRequests = ({ onUnauthorized, onStatsUpdate, onDataChange }) => {
                         </div>
                         <div>
                           <span className="detail-label">Current status</span>
-                          <p className="detail-value">{request.status || request.reviewStatus || 'Pending'}</p>
+                          <p className="detail-value">{resolveSubmissionStatus(request)}</p>
                         </div>
                       </div>
                       {request.additionalNotes ? (

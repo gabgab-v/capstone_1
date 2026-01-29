@@ -5,6 +5,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { WebView } from 'react-native-webview';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../components/ScreenHeader';
 import { supabase } from '../../lib/supabase';
 import { post } from '../../lib/api';
@@ -116,6 +118,7 @@ export default function BusinessVerificationPage({ navigation }) {
   const [submitError, setSubmitError] = useState(null);
   const [bnrsError, setBnrsError] = useState(false);
   const [bnrsReloadKey, setBnrsReloadKey] = useState(0);
+  const [isBnrsExpanded, setBnrsExpanded] = useState(false);
 
   useEffect(() => {
     if (!existingVerification) return;
@@ -208,6 +211,14 @@ export default function BusinessVerificationPage({ navigation }) {
   const handleRetryBnrs = useCallback(() => {
     setBnrsError(false);
     setBnrsReloadKey((prev) => prev + 1);
+  }, []);
+
+  const handleOpenBnrsExpanded = useCallback(() => {
+    setBnrsExpanded(true);
+  }, []);
+
+  const handleCloseBnrsExpanded = useCallback(() => {
+    setBnrsExpanded(false);
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -325,6 +336,53 @@ export default function BusinessVerificationPage({ navigation }) {
   const status = existingVerification?.status ?? 'PENDING';
   const statusStyles = statusMeta(status);
 
+  const renderBnrsEmbed = ({ expanded }) => {
+    if (bnrsError) {
+      return (
+        <View style={[styles.webErrorCard, expanded && styles.webErrorCardExpanded]}>
+          <Text style={styles.webErrorTitle}>Unable to load BNRS search.</Text>
+          <Text style={styles.webErrorText}>Check your connection or open the site in your browser.</Text>
+          <View style={styles.webErrorActions}>
+            <TouchableOpacity style={styles.webRetryButton} onPress={handleRetryBnrs}>
+              <Text style={styles.webRetryButtonText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.webOpenButton} onPress={handleOpenBnrs}>
+              <Text style={styles.webOpenButtonText}>Open in browser</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    const containerStyle = expanded ? styles.webViewExpandedContainer : styles.webViewContainer;
+    const webViewStyle = expanded ? styles.webViewExpanded : styles.webView;
+    const keySuffix = expanded ? 'expanded' : 'preview';
+
+    return (
+      <View style={containerStyle}>
+        <WebView
+          key={`bnrs-${bnrsReloadKey}-${keySuffix}`}
+          source={{ uri: BNRS_URL }}
+          style={webViewStyle}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={styles.webLoader}>
+              <ActivityIndicator color="#1d4ed8" />
+              <Text style={styles.webLoaderText}>Loading BNRS search...</Text>
+            </View>
+          )}
+          onError={() => setBnrsError(true)}
+          onHttpError={() => setBnrsError(true)}
+          setSupportMultipleWindows={false}
+          javaScriptEnabled
+          domStorageEnabled
+          nestedScrollEnabled
+          originWhitelist={['*']}
+        />
+      </View>
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -367,47 +425,20 @@ export default function BusinessVerificationPage({ navigation }) {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>DTI BNRS search</Text>
-            <TouchableOpacity style={styles.inlineLinkButton} onPress={handleOpenBnrs}>
-              <Text style={styles.inlineLinkText}>Open in browser</Text>
-            </TouchableOpacity>
+            <View style={styles.sectionHeaderActions}>
+              <TouchableOpacity style={styles.inlineLinkButton} onPress={handleOpenBnrsExpanded}>
+                <Text style={styles.inlineLinkText}>Full view</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.inlineLinkButton, styles.inlineLinkButtonSpacer]}
+                onPress={handleOpenBnrs}
+              >
+                <Text style={styles.inlineLinkText}>Open in browser</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={styles.helperText}>Check business name availability without leaving the app.</Text>
-          {bnrsError ? (
-            <View style={styles.webErrorCard}>
-              <Text style={styles.webErrorTitle}>Unable to load BNRS search.</Text>
-              <Text style={styles.webErrorText}>Check your connection or open the site in your browser.</Text>
-              <View style={styles.webErrorActions}>
-                <TouchableOpacity style={styles.webRetryButton} onPress={handleRetryBnrs}>
-                  <Text style={styles.webRetryButtonText}>Retry</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.webOpenButton} onPress={handleOpenBnrs}>
-                  <Text style={styles.webOpenButtonText}>Open in browser</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.webViewContainer}>
-              <WebView
-                key={`bnrs-${bnrsReloadKey}`}
-                source={{ uri: BNRS_URL }}
-                style={styles.webView}
-                startInLoadingState
-                renderLoading={() => (
-                  <View style={styles.webLoader}>
-                    <ActivityIndicator color="#1d4ed8" />
-                    <Text style={styles.webLoaderText}>Loading BNRS search...</Text>
-                  </View>
-                )}
-                onError={() => setBnrsError(true)}
-                onHttpError={() => setBnrsError(true)}
-                setSupportMultipleWindows={false}
-                javaScriptEnabled
-                domStorageEnabled
-                nestedScrollEnabled
-                originWhitelist={['*']}
-              />
-            </View>
-          )}
+          {renderBnrsEmbed({ expanded: false })}
         </View>
 
         <View style={styles.section}>
@@ -566,6 +597,23 @@ export default function BusinessVerificationPage({ navigation }) {
           <Text style={styles.cancelButtonText}>Back to settings</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={isBnrsExpanded}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCloseBnrsExpanded}
+      >
+        <SafeAreaView style={styles.bnrsExpandedSafeArea}>
+          <View style={styles.bnrsExpandedHeader}>
+            <Text style={styles.bnrsExpandedTitle}>DTI BNRS search</Text>
+            <TouchableOpacity style={styles.bnrsExpandedClose} onPress={handleCloseBnrsExpanded}>
+              <Text style={styles.bnrsExpandedCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.bnrsExpandedBody}>{renderBnrsEmbed({ expanded: true })}</View>
+        </SafeAreaView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -662,6 +710,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   label: {
     fontSize: 15,
     fontWeight: '600',
@@ -680,6 +732,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
   },
+  inlineLinkButtonSpacer: {
+    marginLeft: 12,
+  },
   inlineLinkText: {
     fontSize: 12,
     fontWeight: '600',
@@ -695,6 +750,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   webView: {
+    flex: 1,
+  },
+  webViewExpandedContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  webViewExpanded: {
     flex: 1,
   },
   webLoader: {
@@ -716,6 +778,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2',
     borderColor: '#fecdd3',
     borderWidth: 1,
+  },
+  webErrorCardExpanded: {
+    marginHorizontal: 16,
+    marginTop: 12,
   },
   webErrorTitle: {
     fontSize: 13,
@@ -752,6 +818,39 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
     fontSize: 12,
     fontWeight: '600',
+  },
+  bnrsExpandedSafeArea: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  bnrsExpandedHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  bnrsExpandedTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  bnrsExpandedClose: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+  },
+  bnrsExpandedCloseText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  bnrsExpandedBody: {
+    flex: 1,
   },
   input: {
     backgroundColor: '#f1f5f9',
