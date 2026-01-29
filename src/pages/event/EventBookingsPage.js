@@ -49,7 +49,14 @@ function getBookingStatusMeta(status) {
   }
 }
 
-function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile }) {
+function BookingItem({
+  booking,
+  onUpdateStatus,
+  actionInFlight,
+  onViewProfile,
+  onReviewRescheduleRequest,
+  rescheduleDecisionInFlight,
+}) {
   const receiptUrl = resolveReceiptUrl(booking?.paymentUrl);
   const statusMeta = getBookingStatusMeta(booking?.status);
   const normalizedStatus = statusMeta.normalized || "PENDING";
@@ -143,6 +150,18 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
         : rescheduleApprovalStatus === "PENDING"
           ? "Pending"
           : rescheduleApprovalStatus;
+  const isRescheduleRequest = normalizedStatus === "RESCHEDULE_REQUESTED";
+  const canReviewReschedule =
+    isRescheduleRequest && typeof onReviewRescheduleRequest === "function";
+  const decisionInFlight =
+    rescheduleDecisionInFlight?.bookingId === booking?.id
+      ? rescheduleDecisionInFlight
+      : null;
+  const approvingDecision = decisionInFlight?.decision === "APPROVED";
+  const rejectingDecision = decisionInFlight?.decision === "REJECTED";
+  const reviewDisabled = Boolean(decisionInFlight);
+  const showReviewActions =
+    canReviewReschedule && (!rescheduleApprovalStatus || rescheduleApprovalStatus === "PENDING");
 
   const actionButtons = [];
   if (!isApproved) {
@@ -179,13 +198,58 @@ function BookingItem({ booking, onUpdateStatus, actionInFlight, onViewProfile })
       ) : null}
       <Text style={styles.amountLabel}>Paid: {formatAmount(booking?.totalAmount)}</Text>
       <Text style={styles.referenceLabel}>Reference: {booking?.id}</Text>
-      {rescheduleReason ? (
+      {isRescheduleRequest ? (
+        <View style={styles.rescheduleReview}>
+          <Text style={styles.rescheduleReviewTitle}>Reschedule request</Text>
+          {rescheduleReason ? (
+            <Text style={styles.reasonText}>Reason: {rescheduleReason}</Text>
+          ) : null}
+          <Text style={styles.rescheduleReviewStatus}>
+            Organizer decision: {rescheduleApprovalLabel || "Pending"}
+          </Text>
+          {showReviewActions ? (
+            <View style={styles.rescheduleReviewActions}>
+              <TouchableOpacity
+                style={[
+                  styles.reviewButton,
+                  styles.reviewApprove,
+                  reviewDisabled ? styles.reviewButtonDisabled : null,
+                ]}
+                onPress={() => onReviewRescheduleRequest?.(booking?.id, "APPROVED")}
+                disabled={reviewDisabled}
+                activeOpacity={0.85}
+              >
+                {approvingDecision ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.reviewButtonText}>Approve request</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.reviewButton,
+                  styles.reviewReject,
+                  reviewDisabled ? styles.reviewButtonDisabled : null,
+                ]}
+                onPress={() => onReviewRescheduleRequest?.(booking?.id, "REJECTED")}
+                disabled={reviewDisabled}
+                activeOpacity={0.85}
+              >
+                {rejectingDecision ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.reviewButtonText}>Decline request</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      {!isRescheduleRequest && rescheduleReason ? (
         <Text style={styles.reasonText}>Reschedule reason: {rescheduleReason}</Text>
       ) : null}
-      {rescheduleApprovalStatus ? (
-        <Text style={styles.reasonText}>
-          Reschedule approval: {rescheduleApprovalLabel}
-        </Text>
+      {!isRescheduleRequest && rescheduleApprovalStatus ? (
+        <Text style={styles.reasonText}>Reschedule vote: {rescheduleApprovalLabel}</Text>
       ) : null}
       {cancellationReason ? (
         <Text style={styles.reasonText}>Cancellation reason: {cancellationReason}</Text>
@@ -220,6 +284,9 @@ export default function EventBookingsPage({ route, navigation }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionInFlight, setActionInFlight] = useState(null);
+  const [rescheduleDecisionInFlight, setRescheduleDecisionInFlight] = useState(null);
+  const [showPollVoters, setShowPollVoters] = useState(false);
+  const [eventMeta, setEventMeta] = useState(null);
 
   const handleViewProfile = useCallback(
     (userId) => {
@@ -231,18 +298,43 @@ export default function EventBookingsPage({ route, navigation }) {
     [navigation]
   );
 
+  const pollVotes = bookings.reduce(
+    (acc, booking) => {
+      const status = typeof booking?.rescheduleApprovalStatus === "string"
+        ? booking.rescheduleApprovalStatus.toUpperCase()
+        : null;
+      if (status === "APPROVED") {
+        acc.approved.push(booking);
+      } else if (status === "REJECTED") {
+        acc.rejected.push(booking);
+      }
+      return acc;
+    },
+    { approved: [], rejected: [] },
+  );
+  const getVoterName = (booking) => booking?.user?.name || "Anonymous";
+  const pollActive = Boolean(eventMeta?.rescheduledAt);
+
   useEffect(() => {
     let isMounted = true;
     const fetchBookings = async () => {
       try {
-        const data = await get(`/api/events/${eventId}/bookings`);
+        const [data, eventData] = await Promise.all([
+          get(`/api/events/${eventId}/bookings`),
+          get(`/api/events/${eventId}`).catch((error) => {
+            console.error("Failed to fetch event meta:", error);
+            return null;
+          }),
+        ]);
         if (isMounted) {
           setBookings(Array.isArray(data) ? data : []);
+          setEventMeta(eventData?.id ? eventData : null);
         }
       } catch (err) {
         console.error("Failed to fetch bookings:", err);
         if (isMounted) {
           setBookings([]);
+          setEventMeta(null);
         }
       } finally {
         if (isMounted) {
@@ -256,6 +348,34 @@ export default function EventBookingsPage({ route, navigation }) {
       isMounted = false;
     };
   }, [eventId]);
+
+  const handleReviewRescheduleRequest = useCallback(
+    async (bookingId, decision) => {
+      if (!bookingId || !decision) {
+        return;
+      }
+      setRescheduleDecisionInFlight({ bookingId, decision });
+      try {
+        const updated = await put(`/api/bookings/${bookingId}`, {
+          rescheduleApprovalStatus: decision,
+        });
+        setBookings((prev) =>
+          Array.isArray(prev)
+            ? prev.map((item) => (item?.id === updated?.id ? updated : item))
+            : prev,
+        );
+      } catch (error) {
+        const message =
+          error?.body?.error ||
+          error?.message ||
+          "Unable to review the reschedule request right now.";
+        Alert.alert("Reschedule review failed", message);
+      } finally {
+        setRescheduleDecisionInFlight(null);
+      }
+    },
+    [],
+  );
 
   const handleUpdateStatus = useCallback(
     async (bookingId, nextStatus) => {
@@ -302,6 +422,54 @@ export default function EventBookingsPage({ route, navigation }) {
       <View style={styles.container}>
         <Text style={styles.title}>Bookings for {title}</Text>
 
+        {pollActive ? (
+          <View style={styles.pollCard}>
+            <View style={styles.pollHeader}>
+              <Text style={styles.pollTitle}>Reschedule poll votes</Text>
+              <TouchableOpacity onPress={() => setShowPollVoters((prev) => !prev)}>
+                <Text style={styles.pollToggle}>
+                  {showPollVoters ? "Hide voters" : "View voters"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.pollMeta}>
+              Approved: {pollVotes.approved.length} · Rejected: {pollVotes.rejected.length}
+            </Text>
+            {showPollVoters ? (
+              <View style={styles.pollList}>
+                <View style={styles.pollGroup}>
+                  <Text style={styles.pollGroupTitle}>
+                    Approve ({pollVotes.approved.length})
+                  </Text>
+                  {pollVotes.approved.length ? (
+                    pollVotes.approved.map((booking) => (
+                      <Text key={booking?.id} style={styles.pollVoter}>
+                        {getVoterName(booking)}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.pollEmpty}>No approvals yet.</Text>
+                  )}
+                </View>
+                <View style={styles.pollGroup}>
+                  <Text style={styles.pollGroupTitle}>
+                    Decline ({pollVotes.rejected.length})
+                  </Text>
+                  {pollVotes.rejected.length ? (
+                    pollVotes.rejected.map((booking) => (
+                      <Text key={booking?.id} style={styles.pollVoter}>
+                        {getVoterName(booking)}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.pollEmpty}>No declines yet.</Text>
+                  )}
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {bookings.length === 0 ? (
           <Text style={styles.emptyText}>No users booked this event yet.</Text>
         ) : (
@@ -314,6 +482,8 @@ export default function EventBookingsPage({ route, navigation }) {
                 onUpdateStatus={handleUpdateStatus}
                 actionInFlight={actionInFlight}
                 onViewProfile={handleViewProfile}
+                onReviewRescheduleRequest={handleReviewRescheduleRequest}
+                rescheduleDecisionInFlight={rescheduleDecisionInFlight}
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -346,6 +516,27 @@ const styles = StyleSheet.create({
   amountLabel: { fontSize: 14, fontWeight: "600", color: "#047857" },
   referenceLabel: { fontSize: 12, color: "#6b7280", marginTop: 4 },
   reasonText: { fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 18 },
+  rescheduleReview: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  rescheduleReviewTitle: { fontSize: 13, fontWeight: "700", color: "#9a3412" },
+  rescheduleReviewStatus: { fontSize: 12, color: "#7c2d12", marginTop: 4 },
+  rescheduleReviewActions: { flexDirection: "row", marginTop: 8 },
+  reviewButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    marginRight: 8,
+  },
+  reviewApprove: { backgroundColor: "#16a34a" },
+  reviewReject: { backgroundColor: "#dc2626" },
+  reviewButtonText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+  reviewButtonDisabled: { opacity: 0.7 },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -392,4 +583,26 @@ const styles = StyleSheet.create({
   actionButtonTextLight: { color: "#ffffff" },
   actionButtonTextDark: { color: "#1f2937" },
   actionButtonTextDisabled: { opacity: 0.7 },
+  pollCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    marginBottom: 16,
+  },
+  pollHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  pollTitle: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  pollToggle: { fontSize: 12, fontWeight: "600", color: "#1d4ed8" },
+  pollMeta: { fontSize: 12, color: "#475569", marginBottom: 8 },
+  pollList: { },
+  pollGroup: { marginBottom: 6 },
+  pollGroupTitle: { fontSize: 12, fontWeight: "700", color: "#1f2937" },
+  pollVoter: { fontSize: 12, color: "#475569", marginTop: 2 },
+  pollEmpty: { fontSize: 12, color: "#94a3b8", marginTop: 2 },
 });

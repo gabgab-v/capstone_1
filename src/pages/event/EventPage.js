@@ -1091,6 +1091,9 @@ function BookingCard({
   isRescheduling,
   isVotingReschedule,
   voteChoice,
+  pollVoters,
+  pollVotersLoading,
+  onLoadPollVoters,
 }) {
   const { styles } = useEventStyles();
   const event = booking?.event ?? null;
@@ -1107,6 +1110,11 @@ function BookingCard({
   const rescheduleApprovalStatus = normalizeStatus(booking?.rescheduleApprovalStatus);
   const reschedulePollStatus = normalizeStatus(event?.reschedulePollStatus);
   const rescheduleReason = normalizeText(event?.rescheduleReason);
+  const requestReason = normalizeText(booking?.rescheduleReason);
+  const requestDecision =
+    normalizedStatus === "RESCHEDULE_REQUESTED" && !event?.rescheduledAt
+      ? rescheduleApprovalStatus || "PENDING"
+      : null;
   const pollSummary = event?.reschedulePollSummary ?? null;
   const approvedVotes = Number(pollSummary?.approved);
   const rejectedVotes = Number(pollSummary?.rejected);
@@ -1131,10 +1139,33 @@ function BookingCard({
     typeof onCancelBooking === "function";
   const canReschedule =
     !showRescheduleNotice &&
-    ["PENDING", "APPROVED", "CONFIRMED"].includes(normalizedStatus) &&
+    (["PENDING", "APPROVED", "CONFIRMED"].includes(normalizedStatus) ||
+      (normalizedStatus === "RESCHEDULE_REQUESTED" && requestDecision === "REJECTED")) &&
     typeof onRescheduleBooking === "function";
   const isVotingApprove = isVotingReschedule && voteChoice === "APPROVED";
   const isVotingReject = isVotingReschedule && voteChoice === "REJECTED";
+  const [showVoters, setShowVoters] = useState(false);
+  const pollVoterList = Array.isArray(pollVoters) ? pollVoters : null;
+  const approvedVoters = pollVoterList
+    ? pollVoterList.filter(
+        (entry) => normalizeStatus(entry?.rescheduleApprovalStatus) === "APPROVED",
+      )
+    : [];
+  const rejectedVoters = pollVoterList
+    ? pollVoterList.filter(
+        (entry) => normalizeStatus(entry?.rescheduleApprovalStatus) === "REJECTED",
+      )
+    : [];
+  const hasVoterList = Boolean(pollVoterList);
+  const canToggleVoters = typeof onLoadPollVoters === "function";
+  const handleToggleVoters = () => {
+    const next = !showVoters;
+    setShowVoters(next);
+    if (next && !hasVoterList && !pollVotersLoading) {
+      onLoadPollVoters?.(event?.id);
+    }
+  };
+  const resolveVoterName = (entry) => entry?.user?.name || "Anonymous";
 
   return (
     <View style={styles.card}>
@@ -1171,6 +1202,23 @@ function BookingCard({
                 <Text style={styles.metricText}>{metric.label}</Text>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {normalizedStatus === "RESCHEDULE_REQUESTED" ? (
+          <View style={styles.rescheduleRequestCard}>
+            <Text style={styles.rescheduleRequestTitle}>Reschedule request</Text>
+            {requestReason ? (
+              <Text style={styles.rescheduleNoticeText}>Reason: {requestReason}</Text>
+            ) : null}
+            <Text style={styles.rescheduleNoticeText}>
+              Organizer decision:{" "}
+              {requestDecision === "APPROVED"
+                ? "Approved"
+                : requestDecision === "REJECTED"
+                  ? "Declined"
+                  : "Pending"}
+            </Text>
           </View>
         ) : null}
 
@@ -1211,6 +1259,53 @@ function BookingCard({
               <Text style={styles.rescheduleNoticeText}>
                 Votes: {Math.max(0, approvedVotes)} approve, {Math.max(0, rejectedVotes)} decline
               </Text>
+            ) : null}
+            {canToggleVoters && hasVoteCounts ? (
+              <TouchableOpacity
+                style={styles.rescheduleVoterToggle}
+                onPress={handleToggleVoters}
+                disabled={pollVotersLoading}
+              >
+                {pollVotersLoading ? (
+                  <ActivityIndicator size="small" color="#1d4ed8" />
+                ) : (
+                  <Text style={styles.rescheduleVoterToggleText}>
+                    {showVoters ? "Hide voters" : "View voters"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            {showVoters ? (
+              <View style={styles.rescheduleVoterList}>
+                <View style={styles.rescheduleVoterGroup}>
+                  <Text style={styles.rescheduleVoterTitle}>
+                    Approve ({approvedVoters.length})
+                  </Text>
+                  {approvedVoters.length ? (
+                    approvedVoters.map((entry) => (
+                      <Text key={entry?.id} style={styles.rescheduleVoterName}>
+                        {resolveVoterName(entry)}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.rescheduleVoterEmpty}>No approvals yet.</Text>
+                  )}
+                </View>
+                <View style={styles.rescheduleVoterGroup}>
+                  <Text style={styles.rescheduleVoterTitle}>
+                    Decline ({rejectedVoters.length})
+                  </Text>
+                  {rejectedVoters.length ? (
+                    rejectedVoters.map((entry) => (
+                      <Text key={entry?.id} style={styles.rescheduleVoterName}>
+                        {resolveVoterName(entry)}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={styles.rescheduleVoterEmpty}>No declines yet.</Text>
+                  )}
+                </View>
+              </View>
             ) : null}
             {rescheduleApprovalStatus === "APPROVED" ? (
               <Text style={styles.rescheduleNoticeText}>Your vote: Approved</Text>
@@ -1279,7 +1374,11 @@ function BookingCard({
             {isRescheduling ? (
               <ActivityIndicator size="small" color="#B45309" />
             ) : (
-              <Text style={styles.rescheduleButtonText}>Request Reschedule</Text>
+              <Text style={styles.rescheduleButtonText}>
+                {normalizedStatus === "RESCHEDULE_REQUESTED" && requestDecision === "REJECTED"
+                  ? "Request Reschedule Again"
+                  : "Request Reschedule"}
+              </Text>
             )}
           </TouchableOpacity>
         ) : null}
@@ -1569,6 +1668,8 @@ export default function EventsPage({ navigation }) {
   const [bookedEvents, setBookedEvents] = useState([]);
   const [createdEvents, setCreatedEvents] = useState([]);
   const [eventAttendees, setEventAttendees] = useState({});
+  const [pollVotersByEvent, setPollVotersByEvent] = useState({});
+  const [pollVotersLoadingByEvent, setPollVotersLoadingByEvent] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancellingBookingId, setCancellingBookingId] = useState(null);
@@ -2050,6 +2151,31 @@ export default function EventsPage({ navigation }) {
       }
     },
     [maybeNotifyBookingUpdates, maybeNotifyOrganizerBookingUpdates]
+  );
+
+  const loadPollVoters = useCallback(
+    async (eventId) => {
+      if (!eventId) {
+        return;
+      }
+      if (pollVotersLoadingByEvent[eventId] || pollVotersByEvent[eventId]) {
+        return;
+      }
+      setPollVotersLoadingByEvent((prev) => ({ ...prev, [eventId]: true }));
+      try {
+        const data = await get(`/api/events/${eventId}/bookings`);
+        setPollVotersByEvent((prev) => ({
+          ...prev,
+          [eventId]: Array.isArray(data) ? data : [],
+        }));
+      } catch (error) {
+        console.error("Failed to load reschedule voters:", error);
+        setPollVotersByEvent((prev) => ({ ...prev, [eventId]: [] }));
+      } finally {
+        setPollVotersLoadingByEvent((prev) => ({ ...prev, [eventId]: false }));
+      }
+    },
+    [pollVotersByEvent, pollVotersLoadingByEvent],
   );
 
   const handleRefresh = useCallback(() => {
@@ -2610,6 +2736,9 @@ export default function EventsPage({ navigation }) {
                 isRescheduling={reschedulingBookingId === (booking?.id || null)}
                 isVotingReschedule={rescheduleVoteState.bookingId === (booking?.id || null)}
                 voteChoice={rescheduleVoteState.choice}
+                pollVoters={pollVotersByEvent[booking?.event?.id]}
+                pollVotersLoading={Boolean(pollVotersLoadingByEvent[booking?.event?.id])}
+                onLoadPollVoters={loadPollVoters}
               />
             ))
           ) : showFilteredBookingsEmptyState ? (
@@ -3000,6 +3129,20 @@ function createStyles(theme) {
       marginBottom: 8,
     },
     metricText: { fontSize: 12, fontWeight: "600", color: theme.infoText },
+    rescheduleRequestCard: {
+      marginTop: 12,
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.warningText,
+      backgroundColor: theme.warningSurface,
+    },
+    rescheduleRequestTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: theme.warningText,
+      marginBottom: 4,
+    },
     rescheduleNotice: {
       marginTop: 12,
       padding: 12,
@@ -3015,6 +3158,13 @@ function createStyles(theme) {
       marginBottom: 4,
     },
     rescheduleNoticeText: { fontSize: 12, color: theme.textSecondary, lineHeight: 18 },
+    rescheduleVoterToggle: { marginTop: 8, alignSelf: "flex-start" },
+    rescheduleVoterToggleText: { fontSize: 12, fontWeight: "600", color: theme.accent },
+    rescheduleVoterList: { marginTop: 8 },
+    rescheduleVoterGroup: { marginBottom: 8 },
+    rescheduleVoterTitle: { fontSize: 12, fontWeight: "700", color: theme.textPrimary },
+    rescheduleVoterName: { fontSize: 12, color: theme.textSecondary, marginTop: 2 },
+    rescheduleVoterEmpty: { fontSize: 12, color: theme.textMuted, marginTop: 2 },
     rescheduleNoticeHint: {
       fontSize: 12,
       color: theme.textSecondary,

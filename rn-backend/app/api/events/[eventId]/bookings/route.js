@@ -118,6 +118,10 @@ export async function GET(request, { params }) {
       },
     });
 
+    const isParticipant =
+      Boolean(currentUserId) && bookings.some((booking) => booking.userId === currentUserId);
+    const canViewPollVotes = isOrganizer || isParticipant;
+
     const sanitizedBookings = bookings
       .filter((booking) => {
         if (isOrganizer) {
@@ -166,8 +170,8 @@ export async function GET(request, { params }) {
           cancellationReason: canViewReceipt ? cancellationReason : null,
           rescheduleReason: canViewReceipt ? rescheduleReason : null,
           rescheduleRequestedAt: canViewReceipt ? rescheduleRequestedAt : null,
-          rescheduleApprovalStatus: canViewReceipt ? rescheduleApprovalStatus : null,
-          rescheduleApprovalAt: canViewReceipt ? rescheduleApprovalAt : null,
+          rescheduleApprovalStatus: canViewPollVotes ? rescheduleApprovalStatus : null,
+          rescheduleApprovalAt: canViewPollVotes ? rescheduleApprovalAt : null,
           user: safeUser,
         };
       });

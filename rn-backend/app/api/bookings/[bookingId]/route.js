@@ -10,6 +10,7 @@ const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED",
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED", "RESCHEDULE_REQUESTED"]);
 const MAX_REASON_LENGTH = 500;
 const RESCHEDULE_APPROVAL_STATUSES = new Set(["APPROVED", "REJECTED"]);
+const RESCHEDULE_APPROVAL_PENDING = "PENDING";
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -123,7 +124,11 @@ export async function PUT(req, { params }) {
             { status: 409 },
           );
         }
-        if (currentStatus === "RESCHEDULE_REQUESTED") {
+        const previousDecision =
+          typeof bookingToUpdate.rescheduleApprovalStatus === "string"
+            ? bookingToUpdate.rescheduleApprovalStatus.toUpperCase()
+            : null;
+        if (currentStatus === "RESCHEDULE_REQUESTED" && previousDecision !== "REJECTED") {
           return NextResponse.json(
             { error: "Reschedule has already been requested for this booking." },
             { status: 409 },
@@ -133,13 +138,6 @@ export async function PUT(req, { params }) {
     }
 
     if (hasApprovalUpdate) {
-      if (!isBookingOwner) {
-        return NextResponse.json(
-          { error: "Only the booking owner can approve a rescheduled event." },
-          { status: 403 },
-        );
-      }
-
       if (!RESCHEDULE_APPROVAL_STATUSES.has(normalizedApprovalStatus)) {
         return NextResponse.json(
           { error: "Invalid reschedule approval response." },
@@ -147,60 +145,77 @@ export async function PUT(req, { params }) {
         );
       }
 
-      if (["CANCELLED", "DECLINED", "REJECTED"].includes(currentStatus)) {
-        return NextResponse.json(
-          { error: "Cancelled or rejected bookings cannot approve a reschedule." },
-          { status: 409 },
-        );
-      }
+      const isPollVote = Boolean(bookingToUpdate.event?.rescheduledAt);
 
-      const pollStatus =
-        typeof bookingToUpdate.event?.reschedulePollStatus === "string"
-          ? bookingToUpdate.event.reschedulePollStatus.toUpperCase()
-          : "PENDING";
-      if (pollStatus !== "PENDING") {
-        return NextResponse.json(
-          { error: "Reschedule poll is already finalized." },
-          { status: 409 },
-        );
-      }
+      if (isPollVote) {
+        if (!isBookingOwner) {
+          return NextResponse.json(
+            { error: "Only the booking owner can approve a rescheduled event." },
+            { status: 403 },
+          );
+        }
 
-      const pollOpensAt = bookingToUpdate.event?.reschedulePollOpensAt ?? null;
-      const pollClosesAt = bookingToUpdate.event?.reschedulePollClosesAt ?? null;
-      if (!pollOpensAt || !pollClosesAt) {
-        return NextResponse.json(
-          { error: "Reschedule poll window is not available for this event." },
-          { status: 409 },
-        );
-      }
+        if (["CANCELLED", "DECLINED", "REJECTED"].includes(currentStatus)) {
+          return NextResponse.json(
+            { error: "Cancelled or rejected bookings cannot approve a reschedule." },
+            { status: 409 },
+          );
+        }
 
-      const now = new Date();
-      const opensAt = new Date(pollOpensAt);
-      const closesAt = new Date(pollClosesAt);
-      if (Number.isNaN(opensAt.valueOf()) || Number.isNaN(closesAt.valueOf())) {
-        return NextResponse.json(
-          { error: "Reschedule poll schedule is invalid." },
-          { status: 400 },
-        );
-      }
-      if (now < opensAt) {
-        return NextResponse.json(
-          { error: "Reschedule poll has not opened yet." },
-          { status: 409 },
-        );
-      }
-      if (now >= closesAt) {
-        return NextResponse.json(
-          { error: "Reschedule poll has closed." },
-          { status: 409 },
-        );
-      }
+        const pollStatus =
+          typeof bookingToUpdate.event?.reschedulePollStatus === "string"
+            ? bookingToUpdate.event.reschedulePollStatus.toUpperCase()
+            : "PENDING";
+        if (pollStatus !== "PENDING") {
+          return NextResponse.json(
+            { error: "Reschedule poll is already finalized." },
+            { status: 409 },
+          );
+        }
 
-      if (!bookingToUpdate.event?.rescheduledAt) {
-        return NextResponse.json(
-          { error: "No reschedule approval is required for this event." },
-          { status: 409 },
-        );
+        const pollOpensAt = bookingToUpdate.event?.reschedulePollOpensAt ?? null;
+        const pollClosesAt = bookingToUpdate.event?.reschedulePollClosesAt ?? null;
+        if (!pollOpensAt || !pollClosesAt) {
+          return NextResponse.json(
+            { error: "Reschedule poll window is not available for this event." },
+            { status: 409 },
+          );
+        }
+
+        const now = new Date();
+        const opensAt = new Date(pollOpensAt);
+        const closesAt = new Date(pollClosesAt);
+        if (Number.isNaN(opensAt.valueOf()) || Number.isNaN(closesAt.valueOf())) {
+          return NextResponse.json(
+            { error: "Reschedule poll schedule is invalid." },
+            { status: 400 },
+          );
+        }
+        if (now < opensAt) {
+          return NextResponse.json(
+            { error: "Reschedule poll has not opened yet." },
+            { status: 409 },
+          );
+        }
+        if (now >= closesAt) {
+          return NextResponse.json(
+            { error: "Reschedule poll has closed." },
+            { status: 409 },
+          );
+        }
+      } else {
+        if (!isOrganizer) {
+          return NextResponse.json(
+            { error: "Only the organizer can review reschedule requests." },
+            { status: 403 },
+          );
+        }
+        if (currentStatus !== "RESCHEDULE_REQUESTED") {
+          return NextResponse.json(
+            { error: "No reschedule request is awaiting review." },
+            { status: 409 },
+          );
+        }
       }
     }
 
@@ -230,6 +245,8 @@ export async function PUT(req, { params }) {
     if (hasStatusUpdate && isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
       rescheduleData.rescheduleRequestedAt = new Date();
       rescheduleData.rescheduleReason = normalizedReason;
+      rescheduleData.rescheduleApprovalStatus = RESCHEDULE_APPROVAL_PENDING;
+      rescheduleData.rescheduleApprovalAt = null;
     }
 
     if (hasApprovalUpdate) {
