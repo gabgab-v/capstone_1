@@ -196,7 +196,7 @@ export async function POST(req) {
       const errorMessage =
         identityResult.status === 'UNAVAILABLE'
           ? 'Identity verification is unavailable. Please run the latest migrations and retry.'
-          : 'Complete organizer identity verification via AccuraScan before publishing events.';
+          : 'Complete organizer identity verification before publishing events.';
       return new Response(
         JSON.stringify({
           error: 'Identity verification required',

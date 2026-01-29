@@ -280,7 +280,7 @@ export async function PATCH(request, { params }) {
       const errorMessage =
         identityResult.status === "UNAVAILABLE"
           ? "Identity verification is unavailable. Please run the latest migrations and retry."
-          : "Complete organizer identity verification via AccuraScan before updating events.";
+          : "Complete organizer identity verification before updating events.";
       return NextResponse.json(
         {
           error: "Identity verification required",

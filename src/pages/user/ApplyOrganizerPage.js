@@ -28,7 +28,7 @@ function identityStatusMeta(status) {
     case 'VERIFIED':
       return { label: 'ID verified', color: '#047857', accent: '#dcfce7', helper: 'Ready for organizer publishing.' };
     case 'NEEDS_RESUBMISSION':
-      return { label: 'Needs resubmission', color: '#b45309', accent: '#ffedd5', helper: 'Run AccuraScan again to fix failed checks.' };
+      return { label: 'Needs resubmission', color: '#b45309', accent: '#ffedd5', helper: 'Run eKYC again to fix failed checks.' };
     case 'FAILED':
       return { label: 'Identity failed', color: '#dc2626', accent: '#fee2e2', helper: 'Face match or liveness failed.' };
     case 'PROCESSING':
@@ -377,7 +377,7 @@ export default function ApplyOrganizerPage({ navigation }) {
             {identityLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.actionButtonText}>Run eKYC (AccuraScan)</Text>
+              <Text style={styles.actionButtonText}>Run eKYC</Text>
             )}
           </TouchableOpacity>
           {identityErrorMessage ? (
