@@ -334,6 +334,8 @@ export default function ChatConversationPage({ route, navigation }) {
 
   const canSend = input.trim().length > 0 && !sending;
   const canOpenPeerProfile = Boolean(primaryPeerId);
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = 0;
 
   const handleViewPeerProfile = useCallback(() => {
     if (!primaryPeerId) {
@@ -353,8 +355,8 @@ export default function ChatConversationPage({ route, navigation }) {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardVerticalOffset}
     >
       <View style={styles.header}>
         <TouchableOpacity

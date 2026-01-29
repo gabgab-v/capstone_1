@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   SectionList,
   Image,
   RefreshControl,
@@ -64,6 +66,8 @@ function buildBadgeTokens(badges = [], colors) {
 export default function AccountSearchPage({ navigation }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = 0;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [suggested, setSuggested] = useState([]);

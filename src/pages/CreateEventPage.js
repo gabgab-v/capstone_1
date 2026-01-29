@@ -1246,7 +1246,7 @@ export default function CreateEventPage({ route, navigation }) {
     ? activeEvent?.title ?? 'Update your event details'
     : 'Plan a new adventure for hikers';
   const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
-  const keyboardVerticalOffset = Platform.OS === 'ios' ? 0 : 32;
+  const keyboardVerticalOffset = 0;
 
   if (isEditMode && loadingExisting && !activeEvent) {
     return (
@@ -1270,7 +1270,7 @@ export default function CreateEventPage({ route, navigation }) {
       keyboardVerticalOffset={keyboardVerticalOffset}
     >
       <ScreenHeader navigation={navigation} title={headerTitle} subtitle={headerSubtitle} />
-      <ScrollView style={styles.container}>
+      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
       <View style={[styles.identityCard, { backgroundColor: identityMeta.bg }]}>
         <View style={styles.identityCardHeader}>
           <Text style={[styles.identityTitle, { color: identityMeta.color }]}>{identityMeta.label}</Text>

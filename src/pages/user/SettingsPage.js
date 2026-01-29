@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   TextInput,
   ScrollView,
   Switch,
@@ -72,6 +74,8 @@ export default function SettingsPage({ navigation }) {
     }),
     [insets.bottom],
   );
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = 0;
 
   const avatarUri = useMemo(() => {
     const seed = user?.id ?? user?.email ?? 'settings';
@@ -1183,13 +1187,19 @@ export default function SettingsPage({ navigation }) {
   );
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      {renderHeader()}
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={contentContainerStyle}
-        showsVerticalScrollIndicator={false}
-      >
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+    >
+      <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+        {renderHeader()}
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={contentContainerStyle}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {renderProfileCard()}
 
         {renderOrganizerSection()}
@@ -1225,7 +1235,8 @@ export default function SettingsPage({ navigation }) {
         >
           <Text className="text-center text-base font-semibold text-white">Sign out</Text>
         </TouchableOpacity>
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
+    </KeyboardAvoidingView>
   );
 }

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -45,6 +47,8 @@ export default function ConnectionsListPage({ navigation, route }) {
   const debouncedSearch = useDebouncedValue(search, 350);
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
+  const keyboardVerticalOffset = 0;
 
   const fetchConnections = useCallback(
     async ({ refreshing: isRefreshing = false } = {}) => {
@@ -192,22 +196,27 @@ export default function ConnectionsListPage({ navigation, route }) {
   }, [colors.accent, colors.textPrimary, colors.textSecondary, emptyMessage, error, loading]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Icon name="chevron-left" size={20} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextGroup}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{title}</Text>
-          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-            {profileName}
-          </Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={keyboardBehavior}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+    >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="chevron-left" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTextGroup}>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{title}</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+              {profileName}
+            </Text>
+          </View>
         </View>
-      </View>
 
       <View style={[styles.tabContainer, { backgroundColor: colors.surfaceMuted ?? '#E5E7EB' }]}>
         {['followers', 'following'].map((option) => {
@@ -261,18 +270,20 @@ export default function ConnectionsListPage({ navigation, route }) {
         ) : null}
       </View>
 
-      <FlatList
-        data={connections}
-        keyExtractor={(item, index) => item?.id ?? `connection-${index}`}
-        renderItem={renderItem}
-        style={styles.list}
-        contentContainerStyle={connections.length === 0 ? styles.listEmpty : null}
-        ListEmptyComponent={listEmpty}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
-        }
-      />
-    </View>
+        <FlatList
+          data={connections}
+          keyExtractor={(item, index) => item?.id ?? `connection-${index}`}
+          renderItem={renderItem}
+          style={styles.list}
+          contentContainerStyle={connections.length === 0 ? styles.listEmpty : null}
+          ListEmptyComponent={listEmpty}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+          }
+          keyboardShouldPersistTaps="handled"
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 

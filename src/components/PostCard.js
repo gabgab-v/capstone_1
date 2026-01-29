@@ -969,7 +969,7 @@ export default function PostCard({ post, onPostUpdated, onPostDeleted }) {
         <KeyboardAvoidingView
           style={styles.commentsAvoidingView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 16}
+          keyboardVerticalOffset={0}
         >
           <View className="flex-1 bg-white dark:bg-slate-900">
             <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-slate-700 p-4">
@@ -1138,7 +1138,7 @@ export default function PostCard({ post, onPostUpdated, onPostDeleted }) {
               <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+                keyboardVerticalOffset={0}
               >
                 <View className="flex-1 p-4">
                   <TextInput

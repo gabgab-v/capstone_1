@@ -166,7 +166,7 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
         <KeyboardAvoidingView
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+          keyboardVerticalOffset={0}
         >
           <View className="flex-1 p-4">
             <TextInput
