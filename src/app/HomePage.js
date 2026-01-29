@@ -14,7 +14,7 @@ import {
   View,
   KeyboardAvoidingView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
 import { decode } from "base64-arraybuffer";
@@ -33,6 +33,7 @@ const MAX_IMAGES = 5;
 
 const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [caption, setCaption] = useState("");
   const [images, setImages] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,6 +45,7 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   );
 
   const canPost = caption.trim().length > 0 || images.length > 0;
+  const contentPaddingBottom = Math.max(24, insets.bottom + 16);
 
   const handleClose = useCallback(() => {
     if (isSubmitting) {
@@ -168,7 +170,12 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
         >
-          <View className="flex-1 p-4">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: contentPaddingBottom }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <TextInput
               placeholder={`What's on your mind, ${user?.name || "explorer"}?`}
               value={caption}
@@ -176,7 +183,7 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
               multiline
               className="text-lg"
               placeholderTextColor={colors.textMuted}
-              style={{ color: colors.textPrimary }}
+              style={{ color: colors.textPrimary, minHeight: 140, textAlignVertical: "top" }}
             />
             <TouchableOpacity
               onPress={() => setPickerVisible(true)}
@@ -204,7 +211,7 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
             >
               <Text className="text-slate-900 dark:text-slate-100">{images.length >= MAX_IMAGES ? "Maximum photos added" : "Add photos"}</Text>
             </TouchableOpacity>
-            <ScrollView horizontal className="mt-4">
+            <ScrollView horizontal className="mt-4" showsHorizontalScrollIndicator={false}>
               {images.map((image, index) => (
                 <TouchableOpacity
                   key={image.uri}
@@ -219,7 +226,7 @@ const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
         <PostVisibilityPicker
           visible={pickerVisible}
