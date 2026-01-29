@@ -489,7 +489,13 @@ export async function POST(req) {
     ) {
       return respondWithLog(
         409,
-        { error: "You have already submitted a booking for this event." },
+        {
+          error: "You have already submitted a booking for this event.",
+          details: {
+            bookingId: existingBooking.id,
+            status: existingBooking.status ?? null,
+          },
+        },
         BookingRequestOutcome.REJECTED,
         "Duplicate active booking",
         { "X-Idempotency-Status": "REJECTED" },
@@ -646,8 +652,22 @@ export async function GET(req) {
     const user = await getUserFromToken(req);
     await ensureBookingColumns();
 
+    const { searchParams } = new URL(req.url);
+    const rawEventId = searchParams.get("eventId");
+    const eventId = rawEventId && rawEventId.trim().length ? rawEventId.trim() : null;
+    const activeOnlyParam = searchParams.get("activeOnly");
+    const activeOnly =
+      typeof activeOnlyParam === "string" &&
+      ["1", "true", "yes"].includes(activeOnlyParam.trim().toLowerCase());
+
+    const where = {
+      userId: user.id,
+      ...(eventId ? { eventId } : {}),
+      ...(activeOnly ? { status: { in: Array.from(ACTIVE_BOOKING_STATUSES) } } : {}),
+    };
+
     const bookings = await prisma.booking.findMany({
-      where: { userId: user.id },
+      where,
       include: { event: true },
     });
 

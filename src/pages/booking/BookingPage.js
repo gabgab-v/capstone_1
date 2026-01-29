@@ -54,6 +54,12 @@ const OPTIONAL_DOCUMENTS_BY_DIFFICULTY = {
   Technical: ["experienceProof"],
   Expert: [],
 };
+const ACTIVE_BOOKING_STATUSES = new Set([
+  "PENDING",
+  "APPROVED",
+  "CONFIRMED",
+  "RESCHEDULE_REQUESTED",
+]);
 const BOOKING_POLICY_ITEMS = [
   "Bookings are non-refundable once submitted. Cancelling releases your slot.",
   "You may request a schedule transfer. The organizer reviews each request and may approve or decline it.",
@@ -334,8 +340,18 @@ export default function BookingPage({ route, navigation }) {
     try {
       // Check for existing bookings to prevent duplicates
       try {
-        const existingBookings = await get(`/api/bookings?eventId=${event.id}&userId=${user.id}`);
-        if (Array.isArray(existingBookings) && existingBookings.length > 0) {
+        const existingBookings = await get(`/api/bookings?eventId=${event.id}&activeOnly=true`);
+        const existingList = Array.isArray(existingBookings) ? existingBookings : [];
+        const hasActiveBooking = existingList.some((booking) => {
+          const matchesEvent =
+            booking?.eventId === event.id || booking?.event?.id === event.id;
+          if (!matchesEvent) {
+            return false;
+          }
+          const status = typeof booking?.status === "string" ? booking.status.toUpperCase() : "";
+          return ACTIVE_BOOKING_STATUSES.has(status);
+        });
+        if (hasActiveBooking) {
           Alert.alert("Already Booked", "You have already booked this event.");
           return;
         }
@@ -424,12 +440,28 @@ export default function BookingPage({ route, navigation }) {
       console.error("Error message:", err.message);
       
       // Extract the most detailed error message available
-      const errorMessage = err.body?.error || err.body?.message || err.message || "Something went wrong while booking.";
-      const errorDetails = err.body?.details
-        ? Object.entries(err.body.details)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("\n")
-        : null;
+      const errorMessage =
+        err.body?.error || err.body?.message || err.message || "Something went wrong while booking.";
+      const detailLines = [];
+      const details = err.body?.details;
+      if (details) {
+        if (typeof details === "string") {
+          detailLines.push(details);
+        } else if (Array.isArray(details)) {
+          details.forEach((item) => {
+            if (item !== null && item !== undefined) {
+              detailLines.push(String(item));
+            }
+          });
+        } else if (typeof details === "object") {
+          Object.entries(details).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              detailLines.push(`${key}: ${value}`);
+            }
+          });
+        }
+      }
+      const errorDetails = detailLines.length ? detailLines.join("\n") : null;
       
       // Show a detailed alert with status and error
       Alert.alert(
