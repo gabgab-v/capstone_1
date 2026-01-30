@@ -630,6 +630,49 @@ function buildBookingStatusNotification(previousBooking, nextBooking) {
     };
   }
 
+  if (nextStatus === "RESCHEDULE_REQUESTED") {
+    const eventTitle = normalizeText(nextBooking?.event?.title) || "your event";
+    return {
+      title: "Reschedule requested",
+      body: `Your reschedule request for ${eventTitle} was sent to the organizer.`,
+      eventId: nextBooking?.event?.id ?? null,
+    };
+  }
+
+  return null;
+}
+
+function buildRescheduleDecisionNotification(previousBooking, nextBooking) {
+  const event = nextBooking?.event ?? previousBooking?.event ?? null;
+  if (!event?.id) {
+    return null;
+  }
+  const isPollVote = Boolean(event.rescheduledAt);
+  if (isPollVote) {
+    return null;
+  }
+
+  const previousDecision = normalizeStatus(previousBooking?.rescheduleApprovalStatus);
+  const nextDecision = normalizeStatus(nextBooking?.rescheduleApprovalStatus);
+  if (!nextDecision || previousDecision === nextDecision) {
+    return null;
+  }
+
+  const eventTitle = normalizeText(event.title) || "your event";
+  if (nextDecision === "APPROVED") {
+    return {
+      title: "Reschedule request approved",
+      body: `${eventTitle} reschedule request was approved by the organizer.`,
+      eventId: event.id,
+    };
+  }
+  if (nextDecision === "REJECTED") {
+    return {
+      title: "Reschedule request declined",
+      body: `${eventTitle} reschedule request was declined by the organizer.`,
+      eventId: event.id,
+    };
+  }
   return null;
 }
 
@@ -1877,6 +1920,14 @@ export default function EventsPage({ navigation }) {
           if (bookingNotification) {
             notifications.push(bookingNotification);
           }
+        }
+
+        const rescheduleDecisionNotification = buildRescheduleDecisionNotification(
+          previousSnapshot,
+          snapshot,
+        );
+        if (rescheduleDecisionNotification) {
+          notifications.push(rescheduleDecisionNotification);
         }
       });
 
