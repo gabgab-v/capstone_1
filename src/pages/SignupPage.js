@@ -16,7 +16,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
-import { post } from '../lib/api';
+import { post, BASE_URL } from '../lib/api';
 import SafePicker from '../components/SafePicker';
 import { useTheme } from '../context/ThemeContext';
 
@@ -169,6 +169,11 @@ export default function SignupPage({ navigation }) {
           return;
         }
 
+        const emailRedirectTo =
+          typeof BASE_URL === 'string' && BASE_URL.trim().length > 0
+            ? `${BASE_URL.replace(/\/$/, '')}/confirmation-complete`
+            : undefined;
+
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: normalizedEmail,
           password,
@@ -178,6 +183,7 @@ export default function SignupPage({ navigation }) {
               firstName: trimmedFirstName,
               lastName: trimmedLastName,
             },
+            ...(emailRedirectTo ? { emailRedirectTo } : {}),
           },
         });
 

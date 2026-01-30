@@ -1,10 +1,14 @@
 import React, { createContext, useCallback, useEffect, useState, useContext, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { ApiError, get } from '../lib/api';
+import { ApiError, get, BASE_URL } from '../lib/api';
 
 const AuthContext = createContext(null);
 
 const emailNotConfirmedFallback = 'Please confirm your email before logging in.';
+const confirmationRedirectTo =
+  typeof BASE_URL === 'string' && BASE_URL.trim().length > 0
+    ? `${BASE_URL.replace(/\/$/, '')}/confirmation-complete`
+    : null;
 
 function resolveEmailNotConfirmedMessage(error) {
   if (!error || typeof error !== 'object') return null;
@@ -15,6 +19,27 @@ function resolveEmailNotConfirmedMessage(error) {
     return message || emailNotConfirmedFallback;
   }
   return null;
+}
+
+function isEmailNotConfirmedError(error) {
+  if (!error || typeof error !== 'object') return false;
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+  const code = typeof error.code === 'string' ? error.code.toLowerCase() : '';
+  return message.includes('email not confirmed') || code === 'email_not_confirmed';
+}
+
+async function resendSignupVerification(email) {
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!normalizedEmail) {
+    return { error: new Error('Email is required to resend verification.') };
+  }
+
+  const payload = { type: 'signup', email: normalizedEmail };
+  if (confirmationRedirectTo) {
+    payload.options = { emailRedirectTo: confirmationRedirectTo };
+  }
+
+  return supabase.auth.resend(payload);
 }
 
 function isNetworkProfileError(error) {
@@ -229,6 +254,27 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setPendingMfa(null);
+        if (isEmailNotConfirmedError(error)) {
+          try {
+            const { error: resendError } = await resendSignupVerification(email);
+            if (resendError) {
+              console.error('Failed to resend confirmation email:', resendError);
+              return {
+                error: new Error(
+                  'Please confirm your email before logging in. We could not resend the confirmation email yet.',
+                ),
+              };
+            }
+            return {
+              error: new Error(
+                'Please confirm your email before logging in. We just sent you a new confirmation link.',
+              ),
+            };
+          } catch (resendException) {
+            console.error('Resend confirmation threw error:', resendException);
+            return { error: new Error(emailNotConfirmedFallback) };
+          }
+        }
         return { error };
       }
 
