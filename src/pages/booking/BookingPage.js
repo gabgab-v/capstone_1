@@ -609,6 +609,9 @@ export default function BookingPage({ route, navigation }) {
             ? "Upload your payment receipt so the organizer can verify your booking."
             : "This event is free, but you can still upload a receipt or note for the organizer."}
         </Text>
+        <Text style={styles.formatNote}>
+          Accepted receipt formats: JPG, JPEG, PNG, WEBP, GIF.
+        </Text>
       </View>
 
       {hasReadinessBlockers ? (
@@ -737,6 +740,9 @@ export default function BookingPage({ route, navigation }) {
                 ? "Expert trails are strict: waiver, medical clearance, and experience proof are all required."
                 : "Expert trails are strict; below Expert, experience proof helps and medical clearance strengthens safety."
             }`}
+          </Text>
+          <Text style={styles.formatNote}>
+            Accepted document formats: JPG, JPEG, PNG, WEBP, GIF, PDF.
           </Text>
 
           {documentationSections.map(({ key: docKey, required }) => {
@@ -894,6 +900,12 @@ const styles = StyleSheet.create({
   receiptNote: {
     marginTop: 12,
     color: "#4b5563",
+  },
+  formatNote: {
+    marginTop: 6,
+    color: "#6b7280",
+    fontSize: 12,
+    lineHeight: 18,
   },
   readinessGate: {
     marginBottom: 16,
