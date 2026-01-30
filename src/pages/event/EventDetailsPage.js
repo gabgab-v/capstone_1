@@ -497,6 +497,7 @@ export default function EventDetailsPage({ route, navigation }) {
   const [attendanceError, setAttendanceError] = useState(null);
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(null);
   const [reminderSending, setReminderSending] = useState(null);
+  const [showPollVoters, setShowPollVoters] = useState(false);
 
   const organizerId = useMemo(
     () => event?.organizer?.id ?? event?.organizerId ?? null,
@@ -1198,6 +1199,27 @@ export default function EventDetailsPage({ route, navigation }) {
     const pending = Math.max(total - baseApproved, 0);
     return { approved: baseApproved, total, pending };
   }, [attendees, fallbackApproved, fallbackTotal, isOrganizer]);
+  const pollActive = Boolean(event?.rescheduledAt);
+  const pollVotes = useMemo(() => {
+    const approved = [];
+    const rejected = [];
+    if (!Array.isArray(attendees)) {
+      return { approved, rejected };
+    }
+    attendees.forEach((booking) => {
+      const status =
+        typeof booking?.rescheduleApprovalStatus === 'string'
+          ? booking.rescheduleApprovalStatus.toUpperCase()
+          : '';
+      if (status === 'APPROVED') {
+        approved.push(booking);
+      } else if (status === 'REJECTED') {
+        rejected.push(booking);
+      }
+    });
+    return { approved, rejected };
+  }, [attendees]);
+  const pollHasVotes = pollVotes.approved.length > 0 || pollVotes.rejected.length > 0;
   const attendeeProgress =
     attendeeStats.total > 0 ? Math.min(attendeeStats.approved / attendeeStats.total, 1) : 0;
   const attendeeProgressStyle = useMemo(() => {
@@ -1707,6 +1729,64 @@ export default function EventDetailsPage({ route, navigation }) {
                     Confirmed attendees are visible to everyone once the organizer approves them.
                   </Text>
                 )}
+                {pollActive ? (
+                  <View style={styles.pollCard}>
+                    <View style={styles.pollHeader}>
+                      <Text style={styles.pollTitle}>Reschedule poll votes</Text>
+                      <TouchableOpacity
+                        onPress={() => setShowPollVoters((prev) => !prev)}
+                        disabled={attendeesLoading}
+                      >
+                        <Text style={styles.pollToggle}>
+                          {showPollVoters ? 'Hide voters' : 'View voters'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.pollMeta}>
+                      Approved: {pollVotes.approved.length} · Rejected: {pollVotes.rejected.length}
+                    </Text>
+                    {!isOrganizer ? (
+                      <Text style={styles.pollHint}>
+                        Only confirmed attendees are visible in this list.
+                      </Text>
+                    ) : null}
+                    {showPollVoters ? (
+                      <View style={styles.pollList}>
+                        <View style={styles.pollGroup}>
+                          <Text style={styles.pollGroupTitle}>
+                            Approve ({pollVotes.approved.length})
+                          </Text>
+                          {pollVotes.approved.length ? (
+                            pollVotes.approved.map((booking) => (
+                              <Text key={booking?.id} style={styles.pollVoter}>
+                                {booking?.user?.name || 'Anonymous'}
+                              </Text>
+                            ))
+                          ) : (
+                            <Text style={styles.pollEmpty}>No approvals yet.</Text>
+                          )}
+                        </View>
+                        <View style={styles.pollGroup}>
+                          <Text style={styles.pollGroupTitle}>
+                            Decline ({pollVotes.rejected.length})
+                          </Text>
+                          {pollVotes.rejected.length ? (
+                            pollVotes.rejected.map((booking) => (
+                              <Text key={booking?.id} style={styles.pollVoter}>
+                                {booking?.user?.name || 'Anonymous'}
+                              </Text>
+                            ))
+                          ) : (
+                            <Text style={styles.pollEmpty}>No declines yet.</Text>
+                          )}
+                        </View>
+                      </View>
+                    ) : null}
+                    {!pollHasVotes && !attendeesLoading ? (
+                      <Text style={styles.pollEmpty}>No votes yet.</Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <View style={styles.attendanceCard}>
                   <View style={styles.attendanceHeader}>
                     <Text style={styles.attendanceTitle}>Attendance check-in</Text>
@@ -2557,6 +2637,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     backgroundColor: '#F8FAFC',
   },
+  pollCard: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  pollHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  pollTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  pollToggle: { fontSize: 12, fontWeight: '600', color: '#2563eb' },
+  pollMeta: { fontSize: 12, color: '#475569', fontWeight: '600' },
+  pollHint: { fontSize: 12, color: '#64748b', marginTop: 4 },
+  pollList: { marginTop: 10 },
+  pollGroup: { marginBottom: 8 },
+  pollGroupTitle: { fontSize: 12, fontWeight: '700', color: '#1f2937' },
+  pollVoter: { fontSize: 12, color: '#475569', marginTop: 2 },
+  pollEmpty: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
   attendanceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

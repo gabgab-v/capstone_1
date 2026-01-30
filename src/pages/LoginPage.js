@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -22,6 +23,7 @@ export default function LoginPage({ navigation }) {
   const [verifyingMfa, setVerifyingMfa] = useState(false);
   const { login, pendingMfa, verifyMfaCode, restartMfaChallenge } = useAuth();
   const { isDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const placeholderColor = isDarkMode ? '#94a3b8' : '#888';
   const hasPendingMfa = useMemo(() => Boolean(pendingMfa?.challengeId && pendingMfa?.factorId), [pendingMfa]);
   const mfaDeviceName = useMemo(() => {
@@ -95,11 +97,11 @@ export default function LoginPage({ navigation }) {
     <KeyboardAvoidingView
       className="flex-1 bg-white dark:bg-slate-900"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      keyboardVerticalOffset={0}
     >
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(24, insets.bottom + 24) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bounces={false}

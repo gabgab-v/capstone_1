@@ -12,6 +12,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 
@@ -31,6 +32,7 @@ function formatErrorMessage(error, fallback) {
 
 export default function SignupPage({ navigation }) {
   const { colors, isDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -219,7 +221,7 @@ export default function SignupPage({ navigation }) {
     <KeyboardAvoidingView
       className="flex-1 bg-white dark:bg-slate-900"
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      keyboardVerticalOffset={0}
     >
       <Modal
         transparent
@@ -272,7 +274,7 @@ export default function SignupPage({ navigation }) {
       </Modal>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(24, insets.bottom + 24) }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bounces={false}
