@@ -230,40 +230,23 @@ function computeBudgetMatchPercent(range, price) {
 
   const min = Number.isFinite(range?.min) ? range.min : null;
   const max = Number.isFinite(range?.max) ? range.max : null;
-  if (min !== null && max !== null) {
-    if (price >= min && price <= max) {
-      return 1;
-    }
-    if (price < min) {
-      return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
-    }
-    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
-  }
-
-  if (min !== null) {
-    if (price >= min) {
-      return 1;
-    }
-    return clamp(1 - (min - price) / Math.max(min, 1), 0, 1);
-  }
-
-  if (max !== null) {
-    if (price <= max) {
-      return 1;
-    }
-    return clamp(1 - (price - max) / Math.max(max, 1), 0, 1);
-  }
-
   const midpoint = Number.isFinite(range?.midpoint) ? range.midpoint : null;
-  if (!Number.isFinite(midpoint) || midpoint <= 0) {
+  const cap =
+    max !== null
+      ? max
+      : min !== null
+      ? min
+      : midpoint !== null
+      ? midpoint
+      : null;
+
+  if (!Number.isFinite(cap) || cap <= 0) {
     return 0;
   }
-  const diff = Math.abs(price - midpoint);
-  const scale = Math.max(price, midpoint);
-  if (scale <= 0) {
-    return 0;
+  if (price <= cap) {
+    return 1;
   }
-  return clamp(1 - diff / scale, 0, 1);
+  return clamp(cap / price, 0, 1);
 }
 
 function normalizeDuration(hours) {
@@ -666,6 +649,10 @@ function buildMatchBreakdown({
         const priceText = formatPhp(price);
         if (!priceText) {
           return 'Pricing has not been announced yet.';
+        }
+
+        if (Number.isFinite(range.max) && price > range.max) {
+          return `${priceText} is above your ${formatPhp(range.max)} budget cap.`;
         }
 
         const withinMin =
