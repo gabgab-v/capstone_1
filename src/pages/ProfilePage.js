@@ -29,6 +29,7 @@ import TrailRecordingCard from '../components/TrailRecordingCard';
 import { get, post, patch, del as deleteRequest } from '../lib/api';
 import { ensureAvatarUri } from '../utils/media';
 import { supabase } from '../lib/supabase';
+import { getCachedValue, setCachedValue } from '../utils/offlineCache';
 
 function getAvatarUri(profile) {
   const seed = profile?.id ?? profile?.email ?? 'profile';
@@ -51,6 +52,14 @@ function getProfileDisplayName(profile) {
 }
 
 const FOLLOWER_SNAPSHOT_STORAGE_PREFIX = 'follower-snapshot';
+const PROFILE_CACHE_PREFIX = 'profile-page';
+
+function getProfileCacheKey(userId) {
+  if (!userId) {
+    return null;
+  }
+  return `${PROFILE_CACHE_PREFIX}:${userId}`;
+}
 
 function getFollowerSnapshotStorageKey(userId) {
   if (!userId) {
@@ -1066,6 +1075,20 @@ function ProfilePageContent({ navigation, route }) {
   }, [profile?.id]);
 
   useEffect(() => {
+    if (!profile?.id) {
+      return;
+    }
+    const cacheKey = getProfileCacheKey(profile.id);
+    if (!cacheKey) {
+      return;
+    }
+    const normalizedPosts = Array.isArray(posts) ? posts : [];
+    setCachedValue(cacheKey, { profile, posts: normalizedPosts }).catch((cacheError) => {
+      console.warn('Failed to cache profile:', cacheError?.message || cacheError);
+    });
+  }, [posts, profile]);
+
+  useEffect(() => {
     if (!viewedUserId) {
       profileOwnerIdRef.current = null;
       profileRef.current = null;
@@ -1130,10 +1153,33 @@ function ProfilePageContent({ navigation, route }) {
 
         await maybeNotifyFollowerUpdates(formattedProfile);
         setProfile(formattedProfile);
-        setPosts(Array.isArray(data.posts) ? data.posts : []);
+        const normalizedPosts = Array.isArray(data.posts) ? data.posts : [];
+        setPosts(normalizedPosts);
+
+        const cacheKey = getProfileCacheKey(viewedUserId);
+        if (cacheKey) {
+          await setCachedValue(cacheKey, {
+            profile: formattedProfile,
+            posts: normalizedPosts,
+          });
+        }
       } catch (error) {
         console.error('Failed to load profile:', error);
-        Alert.alert('Profile unavailable', error?.message ?? 'Unable to load this profile right now.');
+        const cacheKey = getProfileCacheKey(viewedUserId);
+        const cached = cacheKey ? await getCachedValue(cacheKey) : null;
+        if (cached?.data?.profile) {
+          const cachedProfile = cached.data.profile;
+          const cachedPosts = Array.isArray(cached.data.posts) ? cached.data.posts : [];
+          profileOwnerIdRef.current = cachedProfile.id ?? viewedUserId;
+          profileRef.current = cachedProfile;
+          setProfile(cachedProfile);
+          setPosts(cachedPosts);
+        } else {
+          Alert.alert(
+            'Profile unavailable',
+            error?.message ?? 'Unable to load this profile right now.',
+          );
+        }
       } finally {
         if (useRefresh) {
           setRefreshing(false);
@@ -1143,7 +1189,7 @@ function ProfilePageContent({ navigation, route }) {
         }
       }
     },
-    [viewedUserId, maybeNotifyFollowerUpdates, get],
+    [viewedUserId, maybeNotifyFollowerUpdates, get, getCachedValue, setCachedValue],
   );
 
   useFocusEffect(

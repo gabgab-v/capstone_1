@@ -1,3 +1,5 @@
+// Maps difficulty labels to a normalized score used in vectors (0..1).
+// This is not a percent by itself; it is a feature value for cosine similarity.
 const LEVEL_SCORE_MAP = {
   beginner: 0.2,
   intermediate: 0.6,
@@ -5,14 +7,17 @@ const LEVEL_SCORE_MAP = {
   expert: 1,
 };
 
+// Ordered difficulty levels so we can compute a distance-based match percent.
 const DIFFICULTY_ORDER = ['Beginner', 'Intermediate', 'Technical', 'Expert'];
 
+// Normalization caps used to scale numeric features into 0..1 for vectors.
 const MAX_DURATION_HOURS = 12;
 const MAX_PRICE_PHP = 12000;
 const MAX_DISTANCE_KM = 40;
 const MAX_ELEVATION_M = 2000;
 const MIN_BREAKDOWN_SHARE = 0.01;
 
+// Clamp any numeric value to a [min, max] range (defaults to 0..1).
 function clamp(value, min = 0, max = 1) {
   if (!Number.isFinite(value)) {
     return min;
@@ -20,6 +25,8 @@ function clamp(value, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
+// Average a list of percents (0..1), skipping non-numeric values.
+// Used to compute the final matchScore.
 function averageMatchPercent(values) {
   if (!Array.isArray(values)) {
     return 0;
@@ -32,6 +39,10 @@ function averageMatchPercent(values) {
   return clamp(total / valid.length, 0, 1);
 }
 
+// Numeric match percent (0..1) for distance/duration/elevation.
+// Formula: 1 - |actual - preferred| / max(actual, preferred)
+// If preferred is missing -> null (excluded from overall average).
+// If actual is missing -> 0 (counts as mismatch).
 function computeNumericMatchPercent(preferred, actual) {
   if (!Number.isFinite(preferred) || preferred <= 0) {
     return null;
@@ -65,6 +76,8 @@ function deriveUserAgeYears(user) {
   return age >= 0 ? age : null;
 }
 
+// Normalize various difficulty strings to one of:
+// Beginner | Intermediate | Technical | Expert.
 function normalizeDifficultyValue(value) {
   if (typeof value !== 'string') {
     return null;
@@ -97,6 +110,7 @@ function normalizeDifficultyValue(value) {
   return null;
 }
 
+// Convert difficulty label to a normalized score for vectors.
 function levelToScore(label) {
   const normalized = normalizeDifficultyValue(label);
   if (!normalized) {
@@ -105,6 +119,8 @@ function levelToScore(label) {
   return LEVEL_SCORE_MAP[normalized.toLowerCase()] ?? 0;
 }
 
+// Convert difficulty label to a 0-based index in DIFFICULTY_ORDER.
+// Returns -1 if the label is missing or unrecognized.
 function getDifficultyIndex(label) {
   const normalized = normalizeDifficultyValue(label);
   if (!normalized) {
@@ -113,6 +129,10 @@ function getDifficultyIndex(label) {
   return DIFFICULTY_ORDER.findIndex((item) => item.toLowerCase() === normalized.toLowerCase());
 }
 
+// Difficulty match percent (0..1) using ordered distance.
+// Formula: 1 - gap / (levels - 1), where gap = |preferredIndex - eventIndex|.
+// If preferred is missing -> null (excluded from overall average).
+// If event is missing -> 0 (counts as mismatch).
 function computeDifficultyMatchPercent(preferredLabel, eventLabel) {
   const preferredIndex = getDifficultyIndex(preferredLabel);
   if (preferredIndex < 0) {
@@ -127,6 +147,8 @@ function computeDifficultyMatchPercent(preferredLabel, eventLabel) {
   return clamp(1 - gap / maxGap, 0, 1);
 }
 
+// Infer a rough difficulty label from distance/elevation/duration when
+// the event has no explicit difficulty label.
 function inferDifficultyFromMetrics(event) {
   const distance = Number(event?.distanceKm);
   const elevation = Number(event?.elevationM);
@@ -184,6 +206,11 @@ function deriveEventDifficultyScore(event) {
   return levelToScore(getEventDifficultyLabel(event));
 }
 
+// Parse a free-text budget range into {min, max, midpoint}.
+// Examples:
+// - "PHP 2000 - 3000" => {min:2000, max:3000, midpoint:2500}
+// - "under 3000" => {max:3000, midpoint:2250}
+// - "over 3000" => {min:3000, midpoint:3750}
 function parseBudgetRange(value) {
   if (typeof value !== 'string') {
     return {};
@@ -218,6 +245,10 @@ function parseBudgetRange(value) {
   return { min, max, midpoint: (min + max) / 2 };
 }
 
+// Budget match percent (0..1).
+// If price <= cap => 1. Else => cap / price.
+// cap = max if present, else min, else midpoint.
+// If user has no budget preference -> null (excluded from average).
 function computeBudgetMatchPercent(range, price) {
   const hasPreference =
     Number.isFinite(range?.min) || Number.isFinite(range?.max) || Number.isFinite(range?.midpoint);
@@ -299,6 +330,9 @@ function extractTrailDescriptor(event) {
   return parts.join(' | ');
 }
 
+// User feature vector (normalized 0..1 per dimension), used for cosine similarity.
+// Order: [experienceScore, preferredDifficultyScore, durationScore, budgetScore,
+//         trailPrefFlag, distanceScore, elevationScore]
 function computeUserVector(user) {
   if (!user) {
     return null;
@@ -328,6 +362,10 @@ function computeUserVector(user) {
   ];
 }
 
+// Event feature vector (normalized 0..1 per dimension), used for cosine similarity.
+// Order: [difficultyScore, difficultyScore, durationScore, priceScore,
+//         trailScore, distanceScore, elevationScore]
+// Note: difficulty is duplicated to align with both user experience + preferred difficulty.
 function computeEventVector(event, user) {
   const durationScore = normalizeDuration(Number(event?.durationHrs));
   const priceScore = normalizePrice(Number(event?.price));
@@ -358,6 +396,8 @@ function computeEventVector(event, user) {
   ];
 }
 
+// Collect per-parameter match percents (0..1) used in computeMatchScore and breakdowns.
+// Returns nulls for missing user preferences so those parameters are excluded from the average.
 function collectPreferenceMatchPercents(user, event) {
   const eventDifficultyLabel = getEventDifficultyLabel(event);
   const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
@@ -410,6 +450,7 @@ function collectPreferenceMatchPercents(user, event) {
   };
 }
 
+// Final match score (0..1): average of all available per-parameter percents.
 function computeMatchScore(user, event) {
   if (!user || !event) {
     return 0;
@@ -432,6 +473,8 @@ function magnitude(vector) {
   return Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
 }
 
+// Cosine similarity (0..1) between two feature vectors.
+// Formula: dot(a,b) / (||a|| * ||b||), then clamped to 0..1.
 function cosineSimilarity(vectorA, vectorB) {
   if (!Array.isArray(vectorA) || !Array.isArray(vectorB)) {
     return 0;
@@ -454,6 +497,9 @@ function formatPhp(amount) {
   return `PHP ${normalized.toLocaleString()}`;
 }
 
+// Human-readable breakdown of top contributions.
+// Groups difficulty as avg(preferredDifficulty, experience) and filters out
+// very small contributions (< MIN_BREAKDOWN_SHARE).
 function buildMatchBreakdown({
   user,
   event,

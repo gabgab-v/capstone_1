@@ -14,10 +14,12 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { get } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { getCachedValue, setCachedValue } from "../utils/offlineCache";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const STRONG_MATCH_THRESHOLD = 0.75;
 const MIN_BREAKDOWN_SHARE = 0.01;
+const DISCOVER_EVENTS_CACHE_KEY = "discover-events";
 
 function truncate(text, limit = 140) {
   if (typeof text !== "string") {
@@ -1135,9 +1137,16 @@ export default function DiscoverPage() {
           : [];
         setEvents(processed);
         setError(null);
+        await setCachedValue(DISCOVER_EVENTS_CACHE_KEY, processed);
       } catch (err) {
         console.error("Failed to fetch events:", err);
-        setError(err?.body?.error || err?.message || "Failed to load events. Please try again.");
+        const cached = await getCachedValue(DISCOVER_EVENTS_CACHE_KEY);
+        if (cached?.data && Array.isArray(cached.data)) {
+          setEvents(cached.data);
+          setError(null);
+        } else {
+          setError(err?.body?.error || err?.message || "Failed to load events. Please try again.");
+        }
       } finally {
         if (showSpinner) {
           setLoading(false);

@@ -17,12 +17,14 @@ import Icon from "react-native-vector-icons/Feather";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
-import { del, get, put, patch, BASE_URL } from "../../lib/api";
+import { ApiError, del, get, put, patch, BASE_URL } from "../../lib/api";
 import ScreenHeader from "../../components/ScreenHeader";
 import SafePicker from "../../components/SafePicker";
 import { useTheme } from "../../context/ThemeContext";
 import { useNotifications } from "../../context/NotificationContext";
+import { useAuth } from "../../context/AuthContext";
 import { computeMatchScore } from "../../utils/matchScoring";
+import { getCachedValue, setCachedValue } from "../../utils/offlineCache";
 
 const EVENT_IMAGE_PLACEHOLDER = "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee";
 const AVATAR_COLORS = ["#DCFCE7", "#E0F2FE", "#FDE68A", "#FCE7F3", "#EDE9FE", "#FFE4E6"];
@@ -30,6 +32,7 @@ const TAB_BOOKINGS = "bookings";
 const TAB_HOSTING = "hosting";
 const BOOKING_SNAPSHOT_STORAGE_PREFIX = "booking-snapshot";
 const ORGANIZER_SNAPSHOT_STORAGE_PREFIX = "organizer-booking-snapshot";
+const EVENTS_CACHE_PREFIX = "events-page";
 const BOOKING_STATUS_FILTER_OPTIONS = [
   { value: "ALL", label: "All statuses" },
   { value: "PENDING", label: "Pending" },
@@ -40,6 +43,17 @@ const BOOKING_STATUS_FILTER_OPTIONS = [
   { value: "CANCELLED", label: "Cancelled" },
   { value: "RESCHEDULE_REQUESTED", label: "Reschedule requested" },
 ];
+
+function buildEventsCacheKey(userId) {
+  if (!userId) {
+    return `${EVENTS_CACHE_PREFIX}:guest`;
+  }
+  return `${EVENTS_CACHE_PREFIX}:${userId}`;
+}
+
+function isNetworkError(error) {
+  return error instanceof ApiError && error.status === 0;
+}
 
 function useEventStyles() {
   const theme = useTheme();
@@ -1707,6 +1721,7 @@ function OrganizerEventCard({
 export default function EventsPage({ navigation }) {
   const { styles, colors } = useEventStyles();
   const { scheduleNotification } = useNotifications();
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState(null);
   const [bookedEvents, setBookedEvents] = useState([]);
   const [createdEvents, setCreatedEvents] = useState([]);
@@ -1760,6 +1775,50 @@ export default function EventsPage({ navigation }) {
     [insets.bottom, insets.top]
   );
   const isOrganizer = user?.role === "ORGANIZER";
+
+  const readCachedEvents = useCallback(
+    async (targetUserId) => {
+      const cacheKey = buildEventsCacheKey(targetUserId ?? authUser?.id ?? user?.id);
+      if (!cacheKey) {
+        return null;
+      }
+      const cached = await getCachedValue(cacheKey);
+      return cached?.data && typeof cached.data === "object" ? cached.data : null;
+    },
+    [authUser?.id, user?.id],
+  );
+
+  const applyCachedEvents = useCallback((cachedPayload) => {
+    if (!cachedPayload || typeof cachedPayload !== "object") {
+      return false;
+    }
+    if (cachedPayload.user) {
+      setUser(cachedPayload.user);
+    }
+    setBookedEvents(Array.isArray(cachedPayload.bookings) ? cachedPayload.bookings : []);
+    setCreatedEvents(Array.isArray(cachedPayload.createdEvents) ? cachedPayload.createdEvents : []);
+    setEventAttendees(
+      cachedPayload.eventAttendees && typeof cachedPayload.eventAttendees === "object"
+        ? cachedPayload.eventAttendees
+        : {},
+    );
+    return true;
+  }, []);
+
+  const persistCachedEvents = useCallback(
+    async (payload, targetUserId) => {
+      const cacheKey = buildEventsCacheKey(targetUserId ?? authUser?.id ?? user?.id);
+      if (!cacheKey) {
+        return;
+      }
+      try {
+        await setCachedValue(cacheKey, payload);
+      } catch (error) {
+        console.warn("Failed to cache events page data:", error?.message || error);
+      }
+    },
+    [authUser?.id, user?.id],
+  );
 
   useEffect(() => {
     if (!isOrganizer) {
@@ -2111,7 +2170,32 @@ export default function EventsPage({ navigation }) {
       }
 
       try {
-        const currentUser = await get("/api/users/me");
+        let currentUser = null;
+        let canUseNetwork = true;
+
+        try {
+          currentUser = await get("/api/users/me");
+        } catch (error) {
+          if (isNetworkError(error)) {
+            canUseNetwork = false;
+            currentUser = authUser ?? null;
+          } else {
+            throw error;
+          }
+        }
+
+        if (!canUseNetwork) {
+          const cached = await readCachedEvents(currentUser?.id ?? authUser?.id ?? null);
+          if (cached && applyCachedEvents(cached)) {
+            return;
+          }
+          setUser(currentUser ?? null);
+          setBookedEvents([]);
+          setCreatedEvents([]);
+          setEventAttendees({});
+          return;
+        }
+
         setUser(currentUser ?? null);
 
         if (!currentUser?.id) {
@@ -2129,15 +2213,27 @@ export default function EventsPage({ navigation }) {
           bookingSnapshotUserIdRef.current = currentUser.id;
         }
 
-        const bookingsPromise = get("/api/bookings").catch((error) => {
+        const cachedData = await readCachedEvents(currentUser?.id ?? authUser?.id ?? null);
+        const cachedAttendees =
+          cachedData?.eventAttendees && typeof cachedData.eventAttendees === "object"
+            ? cachedData.eventAttendees
+            : {};
+
+        const bookingsPromise = get("/api/bookings").catch(async (error) => {
           console.error("Failed to fetch bookings:", error);
+          if (isNetworkError(error) && Array.isArray(cachedData?.bookings)) {
+            return cachedData.bookings;
+          }
           return [];
         });
 
         const eventsPromise =
           currentUser?.role === "ORGANIZER"
-            ? get("/api/events").catch((error) => {
+            ? get("/api/events").catch(async (error) => {
                 console.error("Failed to fetch organizer events:", error);
+                if (isNetworkError(error) && Array.isArray(cachedData?.createdEvents)) {
+                  return cachedData.createdEvents;
+                }
                 return [];
               })
             : Promise.resolve([]);
@@ -2173,14 +2269,37 @@ export default function EventsPage({ navigation }) {
                   return [event.id, Array.isArray(attendees) ? attendees : []];
                 } catch (error) {
                   console.error(`Failed to fetch bookings for event ${event.id}:`, error);
+                  if (isNetworkError(error) && Array.isArray(cachedAttendees?.[event.id])) {
+                    return [event.id, cachedAttendees[event.id]];
+                  }
                   return [event.id, []];
                 }
               })
             );
             await maybeNotifyOrganizerBookingUpdates(myEvents, attendeeEntries, currentUser.id);
-            setEventAttendees(Object.fromEntries(attendeeEntries));
+            const attendeeMap = Object.fromEntries(attendeeEntries);
+            setEventAttendees(attendeeMap);
+
+            await persistCachedEvents(
+              {
+                user: currentUser,
+                bookings: Array.isArray(bookingsData) ? bookingsData : [],
+                createdEvents: myEvents,
+                eventAttendees: attendeeMap,
+              },
+              currentUser.id,
+            );
           } else {
             setEventAttendees({});
+            await persistCachedEvents(
+              {
+                user: currentUser,
+                bookings: Array.isArray(bookingsData) ? bookingsData : [],
+                createdEvents: [],
+                eventAttendees: {},
+              },
+              currentUser.id,
+            );
           }
         } else {
           setCreatedEvents([]);
@@ -2189,9 +2308,22 @@ export default function EventsPage({ navigation }) {
           organizerAttendeeSnapshotReadyRef.current = false;
           organizerSnapshotLoadedRef.current = false;
           organizerSnapshotUserIdRef.current = null;
+          await persistCachedEvents(
+            {
+              user: currentUser,
+              bookings: Array.isArray(bookingsData) ? bookingsData : [],
+              createdEvents: [],
+              eventAttendees: {},
+            },
+            currentUser?.id ?? null,
+          );
         }
       } catch (error) {
         console.error("Failed to fetch events page data:", error);
+        const cached = await readCachedEvents(authUser?.id ?? user?.id ?? null);
+        if (cached && applyCachedEvents(cached)) {
+          return;
+        }
         setUser(null);
         setBookedEvents([]);
         setCreatedEvents([]);
@@ -2201,7 +2333,15 @@ export default function EventsPage({ navigation }) {
         setRefreshing(false);
       }
     },
-    [maybeNotifyBookingUpdates, maybeNotifyOrganizerBookingUpdates]
+    [
+      applyCachedEvents,
+      authUser,
+      maybeNotifyBookingUpdates,
+      maybeNotifyOrganizerBookingUpdates,
+      persistCachedEvents,
+      readCachedEvents,
+      user,
+    ]
   );
 
   const loadPollVoters = useCallback(

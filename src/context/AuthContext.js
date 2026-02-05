@@ -1,6 +1,11 @@
 import React, { createContext, useCallback, useEffect, useState, useContext, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { ApiError, get, BASE_URL } from '../lib/api';
+import {
+  clearStoredUserProfile,
+  getStoredUserProfile,
+  setStoredUserProfile,
+} from '../utils/offlineUserProfileStorage';
 
 const AuthContext = createContext(null);
 
@@ -77,6 +82,11 @@ export const AuthProvider = ({ children }) => {
       const profile = await get('/api/users/me');
       profileErrorRef.current = null;
       setUser(profile);
+      try {
+        await setStoredUserProfile(profile);
+      } catch (storageError) {
+        console.warn('Unable to cache user profile:', storageError?.message || storageError);
+      }
       return profile;
     } catch (error) {
       if (error instanceof ApiError) {
@@ -141,9 +151,11 @@ export const AuthProvider = ({ children }) => {
       if (!session) {
         setUser(null);
         setPendingMfa(null);
+        await clearStoredUserProfile();
         return 'signed_out';
       }
 
+      const authUser = session?.user ?? null;
       const { requiresMfa, factors } = await evaluateMfaRequirement();
       if (requiresMfa) {
         try {
@@ -164,6 +176,12 @@ export const AuthProvider = ({ children }) => {
           return 'email_unverified';
         }
         if (isNetworkProfileError(profileErrorRef.current)) {
+          const cachedProfile = await getStoredUserProfile(authUser?.id ?? null);
+          if (cachedProfile) {
+            setUser(cachedProfile);
+            setPendingMfa(null);
+            return 'authenticated';
+          }
           const fallbackProfile = buildFallbackProfile(session);
           if (fallbackProfile) {
             setUser(fallbackProfile);
@@ -200,6 +218,11 @@ export const AuthProvider = ({ children }) => {
       if (!profile) {
         if (isNetworkProfileError(profileErrorRef.current)) {
           const { data } = await supabase.auth.getSession();
+          const cachedProfile = await getStoredUserProfile(data?.session?.user?.id ?? null);
+          if (cachedProfile) {
+            setUser(cachedProfile);
+            return true;
+          }
           const fallbackProfile = buildFallbackProfile(data?.session ?? null);
           if (fallbackProfile) {
             setUser(fallbackProfile);
@@ -312,6 +335,7 @@ export const AuthProvider = ({ children }) => {
     },
     logout: async () => {
       setPendingMfa(null);
+      await clearStoredUserProfile();
       return supabase.auth.signOut();
     },
     refreshUser: fetchUserProfile,

@@ -19,6 +19,9 @@ import { del, get, post } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ensureAvatarUri } from '../../utils/media';
+import { getCachedValue, setCachedValue } from '../../utils/offlineCache';
+
+const CHAT_MESSAGES_CACHE_PREFIX = 'chat-messages';
 
 function formatTimestamp(value) {
   if (!value) {
@@ -139,6 +142,10 @@ export default function ChatConversationPage({ route, navigation }) {
   const [nextCursor, setNextCursor] = useState(null);
   const [fetchingMore, setFetchingMore] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState(null);
+  const cacheKey = useMemo(
+    () => (conversationId ? `${CHAT_MESSAGES_CACHE_PREFIX}-${conversationId}` : null),
+    [cacheKey, conversationId],
+  );
 
   const listRef = useRef(null);
   const pollingRef = useRef(null);
@@ -171,18 +178,41 @@ export default function ChatConversationPage({ route, navigation }) {
         const cursorToken = response?.nextCursor ?? null;
 
         setNextCursor(cursorToken);
-        setMessages((previous) => (append ? [...fetchedMessages, ...previous] : fetchedMessages));
+        setMessages((previous) => {
+          const nextMessages = append ? [...fetchedMessages, ...previous] : fetchedMessages;
+          if (cacheKey) {
+            setCachedValue(cacheKey, { messages: nextMessages, nextCursor: cursorToken }).catch(
+              (cacheError) => {
+                console.warn('Failed to cache messages:', cacheError?.message || cacheError);
+              },
+            );
+          }
+          return nextMessages;
+        });
 
         if (!append && !silent) {
           initialScrollDone.current = false;
         }
       } catch (error) {
         console.error(`Failed to load messages for conversation ${conversationId}:`, error);
-        if (!silent) {
+        if (cacheKey) {
+          const cached = await getCachedValue(cacheKey);
+          if (cached?.data?.messages && Array.isArray(cached.data.messages)) {
+            setMessages(cached.data.messages);
+            setNextCursor(cached.data.nextCursor ?? null);
+            if (!silent) {
+              initialScrollDone.current = false;
+            }
+          } else if (!silent) {
+            const message =
+              error?.body?.error ||
+              error?.message ||
+              'Unable to load this conversation right now.';
+            Alert.alert('Conversation unavailable', message);
+          }
+        } else if (!silent) {
           const message =
-            error?.body?.error ||
-            error?.message ||
-            'Unable to load this conversation right now.';
+            error?.body?.error || error?.message || 'Unable to load this conversation right now.';
           Alert.alert('Conversation unavailable', message);
         }
       } finally {
@@ -239,7 +269,15 @@ export default function ChatConversationPage({ route, navigation }) {
     setSending(true);
     try {
       const message = await post(`/api/chats/${conversationId}/messages`, { body: trimmed });
-      setMessages((previous) => [...previous, message]);
+      setMessages((previous) => {
+        const next = [...previous, message];
+        if (cacheKey) {
+          setCachedValue(cacheKey, { messages: next, nextCursor }).catch((cacheError) => {
+            console.warn('Failed to cache messages:', cacheError?.message || cacheError);
+          });
+        }
+        return next;
+      });
       setInput('');
       initialScrollDone.current = false;
       setTimeout(() => {
@@ -253,7 +291,7 @@ export default function ChatConversationPage({ route, navigation }) {
     } finally {
       setSending(false);
     }
-  }, [conversationId, input]);
+  }, [cacheKey, conversationId, input, nextCursor]);
 
   const deleteMessage = useCallback(
     async (messageId) => {
@@ -263,7 +301,15 @@ export default function ChatConversationPage({ route, navigation }) {
       setDeletingMessageId(messageId);
       try {
         await del(`/api/chats/${conversationId}/messages/${messageId}`);
-        setMessages((previous) => previous.filter((message) => message.id !== messageId));
+        setMessages((previous) => {
+          const next = previous.filter((message) => message.id !== messageId);
+          if (cacheKey) {
+            setCachedValue(cacheKey, { messages: next, nextCursor }).catch((cacheError) => {
+              console.warn('Failed to cache messages:', cacheError?.message || cacheError);
+            });
+          }
+          return next;
+        });
       } catch (error) {
         console.error('Failed to delete message:', error);
         const message =
@@ -275,7 +321,7 @@ export default function ChatConversationPage({ route, navigation }) {
         setDeletingMessageId(null);
       }
     },
-    [conversationId],
+    [cacheKey, conversationId, nextCursor],
   );
 
   const handleMessageLongPress = useCallback(

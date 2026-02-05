@@ -28,8 +28,10 @@ import { get, post as postRequest } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../lib/supabase";
 import { POST_VISIBILITY, getPostVisibilityOption } from "../constants/postVisibility";
+import { getCachedValue, setCachedValue } from "../utils/offlineCache";
 
 const MAX_IMAGES = 5;
+const POSTS_CACHE_KEY = "home-posts";
 
 const CreatePostModal = ({ visible, onClose, onSubmit, user }) => {
   const { colors } = useTheme();
@@ -254,10 +256,17 @@ export default function HomePage({ user, navigation }) {
   const fetchPosts = useCallback(async () => {
     try {
       const data = await get("/api/posts");
-      setPosts(Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(data) ? data : [];
+      setPosts(normalized);
+      await setCachedValue(POSTS_CACHE_KEY, normalized);
     } catch (error) {
       console.error("Failed to load posts:", error);
-      Alert.alert("Posts unavailable", "Unable to load the latest posts. Please try again.");
+      const cached = await getCachedValue(POSTS_CACHE_KEY);
+      if (cached?.data && Array.isArray(cached.data)) {
+        setPosts(cached.data);
+      } else {
+        Alert.alert("Posts unavailable", "Unable to load the latest posts. Please try again.");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -265,7 +274,21 @@ export default function HomePage({ user, navigation }) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      const cached = await getCachedValue(POSTS_CACHE_KEY);
+      if (!isMounted) {
+        return;
+      }
+      if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+        setPosts(cached.data);
+        setLoading(false);
+      }
+    })();
     fetchPosts();
+    return () => {
+      isMounted = false;
+    };
   }, [fetchPosts]);
 
   const handleRefresh = useCallback(() => {
@@ -322,7 +345,13 @@ export default function HomePage({ user, navigation }) {
         visibility: visibility ?? POST_VISIBILITY.PUBLIC,
       });
 
-      setPosts((current) => [createdPost, ...current]);
+      setPosts((current) => {
+        const next = [createdPost, ...current];
+        setCachedValue(POSTS_CACHE_KEY, next).catch((cacheError) => {
+          console.warn("Failed to cache posts:", cacheError?.message || cacheError);
+        });
+        return next;
+      });
     },
     [],
   );
@@ -331,16 +360,28 @@ export default function HomePage({ user, navigation }) {
     if (!updatedPost?.id) {
       return;
     }
-    setPosts((current) =>
-      current.map((existing) => (existing.id === updatedPost.id ? updatedPost : existing)),
-    );
+    setPosts((current) => {
+      const next = current.map((existing) =>
+        existing.id === updatedPost.id ? updatedPost : existing,
+      );
+      setCachedValue(POSTS_CACHE_KEY, next).catch((cacheError) => {
+        console.warn("Failed to cache posts:", cacheError?.message || cacheError);
+      });
+      return next;
+    });
   }, []);
 
   const handlePostDeleted = useCallback((postId) => {
     if (!postId) {
       return;
     }
-    setPosts((current) => current.filter((post) => post.id !== postId));
+    setPosts((current) => {
+      const next = current.filter((post) => post.id !== postId);
+      setCachedValue(POSTS_CACHE_KEY, next).catch((cacheError) => {
+        console.warn("Failed to cache posts:", cacheError?.message || cacheError);
+      });
+      return next;
+    });
   }, []);
 
   return (

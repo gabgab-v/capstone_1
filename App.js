@@ -73,7 +73,7 @@ function AppNavigator() {
   }
 
   const isAuthenticated = Boolean(user);
-  const preferencesIncomplete = Boolean(user && !user.preferencesComplete);
+  const preferencesIncomplete = Boolean(user && user.preferencesComplete === false);
   const navigatorKey = !isAuthenticated ? 'auth' : preferencesIncomplete ? 'onboarding' : 'main';
   const initialRouteName = !isAuthenticated
     ? 'Login'

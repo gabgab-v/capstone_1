@@ -17,6 +17,9 @@ import { get } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { ensureAvatarUri } from '../../utils/media';
+import { getCachedValue, setCachedValue } from '../../utils/offlineCache';
+
+const CHAT_LIST_CACHE_PREFIX = 'chats-list';
 
 function getPeerInitials(peer) {
   if (!peer) {
@@ -127,6 +130,10 @@ export default function ChatListPage({ navigation }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const accentColor = colors.accent ?? '#2E7D32';
   const mutedIconColor = colors.textMuted ?? '#9CA3AF';
+  const cacheKey = useMemo(
+    () => (user?.id ? `${CHAT_LIST_CACHE_PREFIX}-${user.id}` : CHAT_LIST_CACHE_PREFIX),
+    [user?.id],
+  );
 
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,10 +150,15 @@ export default function ChatListPage({ navigation }) {
 
       try {
         const data = await get('/api/chats');
-        setConversations(Array.isArray(data) ? data : []);
+        const normalized = Array.isArray(data) ? data : [];
+        setConversations(normalized);
+        await setCachedValue(cacheKey, normalized);
       } catch (error) {
         console.error('Failed to load conversations:', error);
-        if (!silent) {
+        const cached = await getCachedValue(cacheKey);
+        if (cached?.data && Array.isArray(cached.data)) {
+          setConversations(cached.data);
+        } else if (!silent) {
           const message =
             error?.body?.error || error?.message || 'Unable to load messages right now.';
           Alert.alert('Messages unavailable', message);
@@ -159,7 +171,7 @@ export default function ChatListPage({ navigation }) {
         }
       }
     },
-    [],
+    [cacheKey],
   );
 
   useFocusEffect(
