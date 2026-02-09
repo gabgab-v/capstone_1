@@ -1748,6 +1748,7 @@ export default function EventsPage({ navigation }) {
   const [reasonText, setReasonText] = useState("");
 
   const hasLoadedRef = useRef(false);
+  const lastKnownUserIdRef = useRef(null);
   const notifiedCompletionIdsRef = useRef(new Set());
   const suggestionNotificationInFlightRef = useRef(false);
   const bookingSnapshotRef = useRef(new Map());
@@ -1778,14 +1779,16 @@ export default function EventsPage({ navigation }) {
 
   const readCachedEvents = useCallback(
     async (targetUserId) => {
-      const cacheKey = buildEventsCacheKey(targetUserId ?? authUser?.id ?? user?.id);
+      const cacheKey = buildEventsCacheKey(
+        targetUserId ?? authUser?.id ?? lastKnownUserIdRef.current ?? null
+      );
       if (!cacheKey) {
         return null;
       }
       const cached = await getCachedValue(cacheKey);
       return cached?.data && typeof cached.data === "object" ? cached.data : null;
     },
-    [authUser?.id, user?.id],
+    [authUser?.id],
   );
 
   const applyCachedEvents = useCallback((cachedPayload) => {
@@ -1794,6 +1797,9 @@ export default function EventsPage({ navigation }) {
     }
     if (cachedPayload.user) {
       setUser(cachedPayload.user);
+      if (cachedPayload.user?.id) {
+        lastKnownUserIdRef.current = cachedPayload.user.id;
+      }
     }
     setBookedEvents(Array.isArray(cachedPayload.bookings) ? cachedPayload.bookings : []);
     setCreatedEvents(Array.isArray(cachedPayload.createdEvents) ? cachedPayload.createdEvents : []);
@@ -1807,7 +1813,9 @@ export default function EventsPage({ navigation }) {
 
   const persistCachedEvents = useCallback(
     async (payload, targetUserId) => {
-      const cacheKey = buildEventsCacheKey(targetUserId ?? authUser?.id ?? user?.id);
+      const cacheKey = buildEventsCacheKey(
+        targetUserId ?? authUser?.id ?? lastKnownUserIdRef.current ?? null
+      );
       if (!cacheKey) {
         return;
       }
@@ -1817,7 +1825,7 @@ export default function EventsPage({ navigation }) {
         console.warn("Failed to cache events page data:", error?.message || error);
       }
     },
-    [authUser?.id, user?.id],
+    [authUser?.id],
   );
 
   useEffect(() => {
@@ -2190,6 +2198,7 @@ export default function EventsPage({ navigation }) {
             return;
           }
           setUser(currentUser ?? null);
+          lastKnownUserIdRef.current = currentUser?.id ?? null;
           setBookedEvents([]);
           setCreatedEvents([]);
           setEventAttendees({});
@@ -2197,6 +2206,7 @@ export default function EventsPage({ navigation }) {
         }
 
         setUser(currentUser ?? null);
+        lastKnownUserIdRef.current = currentUser?.id ?? null;
 
         if (!currentUser?.id) {
           bookingSnapshotLoadedRef.current = false;
@@ -2320,11 +2330,12 @@ export default function EventsPage({ navigation }) {
         }
       } catch (error) {
         console.error("Failed to fetch events page data:", error);
-        const cached = await readCachedEvents(authUser?.id ?? user?.id ?? null);
+        const cached = await readCachedEvents(authUser?.id ?? null);
         if (cached && applyCachedEvents(cached)) {
           return;
         }
         setUser(null);
+        lastKnownUserIdRef.current = null;
         setBookedEvents([]);
         setCreatedEvents([]);
         setEventAttendees({});
@@ -2340,7 +2351,6 @@ export default function EventsPage({ navigation }) {
       maybeNotifyOrganizerBookingUpdates,
       persistCachedEvents,
       readCachedEvents,
-      user,
     ]
   );
 
