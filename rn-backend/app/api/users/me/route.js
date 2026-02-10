@@ -267,6 +267,7 @@ export async function GET(request) {
     ]);
 
     const profileComplete = Boolean(dbUser.name && dbUser.birthdate);
+    // Preferences are complete only when all preference fields are set.
     const preferencesComplete = Boolean(
       dbUser.experienceLevel &&
         dbUser.preferredDifficulty &&
@@ -419,6 +420,7 @@ export async function PUT(request) {
     });
 
     const profileComplete = Boolean(updatedUser.name && updatedUser.birthdate);
+    // Preferences are complete only when all preference fields are set.
     const preferencesComplete = Boolean(
       updatedUser.experienceLevel &&
         updatedUser.preferredDifficulty &&
@@ -476,6 +478,7 @@ export async function PATCH(request) {
     });
 
     const profileComplete = Boolean(updatedUser.name && updatedUser.birthdate);
+    // Preferences are complete only when all preference fields are set.
     const preferencesComplete = Boolean(
       updatedUser.experienceLevel &&
         updatedUser.preferredDifficulty &&

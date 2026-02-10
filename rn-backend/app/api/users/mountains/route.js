@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+// Trim, de-dup, and cap preferred mountains to keep the preference list tidy.
 function sanitizeMountains(values) {
   if (!Array.isArray(values)) {
     return null;
@@ -36,6 +37,7 @@ export async function PUT(request) {
         ? body.mountain_suggestions_enabled
         : null;
 
+    // Require at least one preference update in the payload.
     if (preferredMountains === null && mountainSuggestionsEnabled === null) {
       return NextResponse.json(
         { error: 'Nothing to update. Provide preferred_mountains or mountain_suggestions_enabled.' },
@@ -85,6 +87,7 @@ export async function DELETE(request) {
       // allow empty body for "clear all"
     }
 
+    // If a specific mountain is provided, remove it; otherwise clear all preferences.
     const target = typeof body?.mountain === 'string' ? body.mountain.trim() : '';
 
     const current = await prisma.user.findUnique({

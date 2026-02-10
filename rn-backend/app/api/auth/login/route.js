@@ -157,6 +157,7 @@ export async function POST(req) {
     console.log("4. Token signed successfully.");
     // console.log("   -> Token:", token); // Uncomment for deep debugging if needed
 
+    // Keep login response light; full preferences completeness is computed in /api/users/me.
     const userToReturn = {
       id: user.id,
       email: user.email,

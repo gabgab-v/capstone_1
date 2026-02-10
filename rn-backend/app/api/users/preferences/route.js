@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+// Normalize duration input and reject non-numeric values.
 function parseDuration(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -10,6 +11,7 @@ function parseDuration(value) {
   return parsed;
 }
 
+// Normalize numeric preference inputs (distance/elevation).
 function parsePositiveNumber(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -36,6 +38,14 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
     }
 
+    // Preference parameters (request payload):
+    // - experience_level: user's hiking experience (required unless locked)
+    // - preferred_difficulty: trail difficulty preference
+    // - preferred_trail_type: trail type preference
+    // - preferred_duration_hours: preferred duration in hours
+    // - preferred_distance_km: preferred distance in kilometers
+    // - preferred_elevation_m: preferred elevation gain in meters
+    // - budget_range: preferred budget/price range
     const {
       experience_level,
       preferred_difficulty,
@@ -46,13 +56,16 @@ export async function POST(request) {
       budget_range,
     } = body;
 
+    // Preferences are required as a full set on first save.
     const missingFields = [];
+    // Difficulty and trail type preferences (required for recommendations).
     if (!preferred_difficulty) missingFields.push('preferred_difficulty');
     if (!preferred_trail_type) missingFields.push('preferred_trail_type');
     if (!preferred_duration_hours && preferred_duration_hours !== 0)
       missingFields.push('preferred_duration_hours');
     if (!preferred_distance_km && preferred_distance_km !== 0) missingFields.push('preferred_distance_km');
     if (!preferred_elevation_m && preferred_elevation_m !== 0) missingFields.push('preferred_elevation_m');
+    // Budget/price preference.
     if (!budget_range) missingFields.push('budget_range');
 
     if (missingFields.length > 0) {
@@ -64,6 +77,7 @@ export async function POST(request) {
       );
     }
 
+    // Duration preference (hours).
     const durationValue = parseDuration(preferred_duration_hours);
     if (durationValue === null || durationValue <= 0) {
       return NextResponse.json(
@@ -72,6 +86,7 @@ export async function POST(request) {
       );
     }
 
+    // Distance preference (kilometers).
     const distanceValue = parsePositiveNumber(preferred_distance_km);
     if (distanceValue === null || distanceValue <= 0) {
       return NextResponse.json(
@@ -80,6 +95,7 @@ export async function POST(request) {
       );
     }
 
+    // Elevation preference (meters).
     const elevationValue = parsePositiveNumber(preferred_elevation_m);
     if (elevationValue === null || elevationValue <= 0) {
       return NextResponse.json(
@@ -103,25 +119,30 @@ export async function POST(request) {
       },
     });
 
+    // When locked, experience_level is read-only (e.g. expert verification).
     const isLocked = Boolean(currentUser?.experienceLevelLocked);
 
+    // Experience level must be provided the first time unless locked.
     if (!isLocked && !experience_level) {
       return NextResponse.json({ error: 'experience_level is required.' }, { status: 400 });
     }
 
+    // Map API field names to Prisma fields for storage.
     const data = {
-      preferredDifficulty: preferred_difficulty,
-      preferredTrailType: preferred_trail_type,
-      preferredDurationHrs: durationValue,
-      preferredDistanceKm: distanceValue,
-      preferredElevationM: elevationValue,
-      budgetRange: budget_range,
+      preferredDifficulty: preferred_difficulty, // difficulty preference
+      preferredTrailType: preferred_trail_type, // trail type preference
+      preferredDurationHrs: durationValue, // duration preference (hours)
+      preferredDistanceKm: distanceValue, // distance preference (kilometers)
+      preferredElevationM: elevationValue, // elevation preference (meters)
+      budgetRange: budget_range, // budget/price preference
     };
 
+    // Experience level preference (only editable when not locked).
     if (!isLocked) {
       data.experienceLevel = experience_level;
     }
 
+    // Capture a snapshot of previous preferences before overwriting.
     const hasExistingPreferences = Boolean(
       currentUser &&
         (currentUser.experienceLevel ||

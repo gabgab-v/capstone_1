@@ -331,6 +331,14 @@ function extractTrailDescriptor(event) {
 }
 
 // User feature vector (normalized 0..1 per dimension), used for cosine similarity.
+// Preferences used here:
+// - experienceLevel
+// - preferredDifficulty
+// - preferredDurationHrs
+// - budgetRange
+// - preferredTrailType
+// - preferredDistanceKm
+// - preferredElevationM
 // Order: [experienceScore, preferredDifficultyScore, durationScore, budgetScore,
 //         trailPrefFlag, distanceScore, elevationScore]
 function computeUserVector(user) {
@@ -338,9 +346,13 @@ function computeUserVector(user) {
     return null;
   }
 
+  // Duration preference (hours) -> normalized feature.
   const durationScore = normalizeDuration(Number(user.preferredDurationHrs));
+  // Distance preference (km) -> normalized feature.
   const distanceScore = normalizeDistance(Number(user.preferredDistanceKm));
+  // Elevation preference (m) -> normalized feature.
   const elevationScore = normalizeElevation(Number(user.preferredElevationM));
+  // Budget preference -> midpoint/min/max parsed from budgetRange.
   const budgetRange = parseBudgetRange(user.budgetRange);
   const budgetScore = normalizePrice(
     typeof budgetRange.midpoint === 'number'
@@ -352,23 +364,33 @@ function computeUserVector(user) {
       : 0,
   );
   return [
-    levelToScore(user.experienceLevel),
-    levelToScore(user.preferredDifficulty),
-    durationScore,
-    budgetScore,
-    user?.preferredTrailType ? 1 : 0,
-    distanceScore,
-    elevationScore,
+    levelToScore(user.experienceLevel), // experienceLevel preference
+    levelToScore(user.preferredDifficulty), // preferredDifficulty preference
+    durationScore, // preferredDurationHrs
+    budgetScore, // budgetRange
+    user?.preferredTrailType ? 1 : 0, // preferredTrailType (flag only)
+    distanceScore, // preferredDistanceKm
+    elevationScore, // preferredElevationM
   ];
 }
 
 // Event feature vector (normalized 0..1 per dimension), used for cosine similarity.
+// Event fields that map to preferences:
+// - difficulty -> matches user experienceLevel + preferredDifficulty
+// - durationHrs -> matches preferredDurationHrs
+// - price -> matches budgetRange
+// - trailType/descriptor -> matches preferredTrailType
+// - distanceKm -> matches preferredDistanceKm
+// - elevationM -> matches preferredElevationM
 // Order: [difficultyScore, difficultyScore, durationScore, priceScore,
 //         trailScore, distanceScore, elevationScore]
 // Note: difficulty is duplicated to align with both user experience + preferred difficulty.
 function computeEventVector(event, user) {
+  // Duration vs preferredDurationHrs.
   const durationScore = normalizeDuration(Number(event?.durationHrs));
+  // Price vs budgetRange.
   const priceScore = normalizePrice(Number(event?.price));
+  // Difficulty vs experienceLevel + preferredDifficulty.
   const difficultyScore = deriveEventDifficultyScore(event);
   const trailPreferenceRaw =
     typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
@@ -378,12 +400,15 @@ function computeEventVector(event, user) {
     trailPreferenceRaw &&
     eventTrailType &&
     eventTrailType.toLowerCase() === trailPreferenceRaw.toLowerCase();
+  // Trail type vs preferredTrailType.
   const trailScore =
     trailPreferenceRaw &&
     (hasDirectTrailMatch || (descriptor && textContains(descriptor, trailPreferenceRaw)))
       ? 1
       : 0;
+  // Distance vs preferredDistanceKm.
   const distanceScore = normalizeDistance(Number(event?.distanceKm));
+  // Elevation vs preferredElevationM.
   const elevationScore = normalizeElevation(Number(event?.elevationM));
   return [
     difficultyScore,
@@ -397,19 +422,33 @@ function computeEventVector(event, user) {
 }
 
 // Collect per-parameter match percents (0..1) used in computeMatchScore and breakdowns.
+// Preferences used:
+// - experienceLevel -> event difficulty
+// - preferredDifficulty -> event difficulty
+// - preferredDurationHrs -> event durationHrs
+// - budgetRange -> event price
+// - preferredTrailType -> event trailType/descriptor
+// - preferredDistanceKm -> event distanceKm
+// - preferredElevationM -> event elevationM
 // Returns nulls for missing user preferences so those parameters are excluded from the average.
 function collectPreferenceMatchPercents(user, event) {
+  // Difficulty preferences (experience + preferred difficulty).
   const eventDifficultyLabel = getEventDifficultyLabel(event);
   const userPreferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
   const userExperienceLevel = normalizeDifficultyValue(user?.experienceLevel);
+  // Duration preference vs event duration.
   const preferredDuration = Number(user?.preferredDurationHrs);
   const eventDuration = Number(event?.durationHrs);
+  // Budget preference vs event price.
   const budgetRange = parseBudgetRange(user?.budgetRange);
   const priceNumber = Number(event?.price);
+  // Distance preference vs event distance.
   const preferredDistance = Number(user?.preferredDistanceKm);
   const eventDistance = Number(event?.distanceKm);
+  // Elevation preference vs event elevation.
   const preferredElevation = Number(user?.preferredElevationM);
   const eventElevation = Number(event?.elevationM);
+  // Trail type preference vs event trail descriptor.
   const preferredTrailRaw =
     typeof user?.preferredTrailType === 'string' ? user.preferredTrailType.trim() : '';
   const preferredTrail = preferredTrailRaw || '';
@@ -439,13 +478,13 @@ function collectPreferenceMatchPercents(user, event) {
     eventTrailType,
     matchesTrail,
     percents: {
-      experience: computeDifficultyMatchPercent(userExperienceLevel, eventDifficultyLabel),
-      preferredDifficulty: computeDifficultyMatchPercent(userPreferredDifficulty, eventDifficultyLabel),
-      duration: computeNumericMatchPercent(preferredDuration, eventDuration),
-      budget: computeBudgetMatchPercent(budgetRange, priceNumber),
-      trailType: preferredTrail ? (matchesTrail ? 1 : 0) : null,
-      distance: computeNumericMatchPercent(preferredDistance, eventDistance),
-      elevation: computeNumericMatchPercent(preferredElevation, eventElevation),
+      experience: computeDifficultyMatchPercent(userExperienceLevel, eventDifficultyLabel), // experienceLevel
+      preferredDifficulty: computeDifficultyMatchPercent(userPreferredDifficulty, eventDifficultyLabel), // preferredDifficulty
+      duration: computeNumericMatchPercent(preferredDuration, eventDuration), // preferredDurationHrs
+      budget: computeBudgetMatchPercent(budgetRange, priceNumber), // budgetRange
+      trailType: preferredTrail ? (matchesTrail ? 1 : 0) : null, // preferredTrailType
+      distance: computeNumericMatchPercent(preferredDistance, eventDistance), // preferredDistanceKm
+      elevation: computeNumericMatchPercent(preferredElevation, eventElevation), // preferredElevationM
     },
   };
 }
@@ -779,6 +818,7 @@ function buildMatchBreakdown({
 function evaluateEventReadiness(user, event) {
   const warnings = [];
   const blockers = [];
+  // Readiness checks reuse experienceLevel/preferredDifficulty and numeric preferences.
   const eventDifficulty = getEventDifficultyLabel(event);
   const experienceLevel = normalizeDifficultyValue(user?.experienceLevel);
   const preferredDifficulty = normalizeDifficultyValue(user?.preferredDifficulty);
