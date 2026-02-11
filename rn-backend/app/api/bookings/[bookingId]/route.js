@@ -5,12 +5,27 @@ import { isChatEligibleStatus, syncEventGroupConversation } from "@/lib/conversa
 import { buildCancellationOutcome } from "@/lib/cancellationPolicy";
 import { ensureBookingColumns } from "@/lib/bookingColumns";
 import { resolveReschedulePollStatus } from "@/lib/reschedulePoll";
+import { sendPushToUsers } from "@/lib/pushNotifications";
 
 const ORGANIZER_ALLOWED_STATUSES = new Set(["APPROVED", "REJECTED", "CONFIRMED", "PENDING"]);
 const ATTENDEE_ALLOWED_STATUSES = new Set(["CANCELLED", "RESCHEDULE_REQUESTED"]);
 const MAX_REASON_LENGTH = 500;
 const RESCHEDULE_APPROVAL_STATUSES = new Set(["APPROVED", "REJECTED"]);
 const RESCHEDULE_APPROVAL_PENDING = "PENDING";
+const DEFAULT_HIKER_LABEL = "A hiker";
+
+function resolveBookingOwnerLabel(booking) {
+  const name = typeof booking?.user?.name === "string" ? booking.user.name.trim() : "";
+  if (name) {
+    return name;
+  }
+  const email = typeof booking?.user?.email === "string" ? booking.user.email.trim() : "";
+  if (!email) {
+    return DEFAULT_HIKER_LABEL;
+  }
+  const local = email.split("@")[0]?.trim();
+  return local || DEFAULT_HIKER_LABEL;
+}
 
 // This function handles PUT requests to /api/bookings/[bookingId]
 export async function PUT(req, { params }) {
@@ -293,6 +308,164 @@ export async function PUT(req, { params }) {
         await syncEventGroupConversation(updatedBooking.event.id);
       } catch (syncError) {
         console.error("Failed to sync event group conversation:", syncError);
+      }
+    }
+
+    const eventTitle = updatedBooking?.event?.title || "your event";
+    const organizerId = updatedBooking?.event?.organizerId ?? null;
+    const bookingOwnerId = updatedBooking?.userId ?? null;
+    const bookingOwnerLabel = resolveBookingOwnerLabel(updatedBooking);
+
+    const notifyTasks = [];
+    const notificationRecords = [];
+
+    if (hasStatusUpdate && isBookingOwner && normalizedStatus === "CANCELLED") {
+      if (organizerId) {
+        notificationRecords.push({
+          userId: organizerId,
+          title: "Booking cancelled",
+          body: `${bookingOwnerLabel} cancelled their booking for "${eventTitle}".`,
+          data: {
+            type: "booking-cancelled",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+          eventId: updatedBooking.eventId,
+          deliverAt: new Date(),
+        });
+      }
+      if (bookingOwnerId) {
+        notificationRecords.push({
+          userId: bookingOwnerId,
+          title: "Booking cancelled",
+          body: `Your booking for "${eventTitle}" was cancelled.`,
+          data: {
+            type: "booking-cancelled",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+          eventId: updatedBooking.eventId,
+          deliverAt: new Date(),
+        });
+      }
+      notifyTasks.push(
+        sendPushToUsers([organizerId], {
+          title: "Booking cancelled",
+          body: `${bookingOwnerLabel} cancelled their booking for "${eventTitle}".`,
+          data: {
+            type: "booking-cancelled",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+        }),
+      );
+      notifyTasks.push(
+        sendPushToUsers([bookingOwnerId], {
+          title: "Booking cancelled",
+          body: `Your booking for "${eventTitle}" was cancelled.`,
+          data: {
+            type: "booking-cancelled",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+        }),
+      );
+    }
+
+    if (hasStatusUpdate && isBookingOwner && normalizedStatus === "RESCHEDULE_REQUESTED") {
+      if (organizerId) {
+        notificationRecords.push({
+          userId: organizerId,
+          title: "Reschedule requested",
+          body: `${bookingOwnerLabel} requested a reschedule for "${eventTitle}".`,
+          data: {
+            type: "reschedule-requested",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+          eventId: updatedBooking.eventId,
+          deliverAt: new Date(),
+        });
+      }
+      if (bookingOwnerId) {
+        notificationRecords.push({
+          userId: bookingOwnerId,
+          title: "Reschedule requested",
+          body: `Your reschedule request for "${eventTitle}" was sent.`,
+          data: {
+            type: "reschedule-requested",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+          eventId: updatedBooking.eventId,
+          deliverAt: new Date(),
+        });
+      }
+      notifyTasks.push(
+        sendPushToUsers([organizerId], {
+          title: "Reschedule requested",
+          body: `${bookingOwnerLabel} requested a reschedule for "${eventTitle}".`,
+          data: {
+            type: "reschedule-requested",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+        }),
+      );
+      notifyTasks.push(
+        sendPushToUsers([bookingOwnerId], {
+          title: "Reschedule requested",
+          body: `Your reschedule request for "${eventTitle}" was sent.`,
+          data: {
+            type: "reschedule-requested",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+        }),
+      );
+    }
+
+    const isPollVote = Boolean(updatedBooking?.event?.rescheduledAt);
+    if (hasApprovalUpdate && bookingOwnerId && !isPollVote) {
+      const decisionLabel =
+        normalizedApprovalStatus === "APPROVED" ? "approved" : "declined";
+      notificationRecords.push({
+        userId: bookingOwnerId,
+        title: `Reschedule ${decisionLabel}`,
+        body: `Your reschedule request for "${eventTitle}" was ${decisionLabel}.`,
+        data: {
+          type: "reschedule-decision",
+          bookingId: updatedBooking.id,
+          eventId: updatedBooking.eventId,
+        },
+        eventId: updatedBooking.eventId,
+        deliverAt: new Date(),
+      });
+      notifyTasks.push(
+        sendPushToUsers([bookingOwnerId], {
+          title: `Reschedule ${decisionLabel}`,
+          body: `Your reschedule request for "${eventTitle}" was ${decisionLabel}.`,
+          data: {
+            type: "reschedule-decision",
+            bookingId: updatedBooking.id,
+            eventId: updatedBooking.eventId,
+          },
+        }),
+      );
+    }
+
+    if (notificationRecords.length) {
+      try {
+        await prisma.notification.createMany({ data: notificationRecords });
+      } catch (notifyError) {
+        console.error("Failed to store booking notifications:", notifyError);
+      }
+    }
+    if (notifyTasks.length) {
+      try {
+        await Promise.all(notifyTasks);
+      } catch (notifyError) {
+        console.error("Failed to send push notifications:", notifyError);
       }
     }
 

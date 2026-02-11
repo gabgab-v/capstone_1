@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromToken } from "@/lib/auth";
 import { ensureBookingColumns } from "@/lib/bookingColumns";
+import { sendPushToUsers } from "@/lib/pushNotifications";
 
 const DIFFICULTY_CANONICAL = {
   beginner: "BEGINNER",
@@ -111,6 +112,25 @@ function sanitizeGeoJson(value) {
     return value;
   }
   return null;
+}
+
+function normalizeNumber(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildEventUpdateBody(eventTitle, { scheduleChanged, statusChanged, nextStatus }) {
+  if (statusChanged && nextStatus === "CANCELLED") {
+    return `${eventTitle} has been cancelled. Open the app for details.`;
+  }
+  if (scheduleChanged) {
+    return `${eventTitle} has a new schedule. Open the app to review and vote.`;
+  }
+  return `${eventTitle} details were updated. Open the app to review the changes.`;
 }
 
 function sanitizeDifficulty(value) {
@@ -585,6 +605,35 @@ export async function PATCH(request, { params }) {
         existingEvent.trailDistanceMeters,
     };
 
+    const detailsChanged =
+      normalizeText(existingEvent.title) !== normalizeText(updateData.title) ||
+      normalizeText(existingEvent.overview) !== normalizeText(updateData.overview) ||
+      normalizeText(existingEvent.itinerary) !== normalizeText(updateData.itinerary) ||
+      normalizeText(existingEvent.directions) !== normalizeText(updateData.directions) ||
+      normalizeNumber(existingEvent.price) !== normalizeNumber(updateData.price) ||
+      normalizeText(existingEvent.difficulty) !== normalizeText(updateData.difficulty) ||
+      normalizeNumber(existingEvent.maxParticipants) !== normalizeNumber(updateData.maxParticipants) ||
+      normalizeNumber(existingEvent.minParticipants) !== normalizeNumber(updateData.minParticipants) ||
+      normalizeNumber(existingEvent.minAge) !== normalizeNumber(updateData.minAge) ||
+      normalizeText(existingEvent.trailId) !== normalizeText(updateData.trailId) ||
+      normalizeNumber(existingEvent.distanceKm) !== normalizeNumber(updateData.distanceKm) ||
+      normalizeNumber(existingEvent.durationHrs) !== normalizeNumber(updateData.durationHrs) ||
+      normalizeNumber(existingEvent.steps) !== normalizeNumber(updateData.steps) ||
+      normalizeNumber(existingEvent.elevationM) !== normalizeNumber(updateData.elevationM) ||
+      normalizeText(existingEvent.trailType) !== normalizeText(updateData.trailType) ||
+      normalizeText(existingEvent.mountainTag) !== normalizeText(updateData.mountainTag) ||
+      normalizeText(existingEvent.imageUrl) !== normalizeText(updateData.imageUrl) ||
+      normalizeText(existingEvent.gcashNumber) !== normalizeText(updateData.gcashNumber) ||
+      normalizeNumber(existingEvent.locationZoomLevel) !== normalizeNumber(updateData.locationZoomLevel) ||
+      JSON.stringify(existingEvent.locationBounds ?? null) !==
+        JSON.stringify(updateData.locationBounds ?? null) ||
+      toTimestamp(existingEvent.registrationOpensAt) !==
+        toTimestamp(updateData.registrationOpensAt) ||
+      toTimestamp(existingEvent.registrationClosesAt) !==
+        toTimestamp(updateData.registrationClosesAt) ||
+      toTimestamp(existingEvent.announceAt) !== toTimestamp(updateData.announceAt) ||
+      normalizeText(existingEvent.status) !== normalizeText(updateData.status);
+
     if (scheduleChanged) {
       updateData.rescheduleReason = normalizedRescheduleReason;
       updateData.rescheduledAt = new Date();
@@ -631,6 +680,70 @@ export async function PATCH(request, { params }) {
 
       return savedEvent;
     });
+
+    if (scheduleChanged || detailsChanged) {
+      const recipients = await prisma.booking.findMany({
+        where: {
+          eventId,
+          status: { in: Array.from(RESCHEDULE_APPROVAL_ELIGIBLE_STATUSES) },
+        },
+        select: { userId: true },
+      });
+      const recipientIds = Array.from(
+        new Set(recipients.map((entry) => entry.userId).filter(Boolean)),
+      );
+
+      if (recipientIds.length) {
+        const eventTitle = updatedEvent?.title?.trim() || "Your event";
+        const nextStatus =
+          typeof updatedEvent?.status === "string"
+            ? updatedEvent.status.trim().toUpperCase()
+            : null;
+        const statusChanged =
+          normalizeText(existingEvent.status) !== normalizeText(updatedEvent?.status);
+        const notificationTitle =
+          statusChanged && nextStatus === "CANCELLED"
+            ? "Event cancelled"
+            : scheduleChanged
+              ? "Event moved"
+              : "Event updated";
+        const notificationBody = buildEventUpdateBody(eventTitle, {
+          scheduleChanged,
+          statusChanged,
+          nextStatus,
+        });
+        const notificationData = {
+          type:
+            statusChanged && nextStatus === "CANCELLED"
+              ? "event-cancelled"
+              : scheduleChanged
+                ? "event-rescheduled"
+                : "event-updated",
+          eventId: updatedEvent?.id ?? null,
+        };
+
+        await prisma.notification.createMany({
+          data: recipientIds.map((userId) => ({
+            userId,
+            title: notificationTitle,
+            body: notificationBody,
+            data: notificationData,
+            eventId: updatedEvent?.id ?? null,
+            deliverAt: new Date(),
+          })),
+        });
+
+        try {
+          await sendPushToUsers(recipientIds, {
+            title: notificationTitle,
+            body: notificationBody,
+            data: notificationData,
+          });
+        } catch (notifyError) {
+          console.error("Failed to send event update push notifications:", notifyError);
+        }
+      }
+    }
 
     return NextResponse.json(updatedEvent, { status: 200 });
   } catch (error) {

@@ -10,6 +10,8 @@ import React, {
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+import { get, post, del } from '../lib/api';
 
 const {
   module: Notifications,
@@ -20,6 +22,7 @@ const {
 const QUEUE_STORAGE_KEY = 'notification-queue';
 const LOGOUT_STORAGE_KEY = 'notification-last-logout';
 const QUEUE_MAX_ENTRIES = 120;
+const PUSH_TOKEN_STORAGE_KEY = 'expo-push-token';
 
 function resolveIosStatuses() {
   const constants = Notifications?.IosAuthorizationStatus;
@@ -67,6 +70,9 @@ const NotificationContext = createContext({
   recordLogout: async () => null,
   setActiveUserId: () => {},
   refreshPermissions: async () => null,
+  registerPushToken: async () => null,
+  unregisterPushToken: async () => null,
+  syncPendingNotifications: async () => [],
 });
 
 export function NotificationProvider({ children }) {
@@ -77,6 +83,8 @@ export function NotificationProvider({ children }) {
   const isPhysicalDevice = Device.isDevice;
   const isDeviceSupported = isPhysicalDevice && isNotificationsModuleAvailable;
   const hasInitialisedHandler = useRef(false);
+  const pushRegistrationInFlightRef = useRef(false);
+  const pendingSyncInFlightRef = useRef(false);
 
   const refreshPermissions = useCallback(async () => {
     if (!isNotificationsModuleAvailable) {
@@ -164,6 +172,103 @@ export function NotificationProvider({ children }) {
     },
     [activeUserId, scheduleNotificationInternal],
   );
+
+  const registerPushToken = useCallback(async () => {
+    if (!isDeviceSupported || pushRegistrationInFlightRef.current) {
+      return null;
+    }
+
+    pushRegistrationInFlightRef.current = true;
+    try {
+      const permitted = isPermissionGranted(permissions) || (await requestPermission());
+      if (!permitted) {
+        return null;
+      }
+
+      const projectId = resolveExpoProjectId();
+      let tokenResult;
+      try {
+        tokenResult = projectId
+          ? await Notifications.getExpoPushTokenAsync({ projectId })
+          : await Notifications.getExpoPushTokenAsync();
+      } catch (error) {
+        console.warn('Failed to fetch Expo push token:', error);
+        return null;
+      }
+
+      const token =
+        typeof tokenResult === 'string'
+          ? tokenResult
+          : typeof tokenResult?.data === 'string'
+            ? tokenResult.data
+            : null;
+
+      if (!token) {
+        return null;
+      }
+
+      await saveStoredPushToken(token);
+
+      try {
+        await post('/api/notifications/register', {
+          token,
+          platform: Platform.OS,
+        });
+      } catch (error) {
+        console.warn('Failed to register push token:', error);
+      }
+
+      return token;
+    } finally {
+      pushRegistrationInFlightRef.current = false;
+    }
+  }, [isDeviceSupported, permissions, requestPermission]);
+
+  const unregisterPushToken = useCallback(async () => {
+    const token = await loadStoredPushToken();
+    if (!token) {
+      return null;
+    }
+    try {
+      await del('/api/notifications/register', { token });
+    } catch (error) {
+      console.warn('Failed to unregister push token:', error);
+    }
+    return token;
+  }, []);
+
+  const syncPendingNotifications = useCallback(async () => {
+    if (!isDeviceSupported || pendingSyncInFlightRef.current) {
+      return [];
+    }
+    pendingSyncInFlightRef.current = true;
+    try {
+      const pending = await get('/api/notifications/pending');
+      if (!Array.isArray(pending) || pending.length === 0) {
+        return [];
+      }
+
+      await Promise.all(
+        pending.map((entry) =>
+          scheduleNotification({
+            title: entry?.title,
+            body: entry?.body,
+            data: entry?.data ?? null,
+            tag: entry?.id ?? undefined,
+            trigger: null,
+            skipQueue: true,
+          }),
+        ),
+      );
+
+      return pending;
+    } catch (error) {
+      console.warn('Failed to sync pending notifications:', error);
+      return [];
+    } finally {
+      pendingSyncInFlightRef.current = false;
+    }
+  }, [isDeviceSupported, scheduleNotification]);
 
   const recordLogout = useCallback(async () => {
     await saveLastLogoutAt(new Date());
@@ -290,6 +395,9 @@ export function NotificationProvider({ children }) {
       recordLogout,
       setActiveUserId,
       refreshPermissions,
+      registerPushToken,
+      unregisterPushToken,
+      syncPendingNotifications,
     }),
     [
       isDeviceSupported,
@@ -302,6 +410,9 @@ export function NotificationProvider({ children }) {
       recordLogout,
       setActiveUserId,
       refreshPermissions,
+      registerPushToken,
+      unregisterPushToken,
+      syncPendingNotifications,
     ],
   );
 
@@ -369,6 +480,19 @@ function parseIsoDate(value) {
   return Number.isNaN(parsed.valueOf()) ? null : parsed;
 }
 
+function resolveExpoProjectId() {
+  const extra = Constants.expoConfig?.extra ?? Constants.manifest?.extra ?? {};
+  const easProjectId = extra?.eas?.projectId;
+  if (typeof easProjectId === 'string' && easProjectId.trim().length) {
+    return easProjectId.trim();
+  }
+  const legacyProjectId = extra?.projectId;
+  if (typeof legacyProjectId === 'string' && legacyProjectId.trim().length) {
+    return legacyProjectId.trim();
+  }
+  return null;
+}
+
 function resolveTriggerDate(trigger) {
   if (!trigger) {
     return null;
@@ -387,6 +511,25 @@ function resolveTriggerDate(trigger) {
 
 function createQueueId() {
   return `queue-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function loadStoredPushToken() {
+  try {
+    return await SecureStore.getItemAsync(PUSH_TOKEN_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Failed to load push token:', error);
+    return null;
+  }
+}
+
+async function saveStoredPushToken(token) {
+  try {
+    if (typeof token === 'string' && token.trim().length) {
+      await SecureStore.setItemAsync(PUSH_TOKEN_STORAGE_KEY, token.trim());
+    }
+  } catch (error) {
+    console.warn('Failed to save push token:', error);
+  }
 }
 
 async function loadNotificationQueue() {

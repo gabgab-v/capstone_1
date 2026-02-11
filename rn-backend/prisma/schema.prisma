@@ -59,6 +59,8 @@ model User {
   organizerReviewsGiven   OrganizerReview[] @relation("OrganizerReviewsGiven")
   bookingRequestLogs      BookingRequestLog[]
   bookingAccessLogs       BookingAccessLog[] @relation("OrganizerAccessLogs")
+  pushTokens              PushToken[]
+  notifications           Notification[]
 
   lastActiveAt           DateTime? @default(now())
   deactivatedAt          DateTime?
@@ -69,6 +71,37 @@ model User {
   phoneVerifiedAt        DateTime?
 
   createdAt               DateTime  @default(now())
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  token     String   @unique
+  platform  String?
+  deviceId  String?
+  isActive  Boolean  @default(true)
+  lastSeenAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  title       String
+  body        String
+  data        Json?
+  eventId     String?
+  deliverAt   DateTime @default(now())
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, deliveredAt])
+  @@index([eventId])
 }
 
 model Event {

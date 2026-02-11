@@ -2430,6 +2430,10 @@ export default function EventsPage({ navigation }) {
       targetStatus === "CANCELLED" ? setCancellingBookingId : setReschedulingBookingId;
     const errorTitle =
       targetStatus === "CANCELLED" ? "Cancellation failed" : "Reschedule failed";
+    const previousSnapshot =
+      bookingSnapshotRef.current.get(reasonBooking.id) ??
+      buildBookingSnapshot(reasonBooking);
+    const ownerId = user?.id ?? authUser?.id ?? null;
 
     setLoading(reasonBooking.id);
     try {
@@ -2448,6 +2452,31 @@ export default function EventsPage({ navigation }) {
       if (updatedSnapshot) {
         bookingSnapshotRef.current.set(updatedSnapshot.id, updatedSnapshot);
         bookingSnapshotReadyRef.current = true;
+        if (ownerId) {
+          await saveStoredBookingSnapshot(ownerId, bookingSnapshotRef.current);
+        }
+      }
+      const eventTitle = normalizeText(updatedBooking?.event?.title) || "your event";
+      if (targetStatus === "CANCELLED") {
+        await scheduleNotification({
+          title: "Booking cancelled",
+          body: `Your booking for "${eventTitle}" was cancelled.`,
+          data: {
+            type: "booking-status",
+            eventId: updatedBooking?.event?.id ?? null,
+            bookingId: updatedBooking?.id ?? null,
+          },
+        });
+      } else if (targetStatus === "RESCHEDULE_REQUESTED") {
+        await scheduleNotification({
+          title: "Reschedule requested",
+          body: `Your reschedule request for "${eventTitle}" was sent to the organizer.`,
+          data: {
+            type: "booking-status",
+            eventId: updatedBooking?.event?.id ?? null,
+            bookingId: updatedBooking?.id ?? null,
+          },
+        });
       }
       closeReasonModal();
 
@@ -2471,7 +2500,16 @@ export default function EventsPage({ navigation }) {
     } finally {
       setLoading(null);
     }
-  }, [reasonAction, reasonBooking, reasonText, closeReasonModal, put]);
+  }, [
+    reasonAction,
+    reasonBooking,
+    reasonText,
+    closeReasonModal,
+    put,
+    scheduleNotification,
+    user?.id,
+    authUser?.id,
+  ]);
 
   const handleCancelBooking = useCallback(
     (booking) => {

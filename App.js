@@ -39,8 +39,20 @@ const Stack = createNativeStackNavigator();
 
 function NotificationQueueBridge() {
   const { user } = useAuth();
-  const { flushQueuedNotifications, recordLogout, setActiveUserId } = useNotifications();
+  const {
+    flushQueuedNotifications,
+    recordLogout,
+    setActiveUserId,
+    notificationsEnabled,
+    registerPushToken,
+    unregisterPushToken,
+    syncPendingNotifications,
+  } = useNotifications();
   const previousUserIdRef = useRef(null);
+  const lastPushUserIdRef = useRef(null);
+  const lastPushEnabledRef = useRef(false);
+  const lastInboxUserIdRef = useRef(null);
+  const lastInboxEnabledRef = useRef(false);
 
   useEffect(() => {
     const currentUserId = user?.id ?? null;
@@ -48,14 +60,45 @@ function NotificationQueueBridge() {
 
     if (previousUserIdRef.current && !currentUserId) {
       recordLogout();
+      unregisterPushToken();
     }
 
     if (currentUserId && previousUserIdRef.current !== currentUserId) {
       flushQueuedNotifications({ userId: currentUserId });
     }
 
+    if (currentUserId && notificationsEnabled) {
+      const shouldRegister =
+        lastPushUserIdRef.current !== currentUserId || !lastPushEnabledRef.current;
+      if (shouldRegister) {
+        registerPushToken();
+        lastPushUserIdRef.current = currentUserId;
+        lastPushEnabledRef.current = true;
+      }
+
+      const shouldSyncInbox =
+        lastInboxUserIdRef.current !== currentUserId || !lastInboxEnabledRef.current;
+      if (shouldSyncInbox) {
+        syncPendingNotifications();
+        lastInboxUserIdRef.current = currentUserId;
+        lastInboxEnabledRef.current = true;
+      }
+    } else if (!notificationsEnabled) {
+      lastPushEnabledRef.current = false;
+      lastInboxEnabledRef.current = false;
+    }
+
     previousUserIdRef.current = currentUserId;
-  }, [user?.id, flushQueuedNotifications, recordLogout, setActiveUserId]);
+  }, [
+    user?.id,
+    notificationsEnabled,
+    flushQueuedNotifications,
+    recordLogout,
+    registerPushToken,
+    unregisterPushToken,
+    syncPendingNotifications,
+    setActiveUserId,
+  ]);
 
   return null;
 }
