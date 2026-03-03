@@ -25,11 +25,10 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "usesCleartextTraffic": true,
+      "usesCleartextTraffic": false,
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "package": "com.pabukid.capstone"
     },
@@ -53,7 +52,7 @@
       [
         "@rnmapbox/maps",
         {
-          "RNMapboxAccessToken": "pk.eyJ1IjoiZ2FiczEyMyIsImEiOiJjbWc4d2Vwa2wwY2owMmtvY3hlNGx3aTl3In0._QDl6Mw90aCVmgGY3vWxKw",
+          "RNMapboxAccessToken": "YOUR_MAPBOX_ACCESS_TOKEN",
           "RNMapboxMapsImpl": "mapbox"
         }
       ],
@@ -69,7 +68,7 @@
       "apiBaseUrl": "https://backend-capstone-olpj.onrender.com",
       "supabaseUrl": "https://vifynucfnarnaxilodsj.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpZnludWNmbmFybmF4aWxvZHNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MDQxNDMsImV4cCI6MjA3NDk4MDE0M30.PPQQa_mUTd15WTD88gc5hy_fH4OaL97eMDDpzdV5_TE",
-      "mapboxAccessToken": "pk.eyJ1IjoiZ2FiczEyMyIsImEiOiJjbWc4d2Vwa2wwY2owMmtvY3hlNGx3aTl3In0._QDl6Mw90aCVmgGY3vWxKw",
+      "mapboxAccessToken": "YOUR_MAPBOX_ACCESS_TOKEN",
       "eas": {
         "projectId": "3d50f123-412f-4b83-a6e1-51ea53543153"
       }

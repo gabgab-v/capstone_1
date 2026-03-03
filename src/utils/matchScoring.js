@@ -536,7 +536,6 @@ function formatPhp(amount) {
   return `PHP ${normalized.toLocaleString()}`;
 }
 
-// Human-readable breakdown of top contributions.
 // Groups difficulty as avg(preferredDifficulty, experience) and filters out
 // very small contributions (< MIN_BREAKDOWN_SHARE).
 function buildMatchBreakdown({
