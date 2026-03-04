@@ -4,10 +4,63 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const prisma = new PrismaClient();
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAdmin =
+  supabaseUrl && supabaseServiceRoleKey
+    ? createClient(supabaseUrl, supabaseServiceRoleKey)
+    : null;
+let useSupabaseSeeding = Boolean(supabaseAdmin);
+
+function getErrorCode(error) {
+  if (!error) return null;
+  return error.code || error?.cause?.code || null;
+}
+
+function isSupabaseConnectivityError(error) {
+  const code = getErrorCode(error);
+  if (code && ['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED'].includes(code)) {
+    return true;
+  }
+
+  const message = `${error?.message || ''} ${error?.cause?.message || ''}`.toLowerCase();
+  return (
+    message.includes('fetch failed') ||
+    message.includes('getaddrinfo') ||
+    message.includes('network') ||
+    message.includes('timed out')
+  );
+}
+
+function disableSupabaseSeeding(error) {
+  if (!useSupabaseSeeding) return;
+  useSupabaseSeeding = false;
+  const code = getErrorCode(error);
+  const message = error?.message || 'Unknown error';
+  console.warn(
+    `Supabase auth seeding disabled for this run (${code || 'NO_CODE'}: ${message}). Continuing with Prisma-only user seed.`
+  );
+}
+
+async function initializeSupabaseSeeding() {
+  if (!supabaseAdmin) {
+    useSupabaseSeeding = false;
+    console.warn(
+      'Supabase env vars are missing (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY). Continuing with Prisma-only user seed.'
+    );
+    return;
+  }
+
+  try {
+    await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
+  } catch (error) {
+    if (isSupabaseConnectivityError(error)) {
+      disableSupabaseSeeding(error);
+      return;
+    }
+    throw error;
+  }
+}
 
 function randomScore(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -15,43 +68,60 @@ function randomScore(min, max) {
 
 async function ensureSeedUser({ email, password, name, role, trustScore, trustTier }) {
   const now = new Date();
-  let supabaseUser = await findSupabaseUserByEmail(email);
+  let supabaseUser = null;
 
-  if (supabaseUser) {
-    console.log(`Found existing Supabase user: ${email}. Updating password and confirming email...`);
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(supabaseUser.id, {
-      password,
-      email_confirm: true,
-    });
-    if (error) throw error;
-  } else {
-    console.log(`Creating Supabase user: ${email} (auto-confirmed)...`);
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // confirm immediately so login works without email flow
-    });
-    if (error) throw error;
-    supabaseUser = data.user;
+  if (useSupabaseSeeding && supabaseAdmin) {
+    try {
+      supabaseUser = await findSupabaseUserByEmail(email);
+
+      if (supabaseUser) {
+        console.log(`Found existing Supabase user: ${email}. Updating password and confirming email...`);
+        const { error } = await supabaseAdmin.auth.admin.updateUserById(supabaseUser.id, {
+          password,
+          email_confirm: true,
+        });
+        if (error) throw error;
+      } else {
+        console.log(`Creating Supabase user: ${email} (auto-confirmed)...`);
+        const { data, error } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true, // confirm immediately so login works without email flow
+        });
+        if (error) throw error;
+        supabaseUser = data.user;
+      }
+    } catch (error) {
+      if (isSupabaseConnectivityError(error)) {
+        disableSupabaseSeeding(error);
+      } else {
+        throw error;
+      }
+    }
   }
 
   // Sync Prisma profile with confirmed email timestamp.
   const updateData = {
-    supabaseUserId: supabaseUser.id,
     role,
     name,
-    emailVerifiedAt: supabaseUser.email_confirmed_at
-      ? new Date(supabaseUser.email_confirmed_at)
-      : now,
+    emailVerifiedAt: now,
   };
   const createData = {
-    id: supabaseUser.id,
-    supabaseUserId: supabaseUser.id,
     email,
     name,
     role,
     emailVerifiedAt: now,
   };
+
+  if (supabaseUser) {
+    updateData.supabaseUserId = supabaseUser.id;
+    updateData.emailVerifiedAt = supabaseUser.email_confirmed_at
+      ? new Date(supabaseUser.email_confirmed_at)
+      : now;
+    createData.id = supabaseUser.id;
+    createData.supabaseUserId = supabaseUser.id;
+    createData.emailVerifiedAt = updateData.emailVerifiedAt;
+  }
 
   if (role === 'ORGANIZER') {
     updateData.organizerRequestPending = false;
@@ -177,6 +247,8 @@ async function ensureOrganizer({ email, password, name, organizationName, review
 }
 
 async function findSupabaseUserByEmail(email) {
+  if (!useSupabaseSeeding || !supabaseAdmin) return null;
+
   const normalizedEmail = email.toLowerCase();
   let page = 1;
   const perPage = 100;
@@ -197,6 +269,7 @@ async function findSupabaseUserByEmail(email) {
 
 async function main() {
   console.log('Starting seed process...');
+  await initializeSupabaseSeeding();
 
   const defaultPassword = 'Password1234';
 

@@ -11,6 +11,9 @@ expo-env.d.ts
 
 # Native
 .kotlin/
+android/.gradle/
+android/build/
+android/app/build/
 *.orig.*
 *.jks
 *.p8

@@ -1,0 +1,10 @@
+# Local Android build and cache artifacts
+android/.gradle/
+android/build/
+android/app/build/
+
+# Optional local outputs
+dist/
+web-build/
+.expo/
+node_modules/
