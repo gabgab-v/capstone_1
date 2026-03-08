@@ -4,7 +4,7 @@
     "slug": "prototype",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Pabukid-Logo.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Pabukid-Logo.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -30,7 +30,7 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.pabukid.capstone"
+      "package": "com.pabukid.booking"
     },
     "web": {
       "favicon": "./assets/Pabukid-Logo.png"
@@ -59,7 +59,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/Pabukid-Logo.png",
+          "icon": "./assets/icon.png",
           "color": "#ffffff"
         }
       ]
