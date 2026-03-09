@@ -95,9 +95,9 @@ packagingOptions {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.pabukid.booking'
+    namespace 'com.pabukid.capstone'
     defaultConfig {
-        applicationId 'com.pabukid.booking'
+        applicationId 'com.pabukid.capstone'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

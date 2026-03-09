@@ -1,4 +1,4 @@
-package com.pabukid.booking
+package com.pabukid.capstone
 
 import android.app.Application
 import android.content.res.Configuration

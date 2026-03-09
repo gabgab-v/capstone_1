@@ -30,7 +30,10 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
       ],
-      "package": "com.pabukid.booking"
+      "blockedPermissions": [
+        "android.permission.CAMERA"
+      ],
+      "package": "com.pabukid.capstone"
     },
     "web": {
       "favicon": "./assets/Pabukid-Logo.png"
