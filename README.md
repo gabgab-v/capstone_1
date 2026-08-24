@@ -81,18 +81,6 @@ Save your images in `docs/screenshots/` using the filenames below, then replace 
 >
 > `![Organizer event management](docs/screenshots/organizer-management.png)`
 
-### Verification workflow
-
-> **[Image] Screenshot slot:** Add an organizer, business, identity, or expert-verification screen.
->
-> `![Verification workflow](docs/screenshots/verification-workflow.png)`
-
-### Admin dashboard
-
-> **[Image] Screenshot slot:** Add the web admin dashboard showing review tools or user management.
->
-> `![Pabukid admin dashboard](docs/screenshots/admin-dashboard.png)`
-
 ## Project structure
 
 ```text
