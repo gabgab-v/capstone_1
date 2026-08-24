@@ -49,10 +49,7 @@ Save your images in `docs/screenshots/` using the filenames below, then replace 
 
 > **[Image] Screenshot slot:** Add a sign-in, sign-up, or hiking-preferences screen here.
 
-<p align="center">
-  <img src="docs/auth-and-preferences.png" alt="Pabukid logo" width="180" />
-  <img src="docs/preferences.png" alt="Pabukid logo" width="180" />
-</p>
+![Authentication and preferences](docs/screenshots/auth-and-preferences.png)
 
 ### Discover personalized hikes
 
