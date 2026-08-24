@@ -43,43 +43,36 @@
 
 ## Screenshots
 
-Save your images in `docs/screenshots/` using the filenames below, then replace each **Screenshot slot** with the corresponding Markdown image line. You can use `.png`, `.jpg`, or `.gif`; just make the extension match.
+The following screenshots are included in the repository under `docs/`.
 
-### Authentication and preference setup
+### Authentication
 
-> **[Image] Screenshot slot:** Add a sign-in, sign-up, or hiking-preferences screen here.
+![Authentication screen](docs/auth-and-preferences.jpg)
 
-![Authentication and preferences](docs/screenshots/auth-and-preferences.png)
+### Hiking preferences
+
+![Hiking preferences](docs/preferences.jpg)
 
 ### Discover personalized hikes
 
-> **[Image] Screenshot slot:** Add the Discover screen showing recommended events and match scores.
->
-> `![Personalized event discovery](docs/screenshots/discover-events.png)`
+![Personalized event discovery](docs/discover-events.jpg)
 
 ### Event details and booking
 
-> **[Image] Screenshot slot:** Add an event-detail screen or the booking flow.
->
-> `![Event details and booking](docs/screenshots/event-booking.png)`
+![Event details and booking](docs/event-booking.jpg)
 
 ### GPS trail recording
 
-> **[Image] Screenshot slot:** Add the trail recorder or a saved route map.
->
-> `![GPS trail recording](docs/screenshots/trail-recording.png)`
+![GPS trail recording](docs/trail-recording.jpg)
 
 ### Community and messaging
 
-> **[Image] Screenshot slot:** Add a community post, profile, or chat screen.
->
-> `![Community and messaging](docs/screenshots/community-and-messaging.png)`
+![Community and messaging](docs/community-and-messaging.jpg)
 
 ### Organizer event management
 
-> **[Image] Screenshot slot:** Add the event-creation or organizer-bookings screen.
->
-> `![Organizer event management](docs/screenshots/organizer-management.png)`
+![Organizer event management](docs/organizer-management.jpg)
+
 
 ## Project structure
 
